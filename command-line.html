@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f6f5f1" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0a0c0b" media="(prefers-color-scheme: dark)" />
+    <script src="/theme-init.js"></script>
+    <title>onetime on the command line</title>
+    <meta
+      name="description"
+      content="Install and use the onetime command-line tool: one Node.js file, the same encryption and the same one-time links as the web page."
+    />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/src/web/style.css" />
+    <script type="module" src="/src/web/page.ts"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/">
+        <img src="/favicon.svg" alt="" width="28" height="28" />
+        <span>onetime</span>
+      </a>
+      <nav class="site-nav" aria-label="Site">
+        <a href="/how-it-works">How it works</a>
+        <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Switch theme">
+          <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+          </svg>
+          <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2" />
+            <path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+        </button>
+      </nav>
+    </header>
+
+    <main class="explainer">
+      <h1>Use onetime from the command line</h1>
+      <p class="lead">
+        onetime is also a single-file command-line tool. It uses the same encryption and the same links as this site: a
+        link made on the command line opens in a browser, and the other way round. The server never sees the secret or
+        the key.
+      </p>
+      <p class="notice notice-info">It has been run on Linux. Windows and macOS are not tested yet.</p>
+
+      <section id="install" aria-labelledby="install-title">
+        <h2 id="install-title">Install</h2>
+        <p>One file. It needs only Node.js 20 or newer.</p>
+
+        <h3>Linux and macOS</h3>
+<pre class="code" tabindex="0" aria-label="Install command for Linux and macOS"><code>curl -fsSL https://onetimepass.pages.dev/cli/onetime.mjs -o onetime && chmod +x onetime</code></pre>
+        <p>Or save the file as <code>onetime.mjs</code> and run it as <code>node onetime.mjs</code>.</p>
+
+        <h3>Windows</h3>
+        <p>
+          Download <a href="/cli/onetime.mjs" download>onetime.mjs</a> and <a href="/cli/onetime.cmd" download>onetime.cmd</a>
+          into a folder that is on your PATH. Then run it as <code>onetime</code>.
+        </p>
+
+        <h3>Check the download</h3>
+        <p>
+          A SHA-256 checksum is at <a href="/cli/onetime.mjs.sha256">/cli/onetime.mjs.sha256</a>. Compare it with the
+          output of <code>sha256sum onetime</code> (macOS: <code>shasum -a 256 onetime</code>). It comes from the same
+          site, so it detects a damaged download, not a compromised server.
+        </p>
+      </section>
+
+      <section id="commands" aria-labelledby="commands-title">
+        <h2 id="commands-title">Commands</h2>
+        <dl class="commands">
+          <div>
+            <dt><code>onetime send</code></dt>
+            <dd>Reads the secret from a pipe or a hidden prompt, encrypts it and prints only the link.</dd>
+          </div>
+          <div>
+            <dt><code>onetime gen</code></dt>
+            <dd>
+              Generates a password or token and creates the link in one step. With <code>--print-only</code> it only
+              prints a generated secret and contacts no server.
+            </dd>
+          </div>
+          <div>
+            <dt><code>onetime get -</code></dt>
+            <dd>Asks you to paste the link, reveals the secret and uses the link up.</dd>
+          </div>
+          <div>
+            <dt><code>onetime status -</code></dt>
+            <dd>Checks whether the link is still waiting, without using it up.</dd>
+          </div>
+        </dl>
+        <p>Run <code>onetime --help</code> or <code>onetime gen --help</code> for all options.</p>
+      </section>
+
+      <section id="examples" aria-labelledby="examples-title">
+        <h2 id="examples-title">Examples</h2>
+        <p class="hint">On Windows, write <code>onetime</code> instead of <code>./onetime</code>.</p>
+
+        <h3>Share a secret</h3>
+        <p>Type it at the hidden prompt, or pipe it in from a file. The link expires after 1 hour here.</p>
+<pre class="code" tabindex="0" aria-label="Example: share a secret"><code>./onetime send --ttl 1h
+./onetime send --ttl 1h &lt; secret.txt</code></pre>
+
+        <h3>Generate a password and share it</h3>
+<pre class="code" tabindex="0" aria-label="Example: generate a password and share it"><code>./onetime gen --type password --length 32</code></pre>
+
+        <h3>Open a link</h3>
+        <p>Paste the link when asked. This uses the link up, like the Reveal button.</p>
+<pre class="code" tabindex="0" aria-label="Example: open a link"><code>./onetime get -</code></pre>
+
+        <h3>Check a link without opening it</h3>
+<pre class="code" tabindex="0" aria-label="Example: check a link"><code>./onetime status -</code></pre>
+      </section>
+
+      <section id="privacy" aria-labelledby="privacy-title">
+        <h2 id="privacy-title">Privacy</h2>
+        <ul class="plain-list">
+          <li>
+            The secret is never taken as a command-line argument, so it stays out of shell history and process lists.
+          </li>
+          <li>
+            A link passed as an argument to <code>get</code> does end up in shell history. Use <code>onetime get -</code>
+            or open the link in a browser instead.
+          </li>
+          <li>No telemetry, no config files, no update checks.</li>
+        </ul>
+        <p>
+          <a href="/how-it-works">How your secret is stored</a> explains the encryption and what the server keeps. It is
+          the same for the command line.
+        </p>
+      </section>
+
+      <p class="explainer-cta"><a class="button" href="/">Share a secret in the browser</a></p>
+    </main>
+
+    <footer class="site-footer site-footer-plain">
+      <p>No accounts, cookies or analytics. Secrets are encrypted on your device.</p>
+      <p><a href="/">Share a secret</a> · <a href="/how-it-works">How it works</a></p>
+    </footer>
+  </body>
+</html>

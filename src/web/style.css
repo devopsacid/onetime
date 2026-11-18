@@ -1022,3 +1022,97 @@ html {
 .site-footer-plain p {
   margin: 0 0 0.5rem;
 }
+
+/* ---------- Command line ---------- */
+
+.notice-info {
+  margin-bottom: 1.5rem;
+  background: var(--accent-soft);
+  color: var(--text);
+  border-left: 4px solid var(--accent);
+}
+
+.explainer h3 {
+  margin-top: 1.5rem;
+}
+
+.explainer .steps h3,
+.explainer .timeline h3,
+.explainer .caveats h3,
+.explainer .compare-card h3:first-child {
+  margin-top: 0;
+}
+
+/* Long commands scroll inside the block, never the page; tabindex makes the scroll keyboard-reachable. */
+.code {
+  max-width: 100%;
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.85rem 1rem;
+  overflow-x: auto;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  white-space: pre;
+  tab-size: 2;
+}
+
+.explainer .code code {
+  padding: 0;
+  background: none;
+  font-size: inherit;
+  overflow-wrap: normal;
+}
+
+.commands {
+  display: grid;
+  gap: 0.9rem;
+  margin: 0 0 0.75rem;
+}
+
+.commands dt {
+  font-weight: 700;
+}
+
+.commands dd {
+  margin: 0.15rem 0 0;
+  color: var(--muted);
+}
+
+.plain-list {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0 0 1rem;
+  padding-left: 1.3rem;
+}
+
+.cli-teaser {
+  margin: 0 0 1rem;
+  padding: 1rem 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.cli-teaser h2 {
+  margin: 0 0 0.25rem;
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.cli-teaser p {
+  margin: 0;
+}
+
+.cli-teaser p + p {
+  margin-top: 0.35rem;
+  font-weight: 600;
+}
+
+/* Short inline commands and flags stay on one line (e.g. --print-only). */
+.explainer :is(p, dd, li) > code {
+  white-space: nowrap;
+}
