@@ -34,8 +34,8 @@ pnpm deploy             # build + wrangler pages deploy
 ## Deployment
 
 - Target: Cloudflare Pages project `onetimepass` (production = `onetimepass.pages.dev`). The name `onetime` is taken on pages.dev by another account.
-- Not deployed yet (2026-11-18). `database_id` in `wrangler.jsonc` is still the placeholder `REPLACE_WITH_D1_DATABASE_ID`; the D1 database has to be created and migrated first.
-- Blocker on 2026-11-18: the `cloudflare-pages-token` token has Pages access but gets 401 from the D1 API. It needs Account → D1 → Edit, or the owner creates the database in the dashboard and supplies its id.
+- D1 database `onetime` (id `20cbacad-c40a-4e7b-9a0e-3203078ecb3b`, region EEUR) was created and `0001_init.sql` applied remotely on 2026-11-18. New schema changes go in a new file under `migrations/`, applied with `pnpm db:migrate:remote` before the deploy that needs them.
+- Credentials: `pass` entry `cloudflare-token-write` (account-owned token with Pages and D1 access), account `2badee882679b77acf215905e6efcfd2`. `cloudflare-pages-token` has no D1 access and cannot deploy this project's database.
 - Deploys follow the global `cf-pages-deploy` skill (explicit approval per deploy, `secrets-manager` for the token, `deployer-cloudflare` for the deploy). Because Pages Functions are included, run the deploy from the app directory, not from a temp dir.
 
 ## Known open points

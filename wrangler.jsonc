@@ -7,8 +7,7 @@
     {
       "binding": "DB",
       "database_name": "onetime",
-      // Replace with the id printed by `wrangler d1 create onetime` before deploying.
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "database_id": "20cbacad-c40a-4e7b-9a0e-3203078ecb3b",
       "migrations_dir": "migrations"
     }
   ],
