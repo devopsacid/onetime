@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { build } from "esbuild";
 
@@ -17,5 +18,9 @@ await build({
   legalComments: "none",
 });
 await chmod(new URL("onetime.mjs", out), 0o755);
+// Checksum in sha256sum format, so people can verify the download.
+const bundle = await readFile(new URL("onetime.mjs", out));
+const digest = createHash("sha256").update(bundle).digest("hex");
+await writeFile(new URL("onetime.mjs.sha256", out), `${digest}  onetime.mjs\n`);
 // Windows does not use the shebang: this shim runs the bundle with node.
 await writeFile(new URL("onetime.cmd", out), '@node "%~dp0onetime.mjs" %*\r\n');

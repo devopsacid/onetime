@@ -2,14 +2,16 @@ import { run, type Io } from "./core";
 
 declare const __VERSION__: string | undefined;
 
-/** Reads all of stdin. Understands a UTF-8 or UTF-16LE byte order mark (Windows PowerShell 5 pipes UTF-16). */
-async function readAllStdin(): Promise<string> {
+/** Reads stdin up to `max + 1` bytes, then stops (the core rejects the overflow). */
+async function readStdinBytes(max: number): Promise<Uint8Array> {
   const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
-  const bytes = Buffer.concat(chunks);
-  if (bytes[0] === 0xff && bytes[1] === 0xfe) return bytes.subarray(2).toString("utf16le");
-  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) return bytes.subarray(3).toString("utf8");
-  return bytes.toString("utf8");
+  let total = 0;
+  for await (const chunk of process.stdin) {
+    chunks.push(chunk as Buffer);
+    total += (chunk as Buffer).length;
+    if (total > max) break;
+  }
+  return Buffer.concat(chunks).subarray(0, max + 1);
 }
 
 /** Hidden input on the terminal using raw mode only (no stty, no /dev/tty): works on Linux, macOS and Windows. */
@@ -57,9 +59,15 @@ const io: Io = {
   fetch: globalThis.fetch,
   env: process.env,
   version: typeof __VERSION__ === "string" ? __VERSION__ : "dev",
-  stdin: { isTTY: process.stdin.isTTY === true, readAll: readAllStdin },
+  stdin: { isTTY: process.stdin.isTTY === true, readBytes: readStdinBytes },
   promptHidden,
-  stdout: { isTTY: process.stdout.isTTY === true, write: (text) => void process.stdout.write(text) },
+  stdout: {
+    isTTY: process.stdout.isTTY === true,
+    write: (text) =>
+      new Promise<void>((resolve, reject) => {
+        process.stdout.write(text, (error) => (error ? reject(error) : resolve()));
+      }),
+  },
   stderr: { write: (text) => void process.stderr.write(text) },
 };
 

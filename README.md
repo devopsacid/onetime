@@ -26,7 +26,16 @@ Install on Linux or macOS:
 ```sh
 curl -fsSL https://onetimepass.pages.dev/cli/onetime.mjs -o onetime && chmod +x onetime
 # or skip chmod and run it as: node onetime.mjs ...
+
+# optional: verify the download
+curl -fsSL https://onetimepass.pages.dev/cli/onetime.mjs.sha256 -o onetime.mjs.sha256
+# (the file names onetime.mjs; save the download under that name, or compare the hashes by eye)
+sha256sum -c onetime.mjs.sha256        # macOS: shasum -a 256 -c onetime.mjs.sha256
 ```
+
+The checksum is served from the same site as the script, so it catches a damaged download, not a compromised server.
+
+Only Linux has been tested so far; Windows and macOS have not been run yet.
 
 Install on Windows (PowerShell), into a folder that is on your PATH:
 
@@ -46,16 +55,17 @@ echo -n 'hunter2' | ./onetime send            # prints the link; hints go to std
 ./onetime status "https://onetimepass.pages.dev/#<id>.<key>"   # still waiting? exit 0 or 1
 ```
 
-`onetime get "<link>"` also works and prints exactly the secret (a newline is added only on a terminal). Opening a link with `get` uses it up, like the Reveal button. `onetime --help` lists everything; exit codes: 0 ok, 1 gone (already opened or expired), 2 usage error, 3 damaged link, 4 decryption failed, 5 network or server error. The server defaults to `https://onetimepass.pages.dev`; change it with `--server <url>` or `ONETIME_SERVER` (https only, except `http://localhost` and `http://127.0.0.1`).
+`onetime get "<link>"` also works and prints exactly the secret (a newline is added only on a terminal). Opening a link with `get` uses it up, like the Reveal button. `onetime --help` lists everything; exit codes: 0 ok, 1 gone (already opened or expired), 2 usage error, 3 damaged link, 4 decryption failed, 5 network or server error, 70 internal error. The server defaults to `https://onetimepass.pages.dev`; change it with `--server <url>` or `ONETIME_SERVER` (https only, except `http://localhost` and `http://127.0.0.1`).
 
 Security notes:
 
 - The secret is never accepted as an argument, because arguments land in shell history and the process list. Pipe it in or use the hidden prompt.
-- A link given as an argument to `get` or `status` ends up in shell history, and the key is part of the link. Use `onetime get -` or `onetime get` and paste it, or open it in a browser.
+- A link given as an argument to `get` or `status` ends up in shell history, and the key is part of the link. Use `onetime get -` or `onetime get` and paste it, or open it in a browser. For the same reason `send` and `gen` never print the link in their hints, only on stdout.
+- Links to `http://localhost` or `http://127.0.0.1` are accepted only when `--server` or `ONETIME_SERVER` names that same server.
+- Input must be valid UTF-8 (or UTF-16 with a byte order mark) and at most 16 KB of text; anything else is refused instead of being altered.
 - `gen` prints only the link; `--show` prints the secret to stderr too.
 - No telemetry, config files or update checks.
-- Windows PowerShell 5 pipes text as UTF-16 with CRLF line endings. The CLI strips one trailing newline and understands a UTF-16 or UTF-8 byte order mark, but for anything with non-ASCII characters prefer the interactive prompt or `gen` there (PowerShell 7 pipes UTF-8).
-- Only tested on Linux so far; Windows and macOS have not been run.
+- Windows PowerShell may change the encoding or add line endings when piping text. Use the interactive prompt or `gen` there. The CLI strips one trailing newline and understands UTF-8 and UTF-16 byte order marks, but this has not been tried on Windows.
 
 ## Layout
 

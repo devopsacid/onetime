@@ -8,11 +8,18 @@ import {
   type CharsetName,
 } from "../src/web/generate";
 import { buildLink, parseFragment } from "../src/web/link";
-import { DEFAULT_TTL_SECONDS, MAX_SECRET_BYTES, MAX_TTL_SECONDS, MIN_TTL_SECONDS } from "../src/shared/limits";
+import {
+  DEFAULT_TTL_SECONDS,
+  ID_PATTERN,
+  MAX_BLOB_BYTES,
+  MAX_SECRET_BYTES,
+  MAX_TTL_SECONDS,
+  MIN_TTL_SECONDS,
+} from "../src/shared/limits";
 
 export const DEFAULT_SERVER = "https://onetimepass.pages.dev";
 
-export const EXIT = { ok: 0, gone: 1, usage: 2, badLink: 3, decrypt: 4, network: 5, interrupted: 130 } as const;
+export const EXIT = { ok: 0, gone: 1, usage: 2, badLink: 3, decrypt: 4, network: 5, internal: 70, interrupted: 130 } as const;
 
 export class UsageError extends Error {}
 
@@ -21,9 +28,10 @@ export interface Io {
   fetch: typeof fetch;
   env: Record<string, string | undefined>;
   version: string;
-  stdin: { isTTY: boolean; readAll(): Promise<string> };
+  /** Reads at most `max + 1` bytes of stdin (one extra byte lets the core see an overflow). */
+  stdin: { isTTY: boolean; readBytes(max: number): Promise<Uint8Array> };
   promptHidden(label: string): Promise<string>;
-  stdout: { isTTY: boolean; write(text: string): void };
+  stdout: { isTTY: boolean; write(text: string): void | Promise<void> };
   stderr: { write(text: string): void };
 }
 
@@ -34,6 +42,23 @@ export function stripOneNewline(text: string): string {
   if (text.endsWith("\r\n")) return text.slice(0, -2);
   if (text.endsWith("\n")) return text.slice(0, -1);
   return text;
+}
+
+/** Largest stdin input accepted (UTF-16 doubles the size of the text). */
+export const MAX_INPUT_BYTES = MAX_SECRET_BYTES * 4;
+const MAX_JSON_BYTES = 4096;
+
+/** Decodes piped input as UTF-8 or UTF-16LE (by byte order mark); refuses anything that is not valid. */
+export function decodeInput(bytes: Uint8Array): string {
+  try {
+    if (bytes[0] === 0xff && bytes[1] === 0xfe) {
+      if (bytes.length % 2 !== 0) throw new Error("odd");
+      return new TextDecoder("utf-16le", { fatal: true, ignoreBOM: false }).decode(bytes.subarray(2));
+    }
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
+  } catch {
+    throw new UsageError("The input is not valid UTF-8 text. Use the interactive prompt, or pipe UTF-8.");
+  }
 }
 
 const TTL_PRESETS: Record<string, number> = { "1h": 3600, "1d": 86400, "7d": 604800 };
@@ -83,7 +108,7 @@ export interface ParsedLink {
 }
 
 /** Accepts a full link or `<id>.<key>`. Returns "invalid" without ever echoing the input. */
-export function parseLinkInput(input: string, defaultOrigin: string): ParsedLink | "invalid" {
+export function parseLinkInput(input: string, defaultOrigin: string, explicitServer?: string): ParsedLink | "invalid" {
   const text = input.trim();
   if (text === "") return "invalid";
   let origin = defaultOrigin;
@@ -96,6 +121,9 @@ export function parseLinkInput(input: string, defaultOrigin: string): ParsedLink
       return "invalid";
     }
     if (!isAllowedOrigin(url)) return "invalid";
+    if (url.protocol === "http:" && url.origin !== explicitServer) {
+      throw new UsageError("A link to a local http server is only accepted when --server or ONETIME_SERVER names that same server.");
+    }
     origin = url.origin;
     fragment = url.hash;
   } else {
@@ -279,7 +307,8 @@ never sees the secret or the key (the part of the link after #).
 
 Server: https://onetimepass.pages.dev, or set ONETIME_SERVER, or pass --server.
 Exit codes: 0 ok, 1 link gone (already opened or expired), 2 usage error,
-            3 damaged link, 4 decryption failed, 5 network or server error.
+            3 damaged link, 4 decryption failed, 5 network or server error,
+            70 internal error.
 Run onetime COMMAND --help for details.
 `;
 
@@ -361,7 +390,7 @@ async function request(io: Io, url: string, init: RequestInit): Promise<Response
 async function serverError(response: Response): Promise<ExitError> {
   let detail = "";
   try {
-    const body = (await response.json()) as { error?: unknown };
+    const body = (await readJson(response)) as { error?: unknown };
     if (typeof body.error === "string") detail = `: ${cleanMessage(body.error)}`;
   } catch {
     // not JSON
@@ -371,10 +400,46 @@ async function serverError(response: Response): Promise<ExitError> {
 
 const GONE_MESSAGE = "This secret was already opened or has expired.";
 
+async function readStdinText(io: Io): Promise<string> {
+  const bytes = await io.stdin.readBytes(MAX_INPUT_BYTES);
+  if (bytes.length > MAX_INPUT_BYTES) throw new UsageError(`The input is too large (limit ${MAX_SECRET_BYTES} bytes of text).`);
+  return decodeInput(bytes);
+}
+
+async function readBounded(response: Response, max: number): Promise<Uint8Array> {
+  const declared = response.headers.get("Content-Length");
+  if (declared !== null && Number(declared) > max) throw new ExitError(EXIT.network, "The server's answer is too large.");
+  if (response.body === null) return new Uint8Array();
+  const reader = response.body.getReader();
+  const parts: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) {
+      await reader.cancel().catch(() => {});
+      throw new ExitError(EXIT.network, "The server's answer is too large.");
+    }
+    parts.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    out.set(part, offset);
+    offset += part.byteLength;
+  }
+  return out;
+}
+
+async function readJson(response: Response): Promise<unknown> {
+  return JSON.parse(new TextDecoder().decode(await readBounded(response, MAX_JSON_BYTES)));
+}
+
 async function readSecretInput(io: Io): Promise<string> {
   let text: string;
   if (io.stdin.isTTY) text = await io.promptHidden("Secret (input hidden): ");
-  else text = stripOneNewline(await io.stdin.readAll());
+  else text = stripOneNewline(await readStdinText(io));
   if (text === "") throw new UsageError("The secret is empty.");
   return text;
 }
@@ -382,7 +447,7 @@ async function readSecretInput(io: Io): Promise<string> {
 async function readLinkInput(io: Io, link: string | undefined): Promise<{ text: string; fromArg: boolean }> {
   if (link !== undefined && link !== "-") return { text: link, fromArg: true };
   if (io.stdin.isTTY) return { text: await io.promptHidden("Link (input hidden): "), fromArg: false };
-  return { text: await io.stdin.readAll(), fromArg: false };
+  return { text: await readStdinText(io), fromArg: false };
 }
 
 async function createLink(io: Io, text: string, ttl: number, server: string): Promise<string> {
@@ -401,14 +466,22 @@ async function createLink(io: Io, text: string, ttl: number, server: string): Pr
     body: encrypted.blob,
   });
   if (!response.ok) throw await serverError(response);
-  const { id } = (await response.json()) as { id: string };
+  let id: unknown;
+  try {
+    id = ((await readJson(response)) as { id?: unknown }).id;
+  } catch {
+    throw new ExitError(EXIT.network, "The server's answer was not understood.");
+  }
+  if (typeof id !== "string" || !ID_PATTERN.test(id)) {
+    throw new ExitError(EXIT.network, "The server returned an invalid secret id.");
+  }
   return buildLink(server, { id, key: encrypted.key });
 }
 
-function sendHints(io: Io, link: string, ttl: number): void {
+function sendHints(io: Io, ttl: number): void {
   io.stderr.write(
     `Opens once. Expires in ${describeTtl(ttl)} if not opened.\n` +
-      `Receive with: onetime get "${link}"  (or open it in a browser)\n`,
+      "Receive it in a browser, or with: onetime get -  (then paste the link)\n",
   );
 }
 
@@ -444,7 +517,7 @@ async function execute(command: Command, io: Io): Promise<number> {
       const secret = await readSecretInput(io);
       const link = await createLink(io, secret, command.ttl, server);
       io.stdout.write(`${link}\n`);
-      sendHints(io, link, command.ttl);
+      sendHints(io, command.ttl);
       return EXIT.ok;
     }
     case "gen": {
@@ -457,14 +530,16 @@ async function execute(command: Command, io: Io): Promise<number> {
       const link = await createLink(io, secret, command.ttl, server);
       io.stdout.write(`${link}\n`);
       if (command.show) io.stderr.write(`Secret: ${secret}\n`);
-      sendHints(io, link, command.ttl);
+      sendHints(io, command.ttl);
       return EXIT.ok;
     }
     case "get":
     case "status": {
       const defaultServer = resolveServer(command.server, io.env);
+      const explicitText = command.server ?? (io.env.ONETIME_SERVER ? io.env.ONETIME_SERVER : undefined);
+      const explicit = explicitText === undefined ? undefined : defaultServer;
       const input = await readLinkInput(io, command.link);
-      const parsed = parseLinkInput(input.text, defaultServer);
+      const parsed = parseLinkInput(input.text, defaultServer, explicit);
       if (parsed === "invalid") {
         throw new ExitError(EXIT.badLink, "The link is damaged or incomplete. It should look like https://<host>/#<id>.<key>.");
       }
@@ -488,14 +563,18 @@ async function execute(command: Command, io: Io): Promise<number> {
       const response = await request(io, `${parsed.origin}/api/secrets/${parsed.id}/reveal`, { method: "POST" });
       if (response.status === 404) throw new ExitError(EXIT.gone, GONE_MESSAGE);
       if (!response.ok) throw await serverError(response);
-      const blob = new Uint8Array(await response.arrayBuffer());
+      const blob = await readBounded(response, MAX_BLOB_BYTES);
       let secret: string;
       try {
-        secret = await decryptSecret(blob, parsed.key);
+        secret = await decryptSecret(blob as Uint8Array<ArrayBuffer>, parsed.key);
       } catch {
         throw new ExitError(EXIT.decrypt, "Decryption failed: the key does not match or the data was changed. The secret is now used up.");
       }
-      io.stdout.write(io.stdout.isTTY ? `${secret}\n` : secret);
+      try {
+        await io.stdout.write(io.stdout.isTTY ? `${secret}\n` : secret);
+      } catch {
+        throw new ExitError(EXIT.network, "Could not write the secret to the output. It is now used up.");
+      }
       return EXIT.ok;
     }
   }
@@ -514,7 +593,7 @@ export async function run(argv: string[], io: Io): Promise<number> {
       io.stderr.write(`onetime: ${error.message}\n`);
       return error.code;
     }
-    io.stderr.write("onetime: unexpected error.\n");
-    return EXIT.network;
+    io.stderr.write("onetime: unexpected internal error.\n");
+    return EXIT.internal;
   }
 }
