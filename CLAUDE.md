@@ -37,7 +37,23 @@ pnpm deploy             # build + wrangler pages deploy
 - Pages adds `access-control-allow-origin: *` to static files by itself; the API responses do not carry it. Harmless for a public static page.
 - D1 database `onetime` (id `20cbacad-c40a-4e7b-9a0e-3203078ecb3b`, region EEUR) was created and `0001_init.sql` applied remotely on 2026-11-18. New schema changes go in a new file under `migrations/`, applied with `pnpm db:migrate:remote` before the deploy that needs them.
 - Credentials: `pass` entry `cloudflare-token-write` (account-owned token with Pages and D1 access), account `2badee882679b77acf215905e6efcfd2`. `cloudflare-pages-token` has no D1 access and cannot deploy this project's database.
-- Deploys follow the global `cf-pages-deploy` skill (explicit approval per deploy, `secrets-manager` for the token, `deployer-cloudflare` for the deploy). Because Pages Functions are included, run the deploy from the app directory, not from a temp dir.
+- Deploys follow the global `cf-pages-deploy` skill (explicit approval per deploy, `secrets-manager` for the token, `deployer-cloudflare` for the deploy). Because Pages Functions are included, deploy from a clean `git archive` of the commit that contains `functions/` and `wrangler.jsonc`: `pnpm exec wrangler pages deploy --project-name onetimepass --branch main --commit-hash <sha> --commit-dirty=false`.
+- After a deploy, check with curl: `/` headers (CSP equals `public/_headers`, `no-store`), assets `immutable`, and the API round trip (create → status 200 → GET reveal 405 → POST reveal returns the same bytes → second reveal 404).
+- Lessons from the first deploy: Pages configs reject keys such as `observability`, `main` and `assets` (wrangler validates before uploading); an active token can still lack a permission, so probe Pages and D1 read-only first; the Claude Code permission check blocked `wrangler pages project create` inside a subagent, so creating a new Cloudflare resource may need the owner's go-ahead in the main session.
+
+## How work is done here
+
+- The owner wants implementation done by the specialised subagents from the global CLAUDE.md, not by the main session: `developer` (Function, D1, tests), `frontend-dev` (browser code), `web-designer` (public pages and content), `ui-designer`, `seo-expert`, `code-reviewer` before a merge, `secrets-manager` and `deployer-cloudflare` for deploys.
+- Feature work goes on a branch in a worktree next to the repo (e.g. `/home/claude/onetime-<topic>`), is reviewed, then fast-forward merged into `main`; remove the worktree and the merged branch afterwards. Agents that edit the same files run one after another, not in parallel.
+- No global git identity is configured on this machine. Commit with `git -c user.name="Michal Maxian" -c user.email="michal@maxian.sk" commit ...`. Nothing has been pushed; push only when asked.
+- Never deploy a commit whose `pnpm check` is not green.
+
+## Pages and content
+
+- `index.html` is the app (create, created, open, revealed, gone views toggled with `hidden`).
+- In progress on branch `feat/explainer-theme` (2026-11-18): a dedicated "how it works" page explaining storage, and a light/dark theme toggle (near-black dark theme, choice kept in localStorage, set before first paint by an external script because the CSP forbids inline scripts). SEO work follows on the same branch.
+- Any statement on the site about security or storage must match the code. Facts that are easy to get wrong: expired data is removed on the next request, not by a timer; D1 keeps its own recovery history for a while (encrypted blobs only); opening a link does not use it up, pressing Reveal does; the code is not claimed to be open source or audited.
+- Secret links keep everything after `#`, so search engines never see ids or keys. `/api/*` must stay out of crawling and indexing.
 
 ## Known open points
 
