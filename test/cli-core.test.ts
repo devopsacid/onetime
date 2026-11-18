@@ -104,7 +104,7 @@ describe("parseArgs", () => {
   });
   it("parses get and status", () => {
     expect(parseArgs(["get", "L"])).toMatchObject({ kind: "get", link: "L" });
-    expect(parseArgs(["get"])).toMatchObject({ kind: "get", link: undefined });
+    expect(parseArgs(["get"])).toEqual({ kind: "get" });
     expect(parseArgs(["get", "-"])).toMatchObject({ kind: "get", link: "-" });
     expect(parseArgs(["status", "L", "--server", "https://s.example"])).toMatchObject({ kind: "status", link: "L" });
     expect(() => parseArgs(["get", "a", "b"])).toThrow(UsageError);
@@ -184,5 +184,21 @@ describe("run", () => {
     await run(["get", `${ID}.${KEY}`], io);
     expect(io.err).toMatch(/history/);
     expect(io.err).not.toContain(KEY);
+  });
+  it("strips one CRLF from a piped secret and prints a double-quoted hint", async () => {
+    const posted: Uint8Array[] = [];
+    const io = makeIo({
+      stdin: "pw\r\n",
+      fetch: (async (_url: string, init: RequestInit) => {
+        posted.push(init.body as Uint8Array);
+        return new Response(JSON.stringify({ id: ID }), { status: 201 });
+      }) as unknown as typeof fetch,
+    });
+    expect(await run(["send", "--server", "https://s.example"], io)).toBe(EXIT.ok);
+    expect(io.out).toMatch(/^https:\/\/s\.example\/#/);
+    expect(io.err).toContain(`onetime get "${io.out.trim()}"`);
+    expect(io.err).not.toContain("'");
+    // 2 bytes of plaintext + 12 IV + 16 tag: no CR or LF was encrypted.
+    expect(posted[0]!.byteLength).toBe(2 + 28);
   });
 });

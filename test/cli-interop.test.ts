@@ -60,7 +60,11 @@ describe("browser encrypt -> CLI get", () => {
   it("returns unicode and multi-line text exactly", async () => {
     for (const text of ["héllo wörld ✓ 日本語 🚀", "a\nb\r\nc\n\nlast ", "x"]) {
       const { blob, key } = await encryptSecret(text);
-      const created = await routerFetch()(`${SERVER}/api/secrets?ttl=3600`, { method: "POST", body: blob });
+      const created = await routerFetch()(`${SERVER}/api/secrets?ttl=3600`, {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: blob,
+      });
       const { id } = (await created.json()) as { id: string };
       const { code, io } = await get(`${SERVER}/#${id}.${key}`);
       expect(code).toBe(EXIT.ok);
