@@ -17,6 +17,46 @@ The reveal is one atomic SQL statement (`DELETE ... RETURNING`), so of many simu
 
 Opening the link does not use it up; only the Reveal button does. This keeps link previews in chat apps from destroying the secret.
 
+## Command line
+
+`onetime` is a single Node file (Node 20 or newer is the only requirement; no other dependencies). It is compatible with the web page: links made by one can be opened by the other, and it encrypts on your machine, so the server never sees the secret or the key.
+
+Install on Linux or macOS:
+
+```sh
+curl -fsSL https://onetimepass.pages.dev/cli/onetime.mjs -o onetime && chmod +x onetime
+# or skip chmod and run it as: node onetime.mjs ...
+```
+
+Install on Windows (PowerShell), into a folder that is on your PATH:
+
+```powershell
+Invoke-WebRequest https://onetimepass.pages.dev/cli/onetime.mjs -OutFile onetime.mjs
+Invoke-WebRequest https://onetimepass.pages.dev/cli/onetime.cmd -OutFile onetime.cmd
+```
+
+Examples (on Windows, use `node onetime.mjs` or the `onetime.cmd` shim in place of `./onetime`):
+
+```sh
+echo -n 'hunter2' | ./onetime send            # prints the link; hints go to stderr
+./onetime send --ttl 1h                       # no pipe: type the secret at a hidden prompt
+./onetime gen --type password --length 32     # generate and share in one step, secret not shown
+./onetime gen --print-only --type uuid        # just print a secret, no server contact
+./onetime get -                               # paste the link at the prompt / read it from stdin
+./onetime status "https://onetimepass.pages.dev/#<id>.<key>"   # still waiting? exit 0 or 1
+```
+
+`onetime get "<link>"` also works and prints exactly the secret (a newline is added only on a terminal). Opening a link with `get` uses it up, like the Reveal button. `onetime --help` lists everything; exit codes: 0 ok, 1 gone (already opened or expired), 2 usage error, 3 damaged link, 4 decryption failed, 5 network or server error. The server defaults to `https://onetimepass.pages.dev`; change it with `--server <url>` or `ONETIME_SERVER` (https only, except `http://localhost` and `http://127.0.0.1`).
+
+Security notes:
+
+- The secret is never accepted as an argument, because arguments land in shell history and the process list. Pipe it in or use the hidden prompt.
+- A link given as an argument to `get` or `status` ends up in shell history, and the key is part of the link. Use `onetime get -` or `onetime get` and paste it, or open it in a browser.
+- `gen` prints only the link; `--show` prints the secret to stderr too.
+- No telemetry, config files or update checks.
+- Windows PowerShell 5 pipes text as UTF-16 with CRLF line endings. The CLI strips one trailing newline and understands a UTF-16 or UTF-8 byte order mark, but for anything with non-ASCII characters prefer the interactive prompt or `gen` there (PowerShell 7 pipes UTF-8).
+- Only tested on Linux so far; Windows and macOS have not been run.
+
 ## Layout
 
 | Path | What |
@@ -27,6 +67,7 @@ Opening the link does not use it up; only the Reveal button does. This keeps lin
 | `migrations/` | D1 schema (`secrets` table) |
 | `src/shared/limits.ts` | Size and expiry limits used by both sides |
 | `public/_headers`, `public/_routes.json` | CSP and other security headers for the static files; the Function runs only for `/api/*` |
+| `cli/`, `tools/build-cli.mjs` | The `onetime` command line tool (bundled by esbuild into `dist/cli/onetime.mjs`, served at `/cli/onetime.mjs`) |
 | `test/` | Vitest tests, run inside the Workers runtime |
 
 API: `POST /api/secrets?ttl=<seconds>` (body: blob) → `{ id }`; `GET /api/secrets/<id>` → exists or 404; `POST /api/secrets/<id>/reveal` → blob, then deleted.
