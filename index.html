@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="color-scheme" content="light dark" />
+    <title>onetime: share a secret with a link that works once</title>
+    <meta
+      name="description"
+      content="Share a password, token or other secret with a link that can be opened only once. Encrypted in your browser; the server never sees the secret."
+    />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/src/web/style.css" />
+    <script type="module" src="/src/web/main.ts"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/">
+        <img src="/favicon.svg" alt="" width="28" height="28" />
+        <span>onetime</span>
+      </a>
+    </header>
+
+    <main>
+      <noscript>
+        <p class="notice notice-error">This page encrypts secrets in your browser, so it needs JavaScript.</p>
+      </noscript>
+
+      <!-- Create -->
+      <section id="view-create" hidden>
+        <h1>Share a secret with a link that works once</h1>
+        <p class="lead">
+          The secret is encrypted in your browser. The server stores only unreadable data and deletes it the moment
+          the link is opened.
+        </p>
+
+        <form id="create-form" class="card" novalidate>
+          <div class="field">
+            <div class="field-head">
+              <label for="secret">Secret</label>
+              <span id="secret-size" class="hint"></span>
+            </div>
+            <textarea
+              id="secret"
+              rows="5"
+              autocomplete="off"
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
+              placeholder="Paste a password, token or credentials, or generate one below"
+            ></textarea>
+          </div>
+
+          <details id="generator" class="generator">
+            <summary>Generate a password or token</summary>
+            <div class="generator-body">
+              <div class="row">
+                <div class="field">
+                  <label for="gen-type">Type</label>
+                  <select id="gen-type">
+                    <option value="password">Password</option>
+                    <option value="hex">Token (hex)</option>
+                    <option value="base64url">Token (base64url)</option>
+                    <option value="uuid">UUID v4</option>
+                  </select>
+                </div>
+                <div class="field" id="gen-length-field">
+                  <label for="gen-length" id="gen-length-label">Characters</label>
+                  <input id="gen-length" type="number" inputmode="numeric" />
+                </div>
+              </div>
+              <fieldset id="gen-sets" class="checks">
+                <legend>Include</legend>
+                <label><input type="checkbox" name="set" value="lower" checked /> a–z</label>
+                <label><input type="checkbox" name="set" value="upper" checked /> A–Z</label>
+                <label><input type="checkbox" name="set" value="digits" checked /> 0–9</label>
+                <label><input type="checkbox" name="set" value="symbols" checked /> Symbols</label>
+                <label><input type="checkbox" id="gen-lookalikes" /> Skip look-alikes (I l 1 O 0 o)</label>
+              </fieldset>
+              <p id="gen-error" class="notice notice-error" role="alert" hidden></p>
+              <button type="button" id="gen-run" class="button button-secondary">Generate</button>
+            </div>
+          </details>
+
+          <div class="row row-end">
+            <div class="field">
+              <label for="ttl">Link expires after</label>
+              <select id="ttl">
+                <option value="3600">1 hour</option>
+                <option value="86400" selected>1 day</option>
+                <option value="604800">7 days</option>
+              </select>
+            </div>
+            <button type="submit" id="create-submit" class="button">Create one-time link</button>
+          </div>
+          <p id="create-error" class="notice notice-error" role="alert" hidden></p>
+        </form>
+      </section>
+
+      <!-- Created -->
+      <section id="view-created" hidden>
+        <h1 tabindex="-1">Your one-time link is ready</h1>
+        <div class="card">
+          <div class="field">
+            <label for="link">Link</label>
+            <div class="copy-row">
+              <input id="link" type="text" readonly />
+              <button type="button" class="button" data-copy="link">Copy</button>
+            </div>
+          </div>
+          <ul class="facts">
+            <li>It can be opened <strong>once</strong>. After that the secret is gone.</li>
+            <li>If nobody opens it, it stops working after <strong id="created-ttl"></strong> and is deleted soon after.</li>
+            <li>The link is the only copy of the key. It cannot be recovered if you lose it.</li>
+          </ul>
+        </div>
+        <p><button type="button" id="create-another" class="button button-secondary">Share another secret</button></p>
+      </section>
+
+      <!-- Open -->
+      <section id="view-open" hidden>
+        <h1 tabindex="-1">Someone shared a secret with you</h1>
+        <p class="lead">It can be shown only once. Make sure you are ready to copy it or save it somewhere safe.</p>
+        <div class="card">
+          <button type="button" id="reveal" class="button">Reveal secret</button>
+          <p id="open-error" class="notice notice-error" role="alert" hidden></p>
+        </div>
+      </section>
+
+      <!-- Revealed -->
+      <section id="view-revealed" hidden>
+        <h1 tabindex="-1">Here is the secret</h1>
+        <div class="card">
+          <div class="field">
+            <label for="revealed">Secret</label>
+            <textarea id="revealed" rows="5" readonly spellcheck="false"></textarea>
+          </div>
+          <div class="row row-end">
+            <p class="hint">It has been deleted from the server. This link no longer works.</p>
+            <button type="button" class="button" data-copy="revealed">Copy</button>
+          </div>
+        </div>
+        <p><a href="/">Share a secret of your own</a></p>
+      </section>
+
+      <!-- Gone / invalid -->
+      <section id="view-gone" hidden>
+        <h1 tabindex="-1" id="gone-title"></h1>
+        <p class="lead" id="gone-text"></p>
+        <p><a class="button button-secondary" href="/">Share a new secret</a></p>
+      </section>
+
+      <p id="status" class="visually-hidden" role="status" aria-live="polite"></p>
+    </main>
+
+    <footer class="site-footer">
+      <h2>How it works</h2>
+      <ol>
+        <li>Your browser encrypts the secret with a new random key (AES-256-GCM).</li>
+        <li>
+          Only the encrypted data goes to the server. The key stays in the part of the link after <code>#</code>, which
+          browsers never send.
+        </li>
+        <li>When the link is opened and “Reveal” is pressed, the server hands over the encrypted data and deletes it.</li>
+        <li>Expired secrets are never handed out and are deleted from the server soon after. No accounts, cookies, analytics or request logs.</li>
+      </ol>
+      <p class="hint">Passwords and tokens are generated in your browser with its cryptographic random generator.</p>
+    </footer>
+  </body>
+</html>

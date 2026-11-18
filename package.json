@@ -1,0 +1,25 @@
+{
+  "name": "onetime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "One-time links for secrets, encrypted in the browser, deleted on first read",
+  "scripts": {
+    "dev": "vite build && wrangler pages dev",
+    "build": "vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.worker.json --noEmit",
+    "test": "vitest run",
+    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "db:migrate:local": "wrangler d1 migrations apply onetime --local",
+    "db:migrate:remote": "wrangler d1 migrations apply onetime --remote",
+    "deploy": "vite build && wrangler pages deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.8.3",
+    "@cloudflare/workers-types": "^5.20261117.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^4.1.12",
+    "wrangler": "^4.163.0"
+  }
+}
