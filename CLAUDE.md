@@ -8,7 +8,7 @@ Public site for sharing a secret (password, token, credentials) through a link t
 - A link works once. Reveal is one atomic SQL statement (`DELETE ... WHERE id = ? AND expires_at > ? RETURNING blob`). Never SELECT then DELETE.
 - Only `POST /api/secrets/<id>/reveal` burns a secret. GET requests (link previews, prefetch) must not.
 - Expired secrets are never handed out (checked on every read). Their rows are purged on later API requests, not by a timer; keep the README and page text saying exactly that.
-- No IPs, IP hashes, cookies or request logs. Observability stays off, because paths contain secret ids.
+- No IPs, IP hashes, cookies or request logs, because paths contain secret ids. Pages configs reject the `observability` key, so logging is controlled in the dashboard: keep Functions logs and Logpush off there.
 - Strict CSP in `public/_headers`: no inline script or style, no external origins. `Cache-Control: no-store` on the HTML, immutable on `/assets/*`; do not put Cache-Control on `/*` (Pages merges matching rules).
 - The upload body is read as a counted stream that stops at `MAX_BLOB_BYTES`; do not go back to `request.arrayBuffer()`.
 - The HTTP API contract is shared by `src/web/api.ts` and `src/worker/index.ts`; limits live in `src/shared/limits.ts`.
