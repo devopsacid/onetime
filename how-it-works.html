@@ -277,7 +277,7 @@
             </div>
             <div class="part part-key">
               <dt>Key</dt>
-              <dd>Decrypts the data. It never leaves the sender’s and recipient’s browsers.</dd>
+              <dd>Decrypts the data. It is never sent to the server; it travels only inside the link you send.</dd>
             </div>
           </dl>
         </figure>
@@ -299,7 +299,8 @@
               <li>The expiry time</li>
             </ul>
             <p class="hint">
-              One row in a Cloudflare D1 database. It is deleted when the secret is revealed, or after it expires.
+              One row in a Cloudflare D1 database. It is deleted when the secret is revealed, or after it expires (see
+              <a href="#deletion">when the data is deleted</a>).
             </p>
           </div>
           <div class="compare-card compare-never">
@@ -308,14 +309,17 @@
               <li>Your secret as readable text</li>
               <li>The key</li>
             </ul>
-            <h3>Not stored or collected</h3>
+            <h3>Not stored by this site</h3>
             <ul class="crosses">
               <li>Your IP address</li>
               <li>Cookies or accounts</li>
               <li>Your browser and device details (user agent)</li>
               <li>Analytics</li>
             </ul>
-            <p class="hint">The page loads no third-party scripts, fonts or trackers.</p>
+            <p class="hint">
+              Cloudflare, the host, sees IP addresses and request details as part of serving any website. The page loads
+              no third-party scripts, fonts or trackers.
+            </p>
           </div>
         </div>
       </section>
@@ -335,8 +339,9 @@
             <h3>If nobody opens the link</h3>
             <p>
               The sender picks 1 hour, 1 day or 7 days. An expired secret is never handed out; this is checked on every
-              read. Its encrypted data is removed on the next request to the service after expiry, not by a timer at the
-              exact moment.
+              read. Its encrypted data is removed on the next request to the service’s API after expiry (creating, checking
+              or revealing any secret), not by a timer and not by merely viewing a page. On an idle site it can stay stored
+              until then, still unreadable without the key.
             </p>
           </li>
           <li>
@@ -467,7 +472,7 @@
     </main>
 
     <footer class="site-footer site-footer-plain">
-      <p>No accounts, cookies or analytics. Secrets are encrypted in your browser.</p>
+      <p>No accounts, cookies or analytics. Secrets are encrypted on your device. Only your theme choice is saved, in your browser.</p>
       <p><a href="/">Share a secret</a> · <a href="/command-line">Command-line tool</a></p>
     </footer>
   </body>
