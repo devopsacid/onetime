@@ -469,3 +469,556 @@ code {
 .brand {
   min-height: 2.75rem;
 }
+
+/* ---------- Summary (main page footer) ---------- */
+
+.summary h2 {
+  margin: 0 0 0.75rem;
+}
+
+.summary-list {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  list-style: none;
+  counter-reset: summary;
+}
+
+.summary-list li {
+  position: relative;
+  padding-left: 2.25rem;
+  counter-increment: summary;
+}
+
+.summary-list li::before {
+  content: counter(summary);
+  position: absolute;
+  left: 0;
+  top: 0.05rem;
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.summary-list strong {
+  display: block;
+  color: var(--text);
+}
+
+.summary-more {
+  margin: 0 0 1rem;
+  font-weight: 600;
+}
+
+.summary-list {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  column-gap: 1.5rem;
+}
+
+/* ---------- How it works page ---------- */
+
+html {
+  scroll-padding-top: 1rem;
+}
+
+.explainer section {
+  margin-top: 3rem;
+}
+
+.explainer h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.4rem;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+.explainer h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1.05rem;
+  line-height: 1.3;
+}
+
+.explainer p {
+  margin: 0 0 0.75rem;
+  text-wrap: pretty;
+}
+
+.explainer code {
+  padding: 0.05em 0.3em;
+  background: var(--surface-2);
+  border-radius: 4px;
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+
+.toc {
+  padding: 1rem 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.toc-title {
+  margin: 0 0 0.25rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.explainer .toc-title {
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+
+.toc ol {
+  margin: 0;
+  padding-left: 1.4rem;
+}
+
+.toc li {
+  break-inside: avoid;
+}
+
+.toc li {
+  padding-block: 0.3rem;
+}
+
+@media (min-width: 40rem) {
+  .toc ol {
+    columns: 2;
+    column-gap: 2.5rem;
+  }
+}
+
+/* Diagram: colours come from tokens so it follows the theme. */
+.diagram {
+  margin: 0 0 1.5rem;
+}
+
+.flow {
+  display: block;
+  width: 100%;
+  max-width: 26rem;
+  height: auto;
+  margin-inline: auto;
+  font-family: var(--sans);
+}
+
+.dg-box {
+  fill: var(--surface);
+  stroke: var(--field-border);
+  stroke-width: 1.5;
+}
+
+.dg-server {
+  fill: var(--surface-2);
+}
+
+.dg-title {
+  fill: var(--text);
+  font-weight: 700;
+}
+
+.dg-text,
+.dg-label {
+  fill: var(--muted);
+}
+
+.dg-arrow {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 2;
+}
+
+.dg-head {
+  fill: var(--text);
+}
+
+.dg-key {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-dasharray: 7 5;
+}
+
+.dg-key-head {
+  fill: var(--accent);
+}
+
+.dg-pill {
+  fill: var(--bg);
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.dg-key-text {
+  fill: var(--accent);
+  font-weight: 700;
+}
+
+.dg-num {
+  fill: var(--accent);
+}
+
+.dg-num-text {
+  fill: var(--on-accent);
+  font-weight: 700;
+}
+
+.diagram figcaption {
+  max-width: 26rem;
+  margin: 0.75rem auto 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  text-align: center;
+  text-wrap: balance;
+}
+
+/* Numbered steps, matching the numbers in the diagram. */
+.steps {
+  display: grid;
+  gap: 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.steps li {
+  position: relative;
+  padding-left: 2.75rem;
+  counter-increment: step;
+}
+
+.steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  background: var(--accent);
+  color: var(--on-accent);
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.steps p {
+  margin: 0;
+  color: var(--muted);
+}
+
+/* Anatomy of a link */
+.anatomy {
+  margin: 0 0 1rem;
+  padding: 1.1rem 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.explainer .anatomy-url {
+  margin: 0 0 1.1rem;
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  line-height: 1.9;
+  overflow-wrap: anywhere;
+}
+
+.u-origin,
+.u-dot {
+  color: var(--muted);
+}
+
+.u-id,
+.u-key {
+  padding: 0.1em 0.15em;
+  border-radius: 3px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.u-id {
+  background: var(--id-soft);
+  color: var(--id);
+  border-bottom: 3px solid var(--id);
+}
+
+.u-key {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-bottom: 3px dashed var(--accent);
+}
+
+.anatomy-parts {
+  display: grid;
+  gap: 0.9rem;
+  margin: 0;
+}
+
+.part dt {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+}
+
+.part dt::before {
+  content: "";
+  width: 1.5rem;
+  height: 0.85rem;
+  border-radius: 3px;
+}
+
+.part-id dt::before {
+  background: var(--id-soft);
+  border-bottom: 3px solid var(--id);
+}
+
+.part-key dt::before {
+  background: var(--accent-soft);
+  border-bottom: 3px dashed var(--accent);
+}
+
+.part dd {
+  margin: 0.15rem 0 0;
+  color: var(--muted);
+}
+
+.anatomy-parts {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  column-gap: 1.5rem;
+}
+
+/* Stored vs never seen */
+.compare {
+  display: grid;
+  gap: 1rem;
+}
+
+.compare-card {
+  padding: 1.1rem 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.compare-stored {
+  border-top: 4px solid var(--accent);
+}
+
+.compare-never {
+  border-top: 4px solid var(--muted);
+}
+
+.compare-card h3 + ul {
+  margin-top: 0.5rem;
+}
+
+.compare-card ul + h3 {
+  margin-top: 1rem;
+}
+
+.compare-card .hint {
+  margin: 0.75rem 0 0;
+}
+
+.ticks,
+.crosses {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ticks li,
+.crosses li {
+  position: relative;
+  padding-left: 1.75rem;
+}
+
+.ticks li::before,
+.crosses li::before {
+  content: "";
+  position: absolute;
+  left: 0.2rem;
+  top: 0.3em;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+}
+
+/* Check mark drawn with borders */
+.ticks li::after {
+  content: "";
+  position: absolute;
+  left: 0.52rem;
+  top: 0.48em;
+  width: 0.32rem;
+  height: 0.55rem;
+  border: solid var(--on-accent);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.ticks li::before {
+  background: var(--accent);
+}
+
+/* Cross drawn with a gradient */
+.crosses li::before {
+  border: 2px solid var(--muted);
+  background:
+    linear-gradient(45deg, transparent 43%, var(--muted) 43% 57%, transparent 57%),
+    linear-gradient(-45deg, transparent 43%, var(--muted) 43% 57%, transparent 57%);
+  background-size: 70% 70%;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.compare {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+}
+
+/* Deletion timeline */
+.timeline {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.timeline li {
+  position: relative;
+  padding: 0 0 1.25rem 2rem;
+}
+
+.timeline li::before {
+  content: "";
+  position: absolute;
+  left: 0.3rem;
+  top: 0.35rem;
+  width: 0.75rem;
+  height: 0.75rem;
+  background: var(--bg);
+  border: 3px solid var(--accent);
+  border-radius: 50%;
+}
+
+.timeline li::after {
+  content: "";
+  position: absolute;
+  left: calc(0.3rem + 0.375rem - 1px);
+  top: 1.25rem;
+  bottom: 0.1rem;
+  width: 2px;
+  background: var(--border);
+}
+
+.timeline li:last-child {
+  padding-bottom: 0;
+}
+
+.timeline li:last-child::after {
+  display: none;
+}
+
+.timeline p,
+.caveats p {
+  margin: 0;
+  color: var(--muted);
+}
+
+/* Caveats */
+.caveats {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.caveats li {
+  padding: 1rem 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--id);
+  border-radius: var(--radius);
+}
+
+.caveats {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+}
+
+/* FAQ */
+.faq {
+  border-top: 1px solid var(--border);
+}
+
+.faq details {
+  border-bottom: 1px solid var(--border);
+}
+
+.faq summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 2.75rem;
+  padding-block: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.faq summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq summary::before {
+  content: "";
+  flex: none;
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-inline: 0.2rem 0.1rem;
+  border: solid var(--accent);
+  border-width: 0 2px 2px 0;
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+
+.faq details[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.faq details p {
+  margin: 0 0 1rem;
+  padding-left: 1.6rem;
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .faq summary::before {
+    transition: none;
+  }
+}
+
+.explainer-cta {
+  margin-top: 3rem;
+}
+
+.site-footer-plain p {
+  margin: 0 0 0.5rem;
+}

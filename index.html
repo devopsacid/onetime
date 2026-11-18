@@ -170,16 +170,28 @@
     </main>
 
     <footer class="site-footer">
-      <h2>How it works</h2>
-      <ol>
-        <li>Your browser encrypts the secret with a new random key (AES-256-GCM).</li>
-        <li>
-          Only the encrypted data goes to the server. The key stays in the part of the link after <code>#</code>, which
-          browsers never send.
-        </li>
-        <li>When the link is opened and “Reveal” is pressed, the server hands over the encrypted data and deletes it.</li>
-        <li>Expired secrets are never handed out and are deleted from the server soon after. No accounts, cookies, analytics or request logs.</li>
-      </ol>
+      <section class="summary" aria-labelledby="summary-title">
+        <h2 id="summary-title">How your secret is stored</h2>
+        <ol class="summary-list">
+          <li>
+            <strong>Encrypted in your browser.</strong>
+            It is locked with a new random key (AES-256-GCM) before anything is sent.
+          </li>
+          <li>
+            <strong>The key stays in the link.</strong>
+            It sits after the <code>#</code>, a part browsers never send, so the server cannot read the secret.
+          </li>
+          <li>
+            <strong>Works once.</strong>
+            Pressing “Reveal” hands over the encrypted data and deletes it in the same step.
+          </li>
+          <li>
+            <strong>Nothing about you is kept.</strong>
+            Unopened links expire after 1 hour, 1 day or 7 days. No accounts, cookies, analytics or IP addresses.
+          </li>
+        </ol>
+        <p class="summary-more"><a href="/how-it-works">How it works, step by step</a></p>
+      </section>
       <p class="hint">Passwords and tokens are generated in your browser with its cryptographic random generator.</p>
     </footer>
   </body>

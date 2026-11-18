@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f6f5f1" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0a0c0b" media="(prefers-color-scheme: dark)" />
+    <script src="/theme-init.js"></script>
+    <title>How onetime stores your secret</title>
+    <meta
+      name="description"
+      content="How onetime encrypts a secret in your browser, what the server stores and never sees, when the data is deleted, and what it cannot protect against."
+    />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/src/web/style.css" />
+    <script type="module" src="/src/web/page.ts"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/">
+        <img src="/favicon.svg" alt="" width="28" height="28" />
+        <span>onetime</span>
+      </a>
+      <nav class="site-nav" aria-label="Site">
+        <a href="/how-it-works" aria-current="page">How it works</a>
+        <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Switch theme">
+          <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+          </svg>
+          <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2" />
+            <path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+        </button>
+      </nav>
+    </header>
+
+    <main class="explainer">
+      <h1>How your secret is stored</h1>
+      <p class="lead">
+        Your secret is locked in your browser before it leaves your device. The server keeps only the locked version,
+        hands it out once and deletes it. The key to unlock it travels only inside the link you send.
+      </p>
+
+      <nav class="toc" aria-labelledby="toc-title">
+        <h2 id="toc-title" class="toc-title">On this page</h2>
+        <ol>
+          <li><a href="#journey">The journey of a secret</a></li>
+          <li><a href="#anatomy">Anatomy of a link</a></li>
+          <li><a href="#server">What the server stores and never sees</a></li>
+          <li><a href="#deletion">When the data is deleted</a></li>
+          <li><a href="#limits">What we cannot protect against</a></li>
+          <li><a href="#generator">The password generator</a></li>
+          <li><a href="#faq">Questions</a></li>
+        </ol>
+      </nav>
+
+      <section id="journey" aria-labelledby="journey-title">
+        <h2 id="journey-title">The journey of a secret</h2>
+        <figure class="diagram">
+          <svg viewBox="0 0 340 430" role="img" aria-labelledby="dg-title dg-desc" class="flow" focusable="false">
+            <title id="dg-title">How a secret travels</title>
+            <desc id="dg-desc">
+              Your browser encrypts the secret and sends only the encrypted data to the server. The link with the key
+              goes from you to the recipient directly, never through the server. The server hands the encrypted data to
+              the recipient's browser once, which decrypts it with the key from the link.
+            </desc>
+
+            <!-- 1: sender's browser -->
+            <rect class="dg-box" x="10" y="10" width="220" height="86" rx="10" />
+            <text class="dg-title" x="26" y="40" font-size="16">Your browser</text>
+            <text class="dg-text" x="26" y="62" font-size="14">Encrypts the secret with</text>
+            <text class="dg-text" x="26" y="81" font-size="14">a new random key</text>
+            <circle class="dg-num" cx="208" cy="34" r="12" />
+            <text class="dg-num-text" x="208" y="39" font-size="14" text-anchor="middle">1</text>
+
+            <!-- A to B -->
+            <path class="dg-arrow" d="M40 96V152" />
+            <path class="dg-head" d="M33 150L40 160L47 150Z" />
+            <text class="dg-label" x="54" y="124" font-size="13">encrypted data only</text>
+
+            <!-- 2: server -->
+            <rect class="dg-box dg-server" x="10" y="162" width="220" height="96" rx="10" />
+            <text class="dg-title" x="26" y="192" font-size="16">Server</text>
+            <text class="dg-text" x="26" y="214" font-size="14">Stores id, encrypted data</text>
+            <text class="dg-text" x="26" y="233" font-size="14">and expiry. Never the key.</text>
+            <circle class="dg-num" cx="208" cy="186" r="12" />
+            <text class="dg-num-text" x="208" y="191" font-size="14" text-anchor="middle">2</text>
+
+            <!-- B to C -->
+            <path class="dg-arrow" d="M40 258V314" />
+            <path class="dg-head" d="M33 312L40 322L47 312Z" />
+            <text class="dg-label" x="54" y="284" font-size="13">on Reveal, once,</text>
+            <text class="dg-label" x="54" y="302" font-size="13">then deleted</text>
+            <circle class="dg-num" cx="208" cy="290" r="12" />
+            <text class="dg-num-text" x="208" y="295" font-size="14" text-anchor="middle">4</text>
+
+            <!-- 5: recipient's browser -->
+            <rect class="dg-box" x="10" y="324" width="220" height="96" rx="10" />
+            <text class="dg-title" x="26" y="354" font-size="16">Recipient's browser</text>
+            <text class="dg-text" x="26" y="376" font-size="14">Decrypts it with the key</text>
+            <text class="dg-text" x="26" y="395" font-size="14">from the link</text>
+            <circle class="dg-num" cx="208" cy="348" r="12" />
+            <text class="dg-num-text" x="208" y="353" font-size="14" text-anchor="middle">5</text>
+
+            <!-- 3: the link bypasses the server -->
+            <path class="dg-key" d="M230 52H290V372H242" />
+            <path class="dg-key-head" d="M244 365L234 372L244 379Z" />
+            <rect class="dg-pill" x="248" y="176" width="84" height="80" rx="10" />
+            <circle class="dg-num" cx="290" cy="150" r="12" />
+            <text class="dg-num-text" x="290" y="155" font-size="14" text-anchor="middle">3</text>
+            <text class="dg-key-text" x="290" y="202" font-size="14" text-anchor="middle">Link</text>
+            <text class="dg-key-text" x="290" y="221" font-size="14" text-anchor="middle">with key</text>
+            <text class="dg-label" x="290" y="242" font-size="12" text-anchor="middle">you send it</text>
+          </svg>
+          <figcaption>The key goes from you to the recipient inside the link. It never passes through the server.</figcaption>
+        </figure>
+
+        <ol class="steps">
+          <li>
+            <h3>Your browser encrypts the secret</h3>
+            <p>
+              It creates a new random 256-bit key and a random 96-bit IV for this one secret, and encrypts it with
+              AES-256-GCM using the browser’s built-in Web Crypto API.
+            </p>
+          </li>
+          <li>
+            <h3>The server stores unreadable data</h3>
+            <p>
+              Only the encrypted data (IV, ciphertext and authentication tag) is uploaded. The server, a Cloudflare
+              Pages Function, picks a random 128-bit id and stores one row: the id, the encrypted data and the expiry
+              time.
+            </p>
+          </li>
+          <li>
+            <h3>You send the link</h3>
+            <p>
+              The link holds the id and the key after the <code>#</code>. You pass it on yourself, by chat, email or any
+              other way. The key is never sent to the server.
+            </p>
+          </li>
+          <li>
+            <h3>The recipient presses “Reveal”</h3>
+            <p>
+              Opening the link only shows a “Reveal secret” button; it does not use the secret up. Chat apps and email
+              scanners that open links to build previews therefore cannot destroy it. Pressing Reveal sends a POST
+              request, and the server hands over the encrypted data and deletes it in the same step.
+            </p>
+          </li>
+          <li>
+            <h3>The recipient’s browser decrypts it</h3>
+            <p>
+              Decryption happens on the recipient’s device, with the key from the link. If the data was changed or
+              damaged, GCM’s authentication tag makes decryption fail instead of showing wrong text. The key is then
+              removed from the address bar.
+            </p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="anatomy" aria-labelledby="anatomy-title">
+        <h2 id="anatomy-title">Anatomy of a link</h2>
+        <p>A one-time link has two parts after the <code>#</code>, separated by a dot.</p>
+        <figure class="anatomy">
+          <p class="anatomy-url">
+            <span class="u-origin">https://onetimepass.pages.dev/#</span><span class="u-id">q3Vb8sKx2LmN0pRtYw7uEa</span><span class="u-dot">.</span><span class="u-key">Zr4nT9vXc2bQ8hLk1mW5sJy0aDfG3pE7uN6iKoH2tRw</span>
+          </p>
+          <figcaption class="visually-hidden">An example link, split into its id and key.</figcaption>
+          <dl class="anatomy-parts">
+            <div class="part part-id">
+              <dt>Id</dt>
+              <dd>Identifies the stored data. Your browser sends it to the server to fetch the encrypted data.</dd>
+            </div>
+            <div class="part part-key">
+              <dt>Key</dt>
+              <dd>Decrypts the data. It never leaves the sender’s and recipient’s browsers.</dd>
+            </div>
+          </dl>
+        </figure>
+        <p>
+          Browsers do not include the part after <code>#</code> in requests, and the page’s code sends only the id. The
+          page also sets <code>Referrer-Policy: no-referrer</code>, so the address is not passed to other sites either.
+          The example above is made up.
+        </p>
+      </section>
+
+      <section id="server" aria-labelledby="server-title">
+        <h2 id="server-title">What the server stores and never sees</h2>
+        <div class="compare">
+          <div class="compare-card compare-stored">
+            <h3>Stored, for each secret</h3>
+            <ul class="ticks">
+              <li>A random id (128 bits)</li>
+              <li>The encrypted data: IV, ciphertext and authentication tag</li>
+              <li>The expiry time</li>
+            </ul>
+            <p class="hint">
+              One row in a Cloudflare D1 database. It is deleted when the secret is revealed, or after it expires.
+            </p>
+          </div>
+          <div class="compare-card compare-never">
+            <h3>Never sent to the server</h3>
+            <ul class="crosses">
+              <li>Your secret as readable text</li>
+              <li>The key</li>
+            </ul>
+            <h3>Not stored or collected</h3>
+            <ul class="crosses">
+              <li>Your IP address</li>
+              <li>Cookies or accounts</li>
+              <li>Your browser and device details (user agent)</li>
+              <li>Analytics</li>
+            </ul>
+            <p class="hint">The page loads no third-party scripts, fonts or trackers.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="deletion" aria-labelledby="deletion-title">
+        <h2 id="deletion-title">When the data is deleted</h2>
+        <ul class="timeline">
+          <li>
+            <h3>When “Reveal” is pressed</h3>
+            <p>
+              A single database statement deletes the row and returns the encrypted data in the same step. The data is
+              gone from the database the moment it is handed out. If two people press Reveal at the same time, only one
+              gets it.
+            </p>
+          </li>
+          <li>
+            <h3>If nobody opens the link</h3>
+            <p>
+              The sender picks 1 hour, 1 day or 7 days. An expired secret is never handed out; this is checked on every
+              read. Its encrypted data is removed on the next request to the service after expiry, not by a timer at the
+              exact moment.
+            </p>
+          </li>
+          <li>
+            <h3>In the browser</h3>
+            <p>
+              After Reveal, the key is removed from the address bar, and the page clears the secret from the screen when
+              you leave it.
+            </p>
+          </li>
+          <li>
+            <h3>Cloudflare’s recovery copy</h3>
+            <p>
+              Cloudflare D1 keeps its own point-in-time recovery history (Time Travel) for a limited period, so a deleted
+              row can remain in Cloudflare’s internal recovery copy for a while. That copy holds only the encrypted data.
+              Without the key in the link it cannot be read.
+            </p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="limits" aria-labelledby="limits-title">
+        <h2 id="limits-title">What we cannot protect against</h2>
+        <p>Encryption protects the secret on the server. It cannot fix everything around it.</p>
+        <ul class="caveats">
+          <li>
+            <h3>Someone gets the link first</h3>
+            <p>
+              Whoever opens the link first can reveal the secret. The recipient then sees “no longer available”, which at
+              least shows that the link was intercepted. If that happens, change the password or token you shared.
+            </p>
+          </li>
+          <li>
+            <h3>Malware or a compromised browser</h3>
+            <p>
+              If the sender’s or recipient’s device or browser is compromised, the secret can be read there, before
+              encryption or after decryption.
+            </p>
+          </li>
+          <li>
+            <h3>The link stays in chat history</h3>
+            <p>
+              The link remains wherever you sent it. That is harmless once it has been opened or has expired, because the
+              data is gone.
+            </p>
+          </li>
+          <li>
+            <h3>Trusting the code this site serves</h3>
+            <p>
+              The encryption runs in code that this site sends to your browser, so you have to trust that code. The same
+              is true for any web-based tool.
+            </p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="generator" aria-labelledby="generator-title">
+        <h2 id="generator-title">The password generator</h2>
+        <p>
+          The password and token generator runs entirely in your browser, using <code>crypto.getRandomValues</code>. It
+          uses rejection sampling, so every character is equally likely (no modulo bias). A generated value is never sent
+          anywhere unless you create a link with it, and then only encrypted.
+        </p>
+      </section>
+
+      <section id="faq" aria-labelledby="faq-title">
+        <h2 id="faq-title">Questions</h2>
+        <div class="faq">
+          <details>
+            <summary>Can you read my secret?</summary>
+            <p>
+              No. The server only receives encrypted data. The key that decrypts it is in the part of the link after
+              <code>#</code>, which is never sent to the server.
+            </p>
+          </details>
+          <details>
+            <summary>Why does opening the link not show the secret right away?</summary>
+            <p>
+              Chat apps and email scanners often open links to build previews. If opening the link used the secret up,
+              a preview could destroy it before the recipient sees it. Only pressing “Reveal” uses it.
+            </p>
+          </details>
+          <details>
+            <summary>The recipient says the secret is “no longer available”. What now?</summary>
+            <p>
+              The link was already opened or has expired. If the recipient did not open it, someone else may have.
+              Change the password or token you shared, then send a new link.
+            </p>
+          </details>
+          <details>
+            <summary>What happens if the link is cut off or changed?</summary>
+            <p>
+              If the link is incomplete, the page says so before anything is used up. If the key was changed, decryption
+              fails instead of showing wrong text. In that case the secret has already been deleted, so ask for a new link.
+            </p>
+          </details>
+          <details>
+            <summary>I lost the link. Can you send it again?</summary>
+            <p>
+              No. The link is the only copy of the key, and the server never had it. Create a new link.
+            </p>
+          </details>
+          <details>
+            <summary>How large can a secret be?</summary>
+            <p>
+              Up to 16 KB. The service holds at most 20,000 unopened secrets at once; when it is full, creating a new link
+              fails until space frees up.
+            </p>
+          </details>
+          <details>
+            <summary>Does the site use cookies or analytics?</summary>
+            <p>
+              No. There are no cookies, accounts or analytics, and the page loads nothing from other sites. Your theme
+              choice is remembered only in your own browser’s storage.
+            </p>
+          </details>
+        </div>
+      </section>
+
+      <p class="explainer-cta"><a class="button" href="/">Share a secret</a></p>
+    </main>
+
+    <footer class="site-footer site-footer-plain">
+      <p>No accounts, cookies or analytics. Secrets are encrypted in your browser.</p>
+      <p><a href="/">Share a secret</a></p>
+    </footer>
+  </body>
+</html>

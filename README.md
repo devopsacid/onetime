@@ -72,6 +72,8 @@ Security notes:
 | Path | What |
 |---|---|
 | `index.html`, `src/web/` | The page: encryption, generator, UI (vanilla TypeScript, built by Vite) |
+| `how-it-works.html` | The detailed explanation of how secrets are stored (second Vite entry, script `src/web/page.ts`) |
+| `public/theme-init.js` | Tiny synchronous script in `<head>` that applies a stored light/dark choice before first paint (no inline script, so the CSP holds) |
 | `functions/api/[[path]].ts` | Cloudflare Pages Function for `/api/*`; delegates to the router |
 | `src/worker/index.ts` | The API router, storing blobs in D1 |
 | `migrations/` | D1 schema (`secrets` table) |
