@@ -5,6 +5,6 @@ export default defineConfig({
     outDir: "dist",
     emptyOutDir: true,
     sourcemap: false,
-    rollupOptions: { input: { main: "index.html", howItWorks: "how-it-works.html", commandLine: "command-line.html" } },
+    rollupOptions: { input: { main: "index.html", howItWorks: "how-it-works.html", commandLine: "command-line.html", notFound: "404.html" } },
   },
 });
