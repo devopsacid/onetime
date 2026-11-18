@@ -93,7 +93,7 @@ Limits: 16 KB per secret. There is no per-IP rate limit (IPs are never stored). 
 pnpm install
 pnpm db:migrate:local   # once: create the local D1 database (.wrangler/state)
 pnpm dev                # build, then run Pages locally at http://localhost:8788
-pnpm check              # typecheck, tests, build
+pnpm check              # typecheck, tests, build, then tools/check-dist.mjs (CSP structure of dist/*.html)
 ```
 
 Deploying to the Cloudflare Pages project `onetimepass` (needs a Cloudflare login or API token):

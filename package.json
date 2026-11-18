@@ -9,7 +9,7 @@
     "build": "vite build && pnpm build:cli",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.worker.json --noEmit && tsc -p tsconfig.cli.json --noEmit",
     "test": "vitest run",
-    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "check": "pnpm typecheck && pnpm test && pnpm build && node tools/check-dist.mjs",
     "db:migrate:local": "wrangler d1 migrations apply onetime --local",
     "db:migrate:remote": "wrangler d1 migrations apply onetime --remote",
     "deploy": "pnpm build && wrangler pages deploy",
