@@ -63,6 +63,7 @@ describe("create and reveal", () => {
     const first = await reveal(id);
     expect(first.status).toBe(200);
     expect(first.headers.get("Cache-Control")).toBe("no-store");
+    expect(first.headers.get("X-Robots-Tag")).toBe("noindex");
     expect(new Uint8Array(await first.arrayBuffer())).toEqual(blob);
 
     expect((await reveal(id)).status).toBe(404);
@@ -231,6 +232,7 @@ describe("body size", () => {
     ]) {
       expect(response.status).toBeGreaterThanOrEqual(400);
       expect(response.headers.get("Cache-Control")).toBe("no-store");
+      expect(response.headers.get("X-Robots-Tag")).toBe("noindex");
     }
   });
 });

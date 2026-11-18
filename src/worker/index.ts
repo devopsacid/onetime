@@ -19,6 +19,7 @@ const API_HEADERS = {
   "Cache-Control": "no-store",
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "no-referrer",
+  "X-Robots-Tag": "noindex",
 };
 
 function json(status: number, body: unknown, extra: Record<string, string> = {}): Response {
