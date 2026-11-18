@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EXIT, parseArgs, parseLinkInput, parseTtl, resolveServer, run, stripOneNewline, UsageError } from "../cli/core";
+import { decodeInput, EXIT, parseArgs, parseLinkInput, parseTtl, resolveServer, run, stripOneNewline, UsageError } from "../cli/core";
 import { makeIo } from "./cli-helpers";
 
 const ID = "A".repeat(22);
@@ -60,11 +60,17 @@ describe("parseLinkInput", () => {
   });
   it("applies the https rule to the link origin", () => {
     expect(parseLinkInput(`http://evil.example/#${ID}.${KEY}`, "https://d.example")).toBe("invalid");
-    expect(parseLinkInput(`http://localhost:8788/#${ID}.${KEY}`, "https://d.example")).toEqual({
+  });
+  it("accepts a local http link only when the same server was set explicitly", () => {
+    const link = `http://localhost:8788/#${ID}.${KEY}`;
+    expect(parseLinkInput(link, "https://d.example", "http://localhost:8788")).toEqual({
       origin: "http://localhost:8788",
       id: ID,
       key: KEY,
     });
+    expect(() => parseLinkInput(link, "https://d.example")).toThrow(UsageError);
+    expect(() => parseLinkInput(link, "https://d.example", "http://localhost:9999")).toThrow(UsageError);
+    expect(() => parseLinkInput(link, "https://d.example", "https://d.example")).toThrow(UsageError);
   });
 });
 
@@ -196,9 +202,143 @@ describe("run", () => {
     });
     expect(await run(["send", "--server", "https://s.example"], io)).toBe(EXIT.ok);
     expect(io.out).toMatch(/^https:\/\/s\.example\/#/);
-    expect(io.err).toContain(`onetime get "${io.out.trim()}"`);
-    expect(io.err).not.toContain("'");
+    expect(io.err).toContain("onetime get -");
+    expect(io.err).not.toContain(io.out.trim());
+    expect(io.err).not.toContain("#");
     // 2 bytes of plaintext + 12 IV + 16 tag: no CR or LF was encrypted.
     expect(posted[0]!.byteLength).toBe(2 + 28);
+  });
+  it("never puts the link or key in the send hint", async () => {
+    const io = makeIo({
+      stdin: "pw",
+      fetch: (async () => new Response(JSON.stringify({ id: ID }), { status: 201 })) as unknown as typeof fetch,
+    });
+    await run(["send", "--server", "https://s.example"], io);
+    const key = io.out.trim().split(".")[1]!;
+    expect(io.err).not.toContain(key);
+    expect(io.err).not.toContain(ID);
+  });
+  it("refuses a local http link unless --server names it", async () => {
+    const link = `http://127.0.0.1:1/#${ID}.${KEY}`;
+    const a = makeIo();
+    expect(await run(["get", link], a)).toBe(EXIT.usage);
+    const b = makeIo();
+    expect(await run(["status", link], b)).toBe(EXIT.usage);
+    expect(a.err + b.err).not.toContain(KEY);
+  });
+});
+
+describe("decodeInput", () => {
+  const enc = (t: string) => new TextEncoder().encode(t);
+  it("decodes UTF-8 and strips BOMs", () => {
+    expect(decodeInput(enc("héllo"))).toBe("héllo");
+    expect(decodeInput(new Uint8Array([0xef, 0xbb, 0xbf, ...enc("hi")]))).toBe("hi");
+    const utf16 = new Uint8Array([0xff, 0xfe, 0x68, 0x00, 0xe9, 0x00, 0x0d, 0x00, 0x0a, 0x00]);
+    expect(decodeInput(utf16)).toBe("hé\r\n");
+  });
+  it("rejects invalid UTF-8 and odd UTF-16", () => {
+    expect(() => decodeInput(new Uint8Array([0xff, 0x41]))).toThrow(UsageError);
+    expect(() => decodeInput(new Uint8Array([0xff, 0xfe, 0x41]))).toThrow(UsageError);
+  });
+});
+
+describe("hostile server responses", () => {
+  const link = `${ID}.${KEY}`;
+  const stream = (chunks: number, size: number, headers: Record<string, string> = {}) => {
+    let sent = 0;
+    return new Response(
+      new ReadableStream({
+        pull(controller) {
+          if (sent++ >= chunks) return controller.close();
+          controller.enqueue(new Uint8Array(size));
+        },
+      }),
+      { status: 200, headers },
+    );
+  };
+  const getWith = (response: () => Response) =>
+    run(["get", link, "--server", "https://s.example"], makeIo({ fetch: (async () => response()) as unknown as typeof fetch }));
+
+  it("rejects an oversized reveal body (Content-Length and counted stream)", async () => {
+    expect(await getWith(() => new Response("x", { headers: { "Content-Length": "99999" } }))).toBe(EXIT.network);
+    let pulled = 0;
+    const res = () =>
+      new Response(
+        new ReadableStream({
+          pull(c) {
+            pulled++;
+            c.enqueue(new Uint8Array(8192));
+          },
+        }),
+      );
+    expect(await getWith(res)).toBe(EXIT.network);
+    expect(pulled).toBeLessThan(10);
+  });
+  it("rejects oversized or non-JSON create answers", async () => {
+    const send = (r: () => Response) =>
+      run(["send", "--server", "https://s.example"], makeIo({ stdin: "x", fetch: (async () => r()) as unknown as typeof fetch }));
+    expect(await send(() => stream(100, 1024))).toBe(EXIT.network);
+    expect(await send(() => new Response("<html>", { status: 201 }))).toBe(EXIT.network);
+  });
+  it("tolerates oversized error bodies", async () => {
+    const io = makeIo({ fetch: (async () => stream(1000, 1024)) as unknown as typeof fetch });
+    const r = new Response(new Uint8Array(100000), { status: 500 });
+    io.fetch = (async () => r) as unknown as typeof fetch;
+    expect(await run(["status", link, "--server", "https://s.example"], io)).toBe(EXIT.network);
+  });
+  it("rejects a server-supplied id that is not a plain id", async () => {
+    for (const id of [42, "\u001b[31mred", "short"]) {
+      const io = makeIo({
+        stdin: "x",
+        fetch: (async () => new Response(JSON.stringify({ id }), { status: 201 })) as unknown as typeof fetch,
+      });
+      expect(await run(["send", "--server", "https://s.example"], io)).toBe(EXIT.network);
+      expect(io.out + io.err).not.toContain("\u001b");
+    }
+  });
+  it("does not follow redirects", async () => {
+    let calls = 0;
+    const io = makeIo({
+      fetch: (async () => {
+        calls++;
+        return new Response(null, { status: 302, headers: { Location: "https://evil.example/" } });
+      }) as unknown as typeof fetch,
+    });
+    expect(await run(["get", link, "--server", "https://s.example"], io)).toBe(EXIT.network);
+    expect(calls).toBe(1);
+  });
+});
+
+describe("stdin, output and internal errors", () => {
+  it("rejects oversized and non-UTF-8 stdin", async () => {
+    expect(await run(["send"], makeIo({ stdin: new Uint8Array(16 * 1024 * 4 + 10).fill(65) }))).toBe(EXIT.usage);
+    const io = makeIo({ stdin: new Uint8Array([0xff, 0xfe, 0xfd]) });
+    expect(await run(["send"], io)).toBe(EXIT.usage);
+    expect(io.err).toMatch(/UTF-8/);
+  });
+  it("exits 5 when writing the secret fails", async () => {
+    const { blob, key } = await (await import("../src/web/crypto")).encryptSecret("s");
+    const io = makeIo({
+      writeStdout: () => {
+        throw new Error("EPIPE");
+      },
+      fetch: (async () => new Response(blob)) as unknown as typeof fetch,
+    });
+    expect(await run(["get", `${ID}.${key}`, "--server", "https://s.example"], io)).toBe(EXIT.network);
+    expect(io.err).toMatch(/write/i);
+  });
+  it("gives unexpected errors their own exit code", async () => {
+    const io = makeIo({
+      stdin: "x",
+      fetch: (async () => {
+        throw new RangeError("weird");
+      }) as unknown as typeof fetch,
+    });
+    // fetch failures are network errors; a crash inside the core is internal
+    io.stdin.readBytes = async () => {
+      throw new Error("boom");
+    };
+    expect(await run(["send"], io)).toBe(EXIT.internal);
+    expect(EXIT.internal).toBe(70);
   });
 });

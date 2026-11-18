@@ -30,11 +30,12 @@ export interface TestIo extends Io {
 }
 
 export function makeIo(opts: {
-  stdin?: string | null; // null = TTY
+  stdin?: string | Uint8Array | null; // null = TTY
   stdoutTty?: boolean;
   prompt?: string;
   env?: Record<string, string | undefined>;
   fetch?: typeof fetch;
+  writeStdout?: (text: string) => void | Promise<void>;
 } = {}): TestIo {
   const io: TestIo = {
     out: "",
@@ -49,13 +50,16 @@ export function makeIo(opts: {
       }) as typeof fetch),
     stdin: {
       isTTY: opts.stdin === null || opts.stdin === undefined,
-      readAll: async () => opts.stdin ?? "",
+      readBytes: async (max) => {
+        const raw = typeof opts.stdin === "string" ? new TextEncoder().encode(opts.stdin) : (opts.stdin ?? new Uint8Array());
+        return raw.subarray(0, max + 1);
+      },
     },
     promptHidden: async (label) => {
       io.prompts.push(label);
       return opts.prompt ?? "";
     },
-    stdout: { isTTY: opts.stdoutTty ?? false, write: (s) => void (io.out += s) },
+    stdout: { isTTY: opts.stdoutTty ?? false, write: opts.writeStdout ?? ((s) => void (io.out += s)) },
     stderr: { write: (s) => void (io.err += s) },
   };
   return io;
