@@ -21,6 +21,14 @@ Public site for sharing a secret (password, token, credentials) through a link t
 - Tests: Vitest in the Workers runtime via `@cloudflare/vitest-plugin` (no DOM). Put testable browser logic in DOM-free modules under `src/web/`; `main.ts` is wiring only. The router takes `options { now, maxStored }` as test hooks.
 - pnpm; build scripts for `esbuild` and `workerd` are allowed in `pnpm-workspace.yaml`.
 
+## Command-line client
+
+- `cli/core.ts` (pure, tested in the Workers runtime with `fetch` wired to the real router) and `cli/main.ts` (Node entry). `tools/build-cli.mjs` bundles them with esbuild into `dist/cli/onetime.mjs`, plus `onetime.cmd` (Windows shim) and `onetime.mjs.sha256`; the site serves them at `/cli/`. Node 20+ is the only requirement; no runtime dependencies.
+- It reuses `src/web/crypto.ts`, `generate.ts`, `link.ts` and the shared limits, so links are interchangeable with the web page. Do not fork the crypto; change the shared modules and keep both sides tested.
+- Rules: the secret is never accepted as an argument (stdin or hidden prompt only); stdout carries only the link (`send`, `gen`) or only the secret (`get`); hints on stderr never contain the link or key; server replies are size-capped and the returned id is validated; https only, except an explicitly named local server.
+- `pnpm build` = `vite build` then `build:cli` (vite empties `dist/` first). `dev` and `deploy` go through `pnpm build`.
+- Run on Linux only so far; Windows and macOS are untested (the README says so).
+
 ## Commands
 
 ```sh
