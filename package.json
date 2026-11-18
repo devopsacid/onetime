@@ -5,14 +5,15 @@
   "type": "module",
   "description": "One-time links for secrets, encrypted in the browser, deleted on first read",
   "scripts": {
-    "dev": "vite build && wrangler pages dev",
-    "build": "vite build",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.worker.json --noEmit",
+    "dev": "pnpm build && wrangler pages dev",
+    "build": "vite build && pnpm build:cli",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.worker.json --noEmit && tsc -p tsconfig.cli.json --noEmit",
     "test": "vitest run",
     "check": "pnpm typecheck && pnpm test && pnpm build",
     "db:migrate:local": "wrangler d1 migrations apply onetime --local",
     "db:migrate:remote": "wrangler d1 migrations apply onetime --remote",
-    "deploy": "vite build && wrangler pages deploy"
+    "deploy": "pnpm build && wrangler pages deploy",
+    "build:cli": "node tools/build-cli.mjs"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.8.3",
@@ -23,5 +24,8 @@
     "vite": "^8.3.8",
     "vitest": "^4.1.12",
     "wrangler": "^4.163.0"
+  },
+  "bin": {
+    "onetime": "dist/cli/onetime.mjs"
   }
 }
