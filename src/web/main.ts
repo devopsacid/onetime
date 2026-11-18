@@ -11,6 +11,9 @@ import {
 } from "./generate";
 import { createLatestGuard } from "./latest";
 import { buildLink, parseFragment, type SecretLink } from "./link";
+import { initThemeToggle } from "./theme-toggle";
+
+initThemeToggle();
 
 function el<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);

@@ -1,34 +1,72 @@
-:root {
+/* Colour tokens. Light is the default; dark ("black") applies when chosen, or when the system prefers dark
+   and no choice is stored. Contrast (WCAG): text >= 14.9, muted >= 5.5, field borders >= 3.4, accent >= 5.5. */
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
   --bg: #f6f5f1;
   --surface: #ffffff;
+  --surface-2: #eef0ec;
   --text: #1c211f;
   --muted: #5b6561;
   --border: #d6d9d3;
+  --field-border: #7c8682;
   --accent: #1f6f5c;
   --accent-hover: #185646;
+  --accent-soft: #e3f1ec;
   --on-accent: #ffffff;
+  --id: #8a4b00;
+  --id-soft: #fbeedd;
   --error-bg: #fdecea;
   --error-text: #8c1d18;
   --focus: #0b57d0;
-  --radius: 10px;
-  --mono: ui-monospace, "SFMono-Regular", "Cascadia Code", Menlo, Consolas, monospace;
-  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0a0c0b;
+  --surface: #131716;
+  --surface-2: #1a1f1d;
+  --text: #eceeed;
+  --muted: #a3ada9;
+  --border: #272d2b;
+  --field-border: #69736f;
+  --accent: #5cc8ab;
+  --accent-hover: #7dd8bf;
+  --accent-soft: #10251f;
+  --on-accent: #04140f;
+  --id: #f0b35c;
+  --id-soft: #2a1d0b;
+  --error-bg: #3b1715;
+  --error-text: #ffb4ab;
+  --focus: #a8c7fa;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #131615;
-    --surface: #1c2120;
-    --text: #e8ebe9;
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --bg: #0a0c0b;
+    --surface: #131716;
+    --surface-2: #1a1f1d;
+    --text: #eceeed;
     --muted: #a3ada9;
-    --border: #353d3a;
-    --accent: #58c2a6;
-    --accent-hover: #74d3b9;
-    --on-accent: #0b1b17;
+    --border: #272d2b;
+    --field-border: #69736f;
+    --accent: #5cc8ab;
+    --accent-hover: #7dd8bf;
+    --accent-soft: #10251f;
+    --on-accent: #04140f;
+    --id: #f0b35c;
+    --id-soft: #2a1d0b;
     --error-bg: #3b1715;
     --error-text: #ffb4ab;
     --focus: #a8c7fa;
   }
+}
+
+:root {
+  --radius: 10px;
+  --mono: ui-monospace, "SFMono-Regular", "Cascadia Code", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
 *,
@@ -58,7 +96,82 @@ main,
 }
 
 .site-header {
-  padding-block: 1.25rem 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding-block: 1rem 0.5rem;
+}
+
+.site-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+.site-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding-inline: 0.5rem;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-decoration: none;
+  white-space: nowrap;
+  border-radius: 8px;
+}
+
+.site-nav a:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.site-nav a[aria-current="page"] {
+  color: var(--accent);
+}
+
+.theme-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.theme-toggle:hover {
+  border-color: var(--field-border);
+  background: var(--surface);
+}
+
+.theme-toggle svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+/* Show the icon of the theme the button switches to: moon in light, sun in dark. */
+.theme-toggle .icon-sun,
+:root[data-theme="dark"] .theme-toggle .icon-moon {
+  display: none;
+}
+
+:root[data-theme="dark"] .theme-toggle .icon-sun {
+  display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .theme-toggle .icon-moon {
+    display: none;
+  }
+
+  :root:not([data-theme]) .theme-toggle .icon-sun {
+    display: block;
+  }
 }
 
 .brand {
@@ -144,7 +257,7 @@ select {
   padding: 0.6rem 0.75rem;
   background: var(--bg);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: 1px solid var(--field-border);
   border-radius: 8px;
   font: inherit;
 }
@@ -351,4 +464,8 @@ code {
   .copy-row {
     flex-direction: column;
   }
+}
+
+.brand {
+  min-height: 2.75rem;
 }
