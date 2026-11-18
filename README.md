@@ -42,7 +42,7 @@ pnpm dev                # build, then run Pages locally at http://localhost:8788
 pnpm check              # typecheck, tests, build
 ```
 
-Deploying to the Cloudflare Pages project `onetime` (needs a Cloudflare login or API token):
+Deploying to the Cloudflare Pages project `onetimepass` (needs a Cloudflare login or API token):
 
 ```sh
 wrangler d1 create onetime      # once; put the printed id in wrangler.jsonc (database_id)
