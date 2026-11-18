@@ -8,12 +8,113 @@
     <meta name="theme-color" content="#f6f5f1" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0a0c0b" media="(prefers-color-scheme: dark)" />
     <script src="/theme-init.js"></script>
-    <title>How onetime stores your secret</title>
-    <meta
-      name="description"
-      content="How onetime encrypts a secret in your browser, what the server stores and never sees, when the data is deleted, and what it cannot protect against."
-    />
+    <title>How a one-time secret link works and what it stores | onetime</title>
+    <meta name="description" content="How onetime encrypts a secret in your browser, what the server stores and never sees, when the data is deleted, and what it cannot protect against." />
+    <link rel="canonical" href="https://onetimepass.pages.dev/how-it-works" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="onetime" />
+    <meta property="og:title" content="How a one-time secret link works and what it stores | onetime" />
+    <meta property="og:description" content="How onetime encrypts a secret in your browser, what the server stores and never sees, when the data is deleted, and what it cannot protect against." />
+    <meta property="og:url" content="https://onetimepass.pages.dev/how-it-works" />
+    <meta property="og:image" content="https://onetimepass.pages.dev/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="onetime: share a secret with a link that works once" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="How a one-time secret link works and what it stores | onetime" />
+    <meta name="twitter:description" content="How onetime encrypts a secret in your browser, what the server stores and never sees, when the data is deleted, and what it cannot protect against." />
+    <meta name="twitter:image" content="https://onetimepass.pages.dev/og-image.png" />
+    <meta name="twitter:image:alt" content="onetime: share a secret with a link that works once" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "onetime",
+                "item": "https://onetimepass.pages.dev/"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "How it works",
+                "item": "https://onetimepass.pages.dev/how-it-works"
+              }
+            ]
+          },
+          {
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "Can you read my secret?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. The server only receives encrypted data. The key that decrypts it is in the part of the link after #, which is never sent to the server."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Why does opening the link not show the secret right away?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Chat apps and email scanners often open links to build previews. If opening the link used the secret up, a preview could destroy it before the recipient sees it. Only pressing “Reveal” uses it."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "The recipient says the secret is “no longer available”. What now?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "The link was already opened or has expired. If the recipient did not open it, someone else may have. Change the password or token you shared, then send a new link."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What happens if the link is cut off or changed?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "If the link is incomplete, the page says so before anything is used up. If the key was changed, decryption fails instead of showing wrong text. In that case the secret has already been deleted, so ask for a new link."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "I lost the link. Can you send it again?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. The link is the only copy of the key, and the server never had it. Create a new link."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How large can a secret be?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Up to 16 KB. The service holds at most 20,000 unopened secrets at once; when it is full, creating a new link fails until space frees up."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Does the site use cookies or analytics?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. There are no cookies, accounts or analytics, and the page loads nothing from other sites. Your theme choice is remembered only in your own browser’s storage."
+                }
+              }
+            ]
+          }
+        ]
+      }
+    </script>
     <link rel="stylesheet" href="/src/web/style.css" />
     <script type="module" src="/src/web/page.ts"></script>
   </head>
@@ -367,7 +468,7 @@
 
     <footer class="site-footer site-footer-plain">
       <p>No accounts, cookies or analytics. Secrets are encrypted in your browser.</p>
-      <p><a href="/">Share a secret</a> · <a href="/command-line">Command line</a></p>
+      <p><a href="/">Share a secret</a> · <a href="/command-line">Command-line tool</a></p>
     </footer>
   </body>
 </html>

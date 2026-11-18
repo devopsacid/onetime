@@ -8,12 +8,62 @@
     <meta name="theme-color" content="#f6f5f1" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0a0c0b" media="(prefers-color-scheme: dark)" />
     <script src="/theme-init.js"></script>
-    <title>onetime: share a secret with a link that works once</title>
-    <meta
-      name="description"
-      content="Share a password, token or other secret with a link that can be opened only once. Encrypted in your browser; the server never sees the secret."
-    />
+    <title>Share a password or secret with a one-time link | onetime</title>
+    <meta name="description" content="Send a password, token or other secret in a link that opens only once. It is encrypted in your browser, so the server never sees it. Free, no account." />
+    <link rel="canonical" href="https://onetimepass.pages.dev/" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="onetime" />
+    <meta property="og:title" content="Share a password or secret with a one-time link | onetime" />
+    <meta property="og:description" content="Send a password, token or other secret in a link that opens only once. It is encrypted in your browser, so the server never sees it. Free, no account." />
+    <meta property="og:url" content="https://onetimepass.pages.dev/" />
+    <meta property="og:image" content="https://onetimepass.pages.dev/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="onetime: share a secret with a link that works once" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Share a password or secret with a one-time link | onetime" />
+    <meta name="twitter:description" content="Send a password, token or other secret in a link that opens only once. It is encrypted in your browser, so the server never sees it. Free, no account." />
+    <meta name="twitter:image" content="https://onetimepass.pages.dev/og-image.png" />
+    <meta name="twitter:image:alt" content="onetime: share a secret with a link that works once" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://onetimepass.pages.dev/#website",
+            "url": "https://onetimepass.pages.dev/",
+            "name": "onetime",
+            "inLanguage": "en"
+          },
+          {
+            "@type": "WebApplication",
+            "@id": "https://onetimepass.pages.dev/#app",
+            "name": "onetime",
+            "url": "https://onetimepass.pages.dev/",
+            "description": "Share a password, token or other secret with a link that can be opened only once. The secret is encrypted in the browser. Includes a password and token generator.",
+            "applicationCategory": "SecurityApplication",
+            "operatingSystem": "Any (web browser)",
+            "browserRequirements": "Requires JavaScript and the Web Crypto API",
+            "isAccessibleForFree": true,
+            "inLanguage": "en",
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD"
+            },
+            "isPartOf": {
+              "@id": "https://onetimepass.pages.dev/#website"
+            }
+          }
+        ]
+      }
+    </script>
     <link rel="stylesheet" href="/src/web/style.css" />
     <script type="module" src="/src/web/main.ts"></script>
   </head>
@@ -114,7 +164,7 @@
       </section>
 
       <!-- Created -->
-      <section id="view-created" hidden>
+      <section id="view-created" hidden data-nosnippet>
         <h1 tabindex="-1">Your one-time link is ready</h1>
         <div class="card">
           <div class="field">
@@ -134,7 +184,7 @@
       </section>
 
       <!-- Open -->
-      <section id="view-open" hidden>
+      <section id="view-open" hidden data-nosnippet>
         <h1 tabindex="-1">Someone shared a secret with you</h1>
         <p class="lead">It can be shown only once. Make sure you are ready to copy it or save it somewhere safe.</p>
         <div class="card">
@@ -144,7 +194,7 @@
       </section>
 
       <!-- Revealed -->
-      <section id="view-revealed" hidden>
+      <section id="view-revealed" hidden data-nosnippet>
         <h1 tabindex="-1">Here is the secret</h1>
         <div class="card">
           <div class="field">
@@ -160,7 +210,7 @@
       </section>
 
       <!-- Gone / invalid -->
-      <section id="view-gone" hidden>
+      <section id="view-gone" hidden data-nosnippet>
         <h1 tabindex="-1" id="gone-title"></h1>
         <p class="lead" id="gone-text"></p>
         <p><a class="button button-secondary" href="/">Share a new secret</a></p>
@@ -195,7 +245,7 @@
       <section class="cli-teaser" aria-labelledby="cli-teaser-title">
         <h2 id="cli-teaser-title">Use it from the command line</h2>
         <p>A single Node.js file with the same encryption and the same links as this page.</p>
-        <p><a href="/command-line">Install and examples</a></p>
+        <p><a href="/command-line">Command-line tool: install and examples</a></p>
       </section>
       <p class="hint">Passwords and tokens are generated in your browser with its cryptographic random generator.</p>
     </footer>
