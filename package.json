@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
+  "packageManager": "pnpm@12.16.1",
   "engines": {
     "node": ">=22.13"
   },
@@ -13,12 +14,13 @@
     "build": "vite build && pnpm build:cli",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.worker.json --noEmit && tsc -p tsconfig.cli.json --noEmit && tsc -p tsconfig.server.json --noEmit",
     "test": "vitest run && vitest run -c vitest.node.config.ts",
-    "check": "pnpm typecheck && pnpm test && pnpm build && node tools/check-dist.mjs",
+    "check": "pnpm typecheck && pnpm test && pnpm build && node tools/check-dist.mjs && ONETIME_ORIGIN=https://onetime.example pnpm build:selfhost && node tools/check-dist.mjs dist-selfhost && node tools/check-selfhost.mjs",
     "db:migrate:local": "wrangler d1 migrations apply onetime --local",
     "db:migrate:remote": "wrangler d1 migrations apply onetime --remote",
     "deploy": "pnpm build && wrangler pages deploy",
     "build:cli": "node tools/build-cli.mjs",
-    "build:server": "node tools/build-server.mjs"
+    "build:server": "node tools/build-server.mjs",
+    "build:selfhost": "ONETIME_SITE=selfhost vite build && ONETIME_SITE=selfhost node tools/build-cli.mjs && node tools/build-server.mjs"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.8.3",
