@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { afterAll, afterEach, beforeEach } from "vitest";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readMigrations } from "../../server/migrate";
@@ -6,11 +7,57 @@ import { readMigrations } from "../../server/migrate";
 export const MIGRATIONS_DIR = join(import.meta.dirname, "..", "..", "migrations");
 export const migrations = () => readMigrations(MIGRATIONS_DIR);
 
-/** A fresh temp directory under ~/.tmp-like space; the caller removes it. */
+// Everything a test file creates is tracked here and cleaned up by hooks registered when a test file imports this module.
+// - Child processes are killed after every test, so a failed or timed-out test cannot leave a server running.
+// - Directories created while a test runs (including in beforeEach) are removed after that test.
+// - Directories created earlier (at collection time or in beforeAll) are removed after the last test of the file,
+//   in case the file's own afterAll did not run.
+const children = new Set<ChildProcess>();
+const testDirs = new Set<string>();
+const fileDirs = new Set<string>();
+let inTest = false;
+
+beforeEach(() => {
+  inTest = true;
+});
+afterEach(async () => {
+  inTest = false;
+  await killChildren();
+  for (const path of testDirs) rmSync(path, { recursive: true, force: true });
+  testDirs.clear();
+});
+afterAll(async () => {
+  await killChildren();
+  for (const path of [...fileDirs, ...testDirs]) rmSync(path, { recursive: true, force: true });
+  fileDirs.clear();
+});
+
+async function killChildren(): Promise<void> {
+  const running = [...children].filter((c) => c.exitCode === null && c.signalCode === null);
+  children.clear();
+  await Promise.all(
+    running.map(
+      (c) =>
+        new Promise<void>((resolve) => {
+          c.once("close", () => resolve());
+          c.kill("SIGKILL");
+        }),
+    ),
+  );
+}
+
+/** Registers a child process to be killed after the current test. Returns it. */
+export function trackChild<T extends ChildProcess>(child: T): T {
+  children.add(child);
+  return child;
+}
+
+/** A fresh temp directory. `remove()` deletes it at once; otherwise the hooks above do. */
 export function tempDir(prefix = "onetime-test-"): { path: string; remove(): void } {
   const base = process.env.ONETIME_TEST_TMP ?? tmpdir();
   mkdirSync(base, { recursive: true });
   const path = mkdtempSync(join(base, prefix));
+  (inTest ? testDirs : fileDirs).add(path);
   return { path, remove: () => rmSync(path, { recursive: true, force: true }) };
 }
 
@@ -47,7 +94,7 @@ export function makeDist(root: string, extra: { selfhost?: boolean } = {}): stri
 /** Bundles the real server with tools/build-server.mjs into `outfile`. */
 export function buildServerBundle(outfile: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [join(ROOT, "tools", "build-server.mjs"), outfile], { cwd: ROOT });
+    const child = trackChild(spawn(process.execPath, [join(ROOT, "tools", "build-server.mjs"), outfile], { cwd: ROOT }));
     let err = "";
     child.stderr.on("data", (d) => (err += d));
     child.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`build-server failed: ${err}`))));
@@ -62,7 +109,7 @@ export interface Child {
 }
 
 export function runServer(bundle: string, env: Record<string, string>): Child {
-  const child = spawn(process.execPath, ["--no-warnings", bundle], { env: { PATH: process.env.PATH ?? "", ...env } });
+  const child = trackChild(spawn(process.execPath, ["--no-warnings", bundle], { env: { PATH: process.env.PATH ?? "", ...env } }));
   let out = "";
   let err = "";
   child.stdout.on("data", (d) => (out += d));

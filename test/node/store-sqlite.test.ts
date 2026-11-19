@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { readMigrations } from "../../server/migrate";
 import { openSqliteStore, StoreLockedError, type SqliteStore } from "../../server/store-sqlite";
 import { expectAtomicSql, type IssuedSql } from "../contract/api-contract";
-import { MIGRATIONS_DIR, migrations, tempDir } from "./helpers";
+import { MIGRATIONS_DIR, migrations, tempDir, trackChild } from "./helpers";
 
 const T0 = 1_800_000_000_000;
 const blobOf = (n: number) => crypto.getRandomValues(new Uint8Array(n));
@@ -152,7 +152,7 @@ try {
 
   const run = (db: string) =>
     new Promise<{ code: number | null; out: string }>((resolve) => {
-      const child = spawn(process.execPath, ["--no-warnings", script, db]);
+      const child = trackChild(spawn(process.execPath, ["--no-warnings", script, db]));
       let out = "";
       child.stdout.on("data", (d) => (out += d));
       child.on("close", (code) => resolve({ code, out: out.trim() }));
