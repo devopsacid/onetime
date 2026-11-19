@@ -9,7 +9,12 @@
     <meta name="theme-color" content="#0a0c0b" media="(prefers-color-scheme: dark)" />
     <script src="/theme-init.js"></script>
     <title>Privacy | onetime</title>
+    <!-- site:onetimepass -->
     <meta name="description" content="Who runs onetime, what the site stores, and how Google Analytics is used on the information pages only after you accept." />
+    <!-- /site:onetimepass -->
+    <!-- site:selfhost
+    <meta name="description" content="Who runs this instance of onetime and what it stores. It sets no cookies and runs no analytics." />
+    site:selfhost -->
     <link rel="canonical" href="https://onetimepass.pages.dev/privacy" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
@@ -18,7 +23,12 @@
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="onetime" />
     <meta property="og:title" content="Privacy | onetime" />
+    <!-- site:onetimepass -->
     <meta property="og:description" content="Who runs onetime, what the site stores, and how Google Analytics is used on the information pages only after you accept." />
+    <!-- /site:onetimepass -->
+    <!-- site:selfhost
+    <meta property="og:description" content="Who runs this instance of onetime and what it stores. It sets no cookies and runs no analytics." />
+    site:selfhost -->
     <meta property="og:url" content="https://onetimepass.pages.dev/privacy" />
     <meta property="og:image" content="https://onetimepass.pages.dev/og-image.png" />
     <meta property="og:image:type" content="image/png" />
@@ -27,7 +37,12 @@
     <meta property="og:image:alt" content="onetime: share a secret with a link that works once" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Privacy | onetime" />
+    <!-- site:onetimepass -->
     <meta name="twitter:description" content="Who runs onetime, what the site stores, and how Google Analytics is used on the information pages only after you accept." />
+    <!-- /site:onetimepass -->
+    <!-- site:selfhost
+    <meta name="twitter:description" content="Who runs this instance of onetime and what it stores. It sets no cookies and runs no analytics." />
+    site:selfhost -->
     <meta name="twitter:image" content="https://onetimepass.pages.dev/og-image.png" />
     <meta name="twitter:image:alt" content="onetime: share a secret with a link that works once" />
     <script type="application/ld+json">
@@ -83,19 +98,37 @@
 
       <section id="controller" aria-labelledby="controller-title">
         <h2 id="controller-title">Who is responsible</h2>
+        <!-- site:onetimepass -->
         <p>Michal Maxian runs this site and is the controller for the data described here. Contact: <a href="mailto:michal@maxian.sk">michal@maxian.sk</a>.</p>
+        <!-- /site:onetimepass -->
+        <!-- site:selfhost
+        <p>
+          This instance of onetime is run by {{OPERATOR_NAME}}, independently of the original onetime site and its
+          author. The operator is responsible for this instance and is the controller for the data described here.
+          Contact: {{OPERATOR_CONTACT}}.
+        </p>
+        site:selfhost -->
       </section>
 
       <section id="secrets" aria-labelledby="secrets-title">
         <h2 id="secrets-title">Sharing a secret</h2>
         <p>
+          <!-- site:onetimepass -->
           The site’s own code stores no accounts, cookies or IP addresses. The page where secrets are created and opened
           sets no cookies, runs no analytics and loads nothing from other sites. Cloudflare, which hosts the site, handles
           connections (IP address, request details) as any host does. What is stored for a secret is described in
+          <!-- /site:onetimepass -->
+          <!-- site:selfhost
+          The site’s own code stores no accounts, cookies or IP addresses and keeps no request logs. No page of this site
+          sets cookies, runs analytics or loads anything from other sites. The host of this instance handles connections
+          (IP address, request details) as any host does; whether connection logs are kept, and for how long, is up to
+          the operator of this instance. What is stored for a secret is described in
+          site:selfhost -->
           <a href="/how-it-works#server">how it works</a>.
         </p>
       </section>
 
+      <!-- site:onetimepass -->
       <section id="analytics" aria-labelledby="analytics-title">
         <h2 id="analytics-title">Google Analytics</h2>
         <p>
@@ -124,13 +157,28 @@
           when these purposes change. Without JavaScript nothing is loaded and no banner is shown.
         </p>
       </section>
+      <!-- /site:onetimepass -->
+      <!-- site:selfhost
+      <section id="cookies" aria-labelledby="cookies-title">
+        <h2 id="cookies-title">No analytics, no cookies</h2>
+        <p>
+          This instance runs no analytics or tracking on any page, sets no cookies and loads nothing from other sites,
+          so there is no cookie banner and nothing to consent to.
+        </p>
+      </section>
+      site:selfhost -->
 
       <section id="storage" aria-labelledby="storage-title">
         <h2 id="storage-title">What is saved in your browser</h2>
         <ul class="ticks">
           <li>Your theme choice (light or dark), in local storage.</li>
+          <!-- site:onetimepass -->
           <li>Your cookie choice (accepted or rejected, the date and a version number), in local storage. It never leaves your browser.</li>
           <li>The Google Analytics cookies above, only if you accepted.</li>
+          <!-- /site:onetimepass -->
+          <!-- site:selfhost
+          <li>Nothing else: no cookies and no other data.</li>
+          site:selfhost -->
         </ul>
       </section>
 
@@ -138,8 +186,14 @@
     </main>
 
     <footer class="site-footer site-footer-plain">
+      <!-- site:onetimepass -->
       <p>No accounts. Secrets are encrypted on your device. The page where secrets are created and opened has no analytics or cookies. This page uses Google Analytics only if you accept. Your theme choice and this choice are saved in your browser.</p>
       <p><a href="/">Share a secret</a> · <a href="/how-it-works">How it works</a> · <a href="/command-line">Command-line tool</a> · <a href="/privacy">Privacy</a> · <a href="/privacy#cookies" data-cookie-settings>Cookie settings</a></p>
+      <!-- /site:onetimepass -->
+      <!-- site:selfhost
+      <p>No accounts. Secrets are encrypted on your device. No page of this site uses analytics or cookies. Your theme choice is saved in your browser.</p>
+      <p><a href="/">Share a secret</a> · <a href="/how-it-works">How it works</a> · <a href="/command-line">Command-line tool</a> · <a href="/privacy">Privacy</a></p>
+      site:selfhost -->
     </footer>
   </body>
 </html>
