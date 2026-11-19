@@ -431,3 +431,29 @@ The owner asked to start implementation as soon as the plan was ready, so these 
 - Selfhost builds that are not indexable only write `robots.txt` with `Disallow: /`; no `noindex` header or meta tag is added.
 - `check` sets `ONETIME_ORIGIN=https://onetime.example` for the self-host build. The `build:selfhost` script uses a POSIX `VAR=value cmd` prefix (Linux/macOS shells only).
 - `check-selfhost` additionally checks that the Pages `dist/` is refused (exit 2) when it exists, and sends the dot-dot targets over a raw socket because `fetch` normalises them.
+
+## Deviations and results (recorded during L5 and the L6 draft, 2026-11-19)
+
+Deviations:
+- Base images are pinned by the multi-arch index digest (`node:24-slim@sha256:dc26ae92...`, `node:24-alpine@sha256:116b800c...`).
+- Image size is 172 MB (the app adds about 0.2 MB over the 172 MB base), under the 190 MB limit.
+- `compose.yaml` builds `onetime:local` with args from the environment (`ONETIME_ORIGIN` required via `${VAR:?}`), uses the `local` log driver with a 1 MB cap, `stop_grace_period: 10s`, and binds `127.0.0.1:8080`.
+- `.dockerignore` also excludes `test`, `docs`, `deploy`, `compose.yaml` and the Dockerfile from the build context.
+- The systemd unit has more hardening than the plan lists (`PrivateDevices`, `ProtectKernel*`, `ProtectControlGroups`, `ProtectProc=invisible`, `RestrictNamespaces`, `LockPersonality`, `CapabilityBoundingSet=` empty, `SystemCallFilter=@system-service` minus `@privileged @resources`) and `RestartPreventExitStatus=2 3` so a bad config or a locked database does not restart in a loop.
+- The Caddy example adds `encode zstd gzip` and `header -Server`; the nginx example sets no `X-Forwarded-For` and `server_tokens off`. The nginx example warns that other server blocks (the image's `default.conf`, distro default site) keep their own access log: this was seen in the test (one request line with a client IP from the default server).
+- The docs guide states that a backup keeps encrypted blobs and must be taken with the server stopped.
+
+Verification results (Docker 26.1.4, Node 22.22.1 on the host, `node:24-alpine` in the image):
+- `docker build --build-arg ONETIME_ORIGIN=https://onetime.example`: ok (about 38 s cold-ish, cached layers after). Without the build arg: fails with "Build arg ONETIME_ORIGIN is required".
+- `docker run --read-only --cap-drop ALL --security-opt no-new-privileges -v onetime-test-data:/data`: `health=healthy` (after the first 30 s interval), `uid=1000(node) gid=1000(node)`, `/data` mode 700, `onetime.db` and `onetime.db-wal` mode 600, owner 1000, no `-shm` file. `docker logs`: one line, `onetime 0.1.0 listening on 0.0.0.0:8080, db /data/onetime.db, max 20000 secrets`.
+- API round trip with curl on the container: create 200, `GET /api/secrets/<id>` 200, `GET .../reveal` 405, `POST .../reveal` 200 with 40 bytes, second POST 404. `/` has the strict CSP and `Cache-Control: no-store`; `/assets/*.js` has `public, max-age=31536000, immutable`. (A create body must be at least 28 bytes of IV and tag; `abc` gives 400 "Invalid secret size".)
+- `docker stop`: 0.497 s, exit code 0. A second container on the same volume: stderr "onetime: The database /data/onetime.db is locked by another process. Only one onetime server may use it.", exit 3.
+- Caddy 2 (`caddy:2-alpine`, `tls internal`) in a container in front: HTTP/2 over TLS reaches the app, CSP/HSTS/no-store present, full round trip ok, 70000-byte body gets 413 from Caddy; Caddy log has 27 lines, 0 access-log entries, 0 lines with `api/secrets` or the id.
+- nginx (`nginx:stable-alpine`, self-signed certificate, main `error_log stderr crit`) in front: `nginx -t` ok, same round trip, 413 on 70000 bytes. The log had one `GET /api/secrets/x` line, from the image's `default.conf` server (my curl to `127.0.0.1` has no matching `server_name`); after removing that file, a request with the right Host (port 80 redirect, 301) logged nothing.
+- `docker compose -p onetime-test-compose up -d --build` with `ONETIME_ORIGIN=http://localhost:8080`: starts, `/healthz` 200, `ReadonlyRootfs=true`, `CapDrop=[ALL]`, `SecurityOpt=[no-new-privileges:true]`, restart `unless-stopped`, `robots.txt` is `Disallow: /`; without `ONETIME_ORIGIN` it refuses with the message from the compose file.
+- `systemd-analyze verify deploy/onetime.service` (systemd 259): no message about the unit, exit 0. `systemd-analyze security --offline=true`: exposure 1.3 OK. The unit was not started: no root, and `systemd-run --user` has no session bus here.
+- Non-Docker layout: copied `dist-server`, `dist-selfhost`, `migrations` to a temp folder, ran `node dist-server/server.mjs` there with `PORT` and `ONETIME_DB` set: `/healthz` 200; data dir mode 700, DB mode 600; Node 22.22.1 printed the ExperimentalWarning. `ONETIME_OPERATOR_NAME`/`CONTACT` appear in the built `privacy.html`.
+- CLI served by the container: `curl` download plus `sha256sum -c` OK; `send --server http://localhost:18095` and `ONETIME_SERVER=... get` work, the second `get` says already opened (exit 1); without a server option it tries the baked-in `https://onetime.example` ("Could not reach the server", exit 5).
+- Volume backup with `tar` after `docker stop`: archive holds `onetime.db` (0600, node:node).
+
+Not tested: systemd start of the unit, `chown 1000` for bind mounts, certbot/acme.sh, proxy rate limiting, corepack on a bare host (it ran in the Docker build), AWS, Azure, arm64 images, a public CA certificate with Caddy.
