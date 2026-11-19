@@ -111,19 +111,36 @@ function send(res: ServerResponse, status: number, headers: Iterable<[string, st
   res.end(body === null ? undefined : body);
 }
 
+/** What is read and thrown away from the rest of an over-limit body before the response goes out: at most this long, this many bytes. */
+const DRAIN_MS = 1000;
+const DRAIN_BYTES = 2 * 1024 * 1024;
+
 /**
- * After a response that left (part of) the request body unread: say Connection: close, finish the response, then
- * close our side. The socket is not destroyed at once, because closing with unread data makes the kernel send a reset
- * that can swallow the response; a short timer destroys it if the client keeps sending.
+ * Reads and discards the rest of the request body, up to DRAIN_MS and DRAIN_BYTES. Nothing of it is kept or handed to
+ * the router. Needed because Node destroys the socket as soon as a `Connection: close` response is flushed, and closing
+ * with unread data makes the kernel send a reset that can swallow the response while the client is still writing.
  */
-function closeAfter(res: ServerResponse, req: IncomingMessage): void {
-  res.setHeader("Connection", "close");
-  res.once("finish", () => {
-    const socket = req.socket;
-    socket.end();
-    const timer = setTimeout(() => socket.destroy(), 1000);
-    timer.unref();
-    socket.once("close", () => clearTimeout(timer));
+function drainRequest(req: IncomingMessage): Promise<void> {
+  return new Promise((resolve) => {
+    let seen = 0;
+    const done = (): void => {
+      clearTimeout(timer);
+      req.off("data", onData);
+      req.off("end", done);
+      req.off("close", done);
+      req.off("error", done);
+      resolve();
+    };
+    const onData = (chunk: Buffer): void => {
+      seen += chunk.length;
+      if (seen >= DRAIN_BYTES) done();
+    };
+    const timer = setTimeout(done, DRAIN_MS);
+    req.on("data", onData);
+    req.once("end", done);
+    req.once("close", done);
+    req.once("error", done);
+    req.resume();
   });
 }
 
@@ -146,7 +163,10 @@ export function createApp({ store, site, maxStored }: AppDeps): App {
       response = Response.json({ error: "Internal error" }, { status: 500, headers: API_HEADERS });
     }
     const bytes = new Uint8Array(await response.arrayBuffer());
-    if (body !== null && !body.complete()) closeAfter(res, req);
+    if (body !== null && !body.complete()) {
+      res.setHeader("Connection", "close");
+      await drainRequest(req);
+    }
     const headers: [string, string][] = [...response.headers];
     headers.push(["Content-Length", String(bytes.length)]);
     send(res, response.status, headers, req.method === "HEAD" ? null : bytes);
