@@ -231,6 +231,47 @@ describe("API bridge", () => {
   });
 });
 
+describe("deferred purge", () => {
+  /** A store on its own file whose purge statement is spied on, plus a list of events in the order they happen. */
+  function spied() {
+    const dir = tempDir();
+    const own = openSqliteStore(join(dir.path, "purge.db"), migrations());
+    const events: string[] = [];
+    const real = own.db.prepare.bind(own.db);
+    own.db.prepare = ((sql: string) => {
+      const statement = real(sql);
+      if (!/^DELETE FROM secrets WHERE expires_at <= \?$/.test(sql)) return statement;
+      const run = statement.run.bind(statement);
+      statement.run = ((...args: Parameters<typeof run>) => (events.push("purge"), run(...args))) as typeof statement.run;
+      return statement;
+    }) as typeof own.db.prepare;
+    return { own, events, dir };
+  }
+
+  it("does not run the purge inside the call that asks for it, but before the promise settles", async () => {
+    const { own, events } = spied();
+    const promise = own.purgeExpired(Date.now());
+    expect(events).toEqual([]);
+    await promise;
+    expect(events).toEqual(["purge"]);
+    await own.close();
+  });
+
+  it("writes the response of a status request before the purge runs", async () => {
+    const { own, events } = spied();
+    const app = createApp({ store: own, site: loadSite(makeDist(tempDir().path)), maxStored: 10 });
+    app.server.on("request", (_req, res) => res.on("finish", () => events.push("response written")));
+    await new Promise<void>((resolve) => app.server.listen(0, "127.0.0.1", resolve));
+    const url = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
+    expect((await fetch(`${url}/api/secrets/AAAAAAAAAAAAAAAAAAAAAA`)).status).toBe(404);
+    await app.drain();
+    expect(events).toEqual(["response written", "purge"]);
+    app.server.closeAllConnections();
+    await new Promise((resolve) => app.server.close(resolve));
+    await own.close();
+  });
+});
+
 describe("/healthz", () => {
   it("answers 200 ok with no-store and noindex for GET and HEAD, 405 for others", async () => {
     const get = await fetch(`${base}/healthz`);

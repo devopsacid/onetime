@@ -102,6 +102,9 @@ export function openSqliteStore(path: string, migrations: Migration[]): SqliteSt
       return exists().get(id, now) !== undefined;
     },
     async purgeExpired(now) {
+      // node:sqlite is synchronous. The router starts purges with waitUntil() before it returns its response, so the
+      // purge waits one turn of the event loop: the response is written first, then the rows go.
+      await new Promise<void>((resolve) => setImmediate(resolve));
       purge().run(now);
     },
     async ping() {
