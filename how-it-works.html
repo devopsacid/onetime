@@ -107,7 +107,7 @@
                 "name": "Does the site use cookies or analytics?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "No. There are no cookies, accounts or analytics, and the page loads nothing from other sites. Your theme choice is remembered only in your own browser’s storage."
+                  "text": "The page where secrets are created and opened loads nothing from other sites and has no analytics or cookies. The information pages (how it works, command line, privacy) use Google Analytics to count visits only if you accept. Your theme choice and your cookie choice are remembered only in your own browser’s storage."
                 }
               }
             ]
@@ -116,7 +116,7 @@
       }
     </script>
     <link rel="stylesheet" href="/src/web/style.css" />
-    <script type="module" src="/src/web/page.ts"></script>
+    <script type="module" src="/src/web/info.ts"></script>
   </head>
   <body>
     <header class="site-header">
@@ -314,11 +314,12 @@
               <li>Your IP address</li>
               <li>Cookies or accounts</li>
               <li>Your browser and device details (user agent)</li>
-              <li>Analytics</li>
+              <li>Analytics (none on the page where secrets are handled)</li>
             </ul>
             <p class="hint">
-              Cloudflare, the host, sees IP addresses and request details as part of serving any website. The page loads
-              no third-party scripts, fonts or trackers.
+              Cloudflare, the host, sees IP addresses and request details as part of serving any website. The page where secrets are handled loads
+              no third-party scripts, fonts or trackers. Only the information pages, and only if you accept, use Google Analytics
+              (see <a href="/privacy">privacy</a>).
             </p>
           </div>
         </div>
@@ -461,8 +462,7 @@
           <details>
             <summary>Does the site use cookies or analytics?</summary>
             <p>
-              No. There are no cookies, accounts or analytics, and the page loads nothing from other sites. Your theme
-              choice is remembered only in your own browser’s storage.
+              The page where secrets are created and opened loads nothing from other sites and has no analytics or cookies. The information pages (how it works, command line, privacy) use Google Analytics to count visits only if you accept. Your theme choice and your cookie choice are remembered only in your own browser’s storage.
             </p>
           </details>
         </div>
@@ -472,8 +472,8 @@
     </main>
 
     <footer class="site-footer site-footer-plain">
-      <p>No accounts, cookies or analytics. Secrets are encrypted on your device. Only your theme choice is saved, in your browser.</p>
-      <p><a href="/">Share a secret</a> · <a href="/command-line">Command-line tool</a></p>
+      <p>No accounts. Secrets are encrypted on your device. The page where secrets are created and opened has no analytics or cookies. This page uses Google Analytics only if you accept. Your theme choice and this choice are saved in your browser.</p>
+      <p><a href="/">Share a secret</a> · <a href="/command-line">Command-line tool</a> · <a href="/privacy">Privacy</a> · <a href="/privacy#cookies" data-cookie-settings>Cookie settings</a></p>
     </footer>
   </body>
 </html>

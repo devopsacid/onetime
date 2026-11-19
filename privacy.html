@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f6f5f1" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0a0c0b" media="(prefers-color-scheme: dark)" />
+    <script src="/theme-init.js"></script>
+    <title>Privacy | onetime</title>
+    <meta name="description" content="Who runs onetime, what the site stores, and how Google Analytics is used on the information pages only after you accept." />
+    <link rel="canonical" href="https://onetimepass.pages.dev/privacy" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="onetime" />
+    <meta property="og:title" content="Privacy | onetime" />
+    <meta property="og:description" content="Who runs onetime, what the site stores, and how Google Analytics is used on the information pages only after you accept." />
+    <meta property="og:url" content="https://onetimepass.pages.dev/privacy" />
+    <meta property="og:image" content="https://onetimepass.pages.dev/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="onetime: share a secret with a link that works once" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Privacy | onetime" />
+    <meta name="twitter:description" content="Who runs onetime, what the site stores, and how Google Analytics is used on the information pages only after you accept." />
+    <meta name="twitter:image" content="https://onetimepass.pages.dev/og-image.png" />
+    <meta name="twitter:image:alt" content="onetime: share a secret with a link that works once" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "onetime",
+                "item": "https://onetimepass.pages.dev/"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "Privacy",
+                "item": "https://onetimepass.pages.dev/privacy"
+              }
+            ]
+          }
+        ]
+      }
+    </script>
+    <link rel="stylesheet" href="/src/web/style.css" />
+    <script type="module" src="/src/web/info.ts"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/">
+        <img src="/favicon.svg" alt="" width="28" height="28" />
+        <span>onetime</span>
+      </a>
+      <nav class="site-nav" aria-label="Site">
+        <a href="/how-it-works">How it works</a>
+        <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Switch theme">
+          <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+          </svg>
+          <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2" />
+            <path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+        </button>
+      </nav>
+    </header>
+
+    <main class="explainer">
+      <h1>Privacy</h1>
+      <p class="lead">Last updated 19 November 2026.</p>
+
+      <section id="controller" aria-labelledby="controller-title">
+        <h2 id="controller-title">Who is responsible</h2>
+        <p>Michal Maxian runs this site and is the controller for the data described here. Contact: <a href="mailto:michal@maxian.sk">michal@maxian.sk</a>.</p>
+      </section>
+
+      <section id="secrets" aria-labelledby="secrets-title">
+        <h2 id="secrets-title">Sharing a secret</h2>
+        <p>
+          The site’s code stores no accounts, cookies or IP addresses and runs no analytics on the page where secrets are
+          created and opened. That page loads nothing from other sites. Cloudflare, which hosts the site, handles
+          connections (IP address, request details) as any host does. What is stored for a secret is described in
+          <a href="/how-it-works#server">how it works</a>.
+        </p>
+      </section>
+
+      <section id="analytics" aria-labelledby="analytics-title">
+        <h2 id="analytics-title">Google Analytics</h2>
+        <p>
+          Google Analytics runs only on the information pages (how it works, command line and this page), and only after
+          you press Accept. It never runs on the page where secrets are created or opened, and secret links
+          are never sent to it: the page address it receives has no part after <code>?</code> or <code>#</code>.
+        </p>
+        <ul class="ticks">
+          <li><strong>Provider:</strong> Google Ireland Limited.</li>
+          <li><strong>Purpose:</strong> counting visits to the information pages.</li>
+          <li><strong>Cookies:</strong> <code>_ga</code> and <code>_ga_&lt;ID&gt;</code>, set by Google Analytics after you accept. They last up to 12 months.</li>
+          <li><strong>Retention:</strong> analytics data is kept for 2 months (a setting in the Google Analytics account).</li>
+          <li><strong>Transfer:</strong> data may be processed in the USA by Google, under the EU-US Data Privacy Framework.</li>
+          <li><strong>Legal basis:</strong> your consent, which you can withdraw at any time.</li>
+        </ul>
+      </section>
+
+      <section id="cookies" aria-labelledby="cookies-title">
+        <h2 id="cookies-title">Cookie settings and withdrawing consent</h2>
+        <p>
+          The banner on the information pages offers Accept and Reject, and Reject is the same size as Accept. Nothing
+          is sent to Google before you accept, or if you reject. To change your choice, use
+          <a href="/privacy#cookies" data-cookie-settings>Cookie settings</a>, here or in the footer of any page. Rejecting
+          deletes the Google Analytics cookies on this site and reloads the page. You are asked again after 12 months or
+          when these purposes change. Without JavaScript nothing is loaded and no banner is shown.
+        </p>
+      </section>
+
+      <section id="storage" aria-labelledby="storage-title">
+        <h2 id="storage-title">What is saved in your browser</h2>
+        <ul class="ticks">
+          <li>Your theme choice (light or dark), in local storage.</li>
+          <li>Your cookie choice (accepted or rejected, the date and a version number), in local storage. It never leaves your browser.</li>
+          <li>The Google Analytics cookies above, only if you accepted.</li>
+        </ul>
+      </section>
+
+      <p class="explainer-cta"><a class="button" href="/">Share a secret</a></p>
+    </main>
+
+    <footer class="site-footer site-footer-plain">
+      <p>No accounts. Secrets are encrypted on your device. The page where secrets are created and opened has no analytics or cookies. This page uses Google Analytics only if you accept. Your theme choice and this choice are saved in your browser.</p>
+      <p><a href="/">Share a secret</a> · <a href="/how-it-works">How it works</a> · <a href="/command-line">Command-line tool</a> · <a href="/privacy">Privacy</a> · <a href="/privacy#cookies" data-cookie-settings>Cookie settings</a></p>
+    </footer>
+  </body>
+</html>
