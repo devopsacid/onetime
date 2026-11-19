@@ -16,9 +16,9 @@ Public site for sharing a secret (password, token, credentials) through a link t
 ## Stack and layout
 
 - Vanilla TypeScript + Vite (`index.html`, `src/web/`), output `dist/`. No framework, no runtime dependencies.
-- Cloudflare Pages Function `functions/api/[[path]].ts` → router `handle()` in `src/worker/index.ts`; `public/_routes.json` limits the Function to `/api/*`.
+- Cloudflare Pages Function `functions/api/[[path]].ts` → router `handle(request, store, ctx, options)` in `src/worker/index.ts`; `public/_routes.json` limits the Function to `/api/*`. The router is runtime-neutral (no `node:` or `cloudflare:` imports, a test enforces it) and talks to a `SecretStore` (`src/worker/store.ts`): `store-d1.ts` for Pages, `server/store-sqlite.ts` for self-hosting. Both keep the same single SQL statements.
 - D1 database `onetime` (binding `DB`), schema in `migrations/`.
-- Tests: Vitest in the Workers runtime via `@cloudflare/vitest-plugin` (no DOM). Put testable browser logic in DOM-free modules under `src/web/`; `main.ts` is wiring only. The router takes `options { now, maxStored }` as test hooks.
+- Tests: two Vitest configs. `vitest.config.ts` runs in the Workers runtime via `@cloudflare/vitest-plugin` (no DOM, D1); `vitest.node.config.ts` runs `test/node/` in Node (SQLite store, Node server, site profiles). The API contract suite `test/contract/api-contract.ts` runs against both stores, including concurrency and a structural check that reveal and capped insert are single statements. Put testable browser logic in DOM-free modules under `src/web/`; `main.ts` is wiring only. The router takes `options { now, maxStored }` as test hooks.
 - pnpm; build scripts for `esbuild` and `workerd` are allowed in `pnpm-workspace.yaml`.
 
 ## Command-line client
@@ -32,11 +32,13 @@ Public site for sharing a secret (password, token, credentials) through a link t
 ## Commands
 
 ```sh
-pnpm check              # gate: typecheck (two tsconfigs), tests, build
+pnpm check              # gate: typecheck (4 tsconfigs), both test configs, Pages build + check-dist,
+                        #       self-host build + check-dist + check-selfhost (server smoke test)
 pnpm db:migrate:local   # once, before the first local run
 pnpm dev                # build + wrangler pages dev
 pnpm db:migrate:remote  # apply migrations to the real D1
 pnpm deploy             # build + wrangler pages deploy
+ONETIME_ORIGIN=https://host pnpm build:selfhost   # self-host site + CLI + dist-server/server.mjs
 ```
 
 ## Deployment
@@ -76,8 +78,21 @@ pnpm deploy             # build + wrangler pages deploy
 - GA admin (owner's side): retention 2 months (the privacy page says so), Google signals, granular location/device data, data sharing and Enhanced Measurement off, no Ads link.
 - Browser behaviour was checked with a throwaway Playwright script (Google hosts stubbed, 87 checks), not a repo e2e.
 
+## Self-hosting (added 2026-11-19)
+
+- Guide: `docs/self-hosting.md`; plan, decisions and recorded test results: `docs/plans/self-host.md` (incl. Deviations sections).
+- Node server `server/` (plain `node:http`, no runtime deps, Node 22.13+; Docker uses Node 24), bundled by `tools/build-server.mjs` into `dist-server/server.mjs`. It loads `dist-selfhost/` into memory at start (no filesystem lookups per request), applies `public/_headers` with Pages' merge and `!` detach semantics, mimics Pages URLs (extensionless, 308s, `404.html` with 404), logs nothing per request, never reads Host/X-Forwarded-*. Over-limit bodies get 413 after a bounded drain. Exit codes: 2 config, 3 DB locked, 1 other.
+- SQLite via `node:sqlite`: exclusive lock (one server per DB file; a second exits 3), WAL, `synchronous=FULL`, `secure_delete`, umask 077, migrations from `migrations/` tracked by `user_version`. Single instance only: no replicas, no network filesystems; managed container platforms (ECS Fargate/EFS, Azure Container Apps/App Service, Lightsail containers) are not supported until a Postgres store exists.
+- Two site profiles from the same HTML (`tools/site-profile*.mjs`, markers `<!-- site:onetimepass -->` / `<!-- site:selfhost ... site:selfhost -->`): `pnpm build` is the Pages site; `pnpm build:selfhost` needs `ONETIME_ORIGIN` (optional `ONETIME_OPERATOR_NAME`, `ONETIME_OPERATOR_CONTACT`, `ONETIME_INDEXABLE=1`), drops analytics, owner data and the Google CSP, and writes `_selfhost.json`; the server refuses any dist without it. Non-indexable builds (default) send `X-Robots-Tag: noindex` and `Disallow: /`.
+- Analytics also has a runtime origin guard: it loads only on exactly `https://onetimepass.pages.dev` (off on preview URLs and forks).
+- Deploy files: `Dockerfile` (digest-pinned, non-root, `VOLUME /data`), `compose.yaml`, `deploy/onetime.service` (systemd, hardened), `deploy/Caddyfile.example`, `deploy/nginx.conf.example` (access logs off; nginx default sites must be removed). AWS/Azure VM instructions and running the systemd unit are untested (the guide says so).
+- `packageManager` pins pnpm 12.16.1; `pnpm install --frozen-lockfile` needs the lockfile's `packageManagerDependencies` block.
+- Text changes on the pages must keep both profiles true; check-dist checks both outputs.
+
 ## Known open points
 
 - No per-IP rate limit (the Workers rate-limit binding is not available on Pages, and WAF rules need a custom domain). A global cap of 20,000 stored secrets returns 503 when full, so the cap can be filled by an attacker.
 - The Back-button (bfcache) clearing of the revealed secret is implemented but was not proven in a real bfcache restore.
 - There is no browser e2e test in the repo; UI flows were checked with throwaway Playwright scripts.
+- Some Node tests start real servers and can time out when the machine is very loaded (load average 40+); a rerun passes.
+- The CLI still states Node 20+ (Node 20 is end-of-life); raising it to 22+ is an open owner decision.
