@@ -405,3 +405,17 @@ The owner asked to start implementation as soon as the plan was ready, so these 
 - Q6: yes, pin pnpm with `packageManager`.
 - Q7: self-host builds default to `Disallow: /` and no sitemap; `ONETIME_INDEXABLE=1` at build time switches to robots + sitemap with the operator's origin.
 - Q8: yes, `pnpm check` includes the self-host build and the smoke test.
+
+## Deviations (recorded during L1-L3 implementation, 2026-11-19)
+
+- `@types/node` moved to `^24` (D1) with `pnpm add -D`; only that package and its lockfile entries changed. `engines.node >=22.13` added. The `packageManager` pin (Q6) is not part of L1-L3 and is still open.
+- `openSqliteStore` returns a `SqliteStore` (`ManagedStore` plus a read-only `db` handle). With the exclusive lock no second connection can look at rows, so the contract harness and the store tests need the connection that holds it. The server code only uses `ManagedStore`.
+- During lock acquisition `busy_timeout` is 0, so a second server refuses at once instead of after 5 s; it is set to 5000 right after the lock is held.
+- Prepared statements are created on first use, so a database without the `secrets` table (migration tests) can open.
+- `ONETIME_DIST` defaults to `dist-selfhost` next to `dist-server/` (D9 said "`dist` next to the server bundle"; the self-host build writes `dist-selfhost/`, section 3.1). Migrations are read from `migrations/` next to `dist-server/`.
+- One file more than 3.1 lists: `server/start.ts` (open store, load site, listen, `shutdown()`), so the shutdown path is testable without a process; `server/main.ts` only does the version check, umask, exit codes and signals.
+- 3.3 says the 413 socket is destroyed on `finish`. Destroying with unread request data makes the kernel send a reset that can swallow the response, so the bridge ends its side (`Connection: close`) and destroys the socket after 1 s if the client keeps sending. The request stays paused, so reading still stops early.
+- `src/worker/index.ts` now exports `API_HEADERS` so the bridge can answer a 500 with the router's headers; nothing else in the router changed.
+- `server.connectionsCheckingInterval` is a constructor option only (no property), so the HTTP test checks the other timeouts and the maxRequestsPerSocket property.
+- `vitest.config.ts` (workerd) excludes `test/node/**`; `tsconfig.worker.json` excludes `test/node`.
+- Exit codes of `server/main.ts`: 2 bad config, missing or invalid site folder or `_selfhost.json`, or Node too old; 3 database locked; 1 anything else. On Node 22 the `ExperimentalWarning` from `node:sqlite` goes to stderr (tests run the server with `--no-warnings`).
