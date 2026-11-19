@@ -72,7 +72,7 @@ Notes:
 - Without `ONETIME_ORIGIN`, Compose refuses to build and prints why **(tested)**.
 - Never raise `scale`.
 - When Compose recreates the service, it stops the old container before it starts the new one **(not tested)**.
-- Compose adds a project prefix to names: the container is called something like `onetime-onetime-1` and the volume `onetime_onetime-data` (the prefix is the folder name by default). `docker compose ps` and `docker volume ls` show the real names. Use them in the backup commands below.
+- Compose adds a project prefix to names: the container is called something like `onetime-onetime-1` and the volume `onetime_onetime-data` (the prefix is the folder name by default). `docker compose ps` and `docker volume ls` show the real names. The Compose backup command below looks the volume name up itself.
 
 ## Docker without Compose
 
@@ -107,19 +107,22 @@ Use this if you run Node directly on the host. The unit `deploy/onetime.service`
 /opt/onetime/migrations/
 ```
 
-Build on any Linux machine with Node 22.13+, then copy the three folders and install the unit:
+Build on a Linux machine with Node 22.13+ and glibc (Debian, Ubuntu, Fedora and similar), then copy the three folders and install the unit. `pnpm install` fetches the `workerd` binary used by the test tooling, and that binary needs glibc. On an Alpine (musl) host, build with Docker instead (see [Docker without Compose](#docker-without-compose)), or build on a glibc machine and copy the three folders: running the server needs only Node **(not tested on an Alpine host)**.
 
 ```sh
 pnpm install --frozen-lockfile
 ONETIME_ORIGIN=https://onetime.example pnpm build:selfhost
 sudo mkdir -p /opt/onetime
 sudo cp -r dist-server dist-selfhost migrations /opt/onetime/
+sudo chmod -R a+rX /opt/onetime
 sudo cp deploy/onetime.service /etc/systemd/system/onetime.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now onetime
 ```
 
 What was tested here: the build, and running `node dist-server/server.mjs` from a copy of this layout **(tested)**. Copying to `/opt`, `systemctl` and starting the unit under systemd **(not tested)**. Getting pnpm on a bare host (the project pins the version in `package.json`; `corepack enable` provides it) **(not tested)**; it was only run inside the Docker build.
+
+The `chmod` is needed because the unit runs as a dynamic user that owns nothing in `/opt/onetime`. If your build ran with a strict umask (`077`), the copied files are readable by their owner only, and the service could not read its own code. `chmod -R a+rX` makes files readable and keeps execute bits only where they already were. Run on a copy made under `umask 077`: before the command, folders and files are `drwx------` and `-rw-------`; after it `drwxr-xr-x` and `-rw-r--r--` **(tested in a temporary folder; with a real dynamic user not tested)**.
 
 About the unit:
 
@@ -195,15 +198,26 @@ A backup has a cost: it keeps encrypted blobs for as long as you keep the backup
 
 If you back up, **stop the server first.** While it runs it holds the database locked and recent changes can sit in the WAL file next to it, so copying the files is not safe.
 
-Docker volume **(tested)**:
+Plain Docker volume **(tested)**:
 
 ```sh
 docker stop onetime
-docker run --rm -v onetime-data:/data:ro -v "$PWD":/backup node:24-alpine tar -czf /backup/onetime-data.tgz -C /data .
+docker run --rm -v onetime-data:/data:ro -v "$PWD":/backup node:24-alpine \
+  sh -c 'umask 077 && tar -czf /backup/onetime-data.tgz -C /data . && chown "$0:$1" /backup/onetime-data.tgz' "$(id -u)" "$(id -g)"
 docker start onetime
 ```
 
-The archive `onetime-data.tgz` in the current folder holds the database. With Compose, use the prefixed container and volume names (see the quick start). Restoring a backup **(not tested)**.
+Compose. Compose prefixes the volume name with the project name (`<project>_onetime-data`), so ask Docker for the real name instead of guessing it **(tested with a test project)**:
+
+```sh
+docker compose stop
+VOLUME=$(docker inspect -f '{{range .Mounts}}{{.Name}}{{end}}' "$(docker compose ps -aq onetime)")
+docker run --rm -v "$VOLUME":/data:ro -v "$PWD":/backup node:24-alpine \
+  sh -c 'umask 077 && tar -czf /backup/onetime-data.tgz -C /data . && chown "$0:$1" /backup/onetime-data.tgz' "$(id -u)" "$(id -g)"
+docker compose start
+```
+
+The archive `onetime-data.tgz` in the current folder holds the database, and it belongs to you with mode 0600. Without the `umask` and `chown` the helper container (which runs as root) would write a root-owned archive that anyone can read. `docker run --user "$(id -u):$(id -g)"` does not work as a replacement: the data folder belongs to uid 1000 and has mode 0700, so any other user gets "Permission denied" and an empty archive **(tested)**. Restoring a backup **(not tested)**.
 
 ## Updating
 
@@ -214,7 +228,19 @@ The archive `onetime-data.tgz` in the current folder holds the database. With Co
 
 Database changes are applied automatically at start.
 
-With Compose, the same `docker compose up -d --build` command as in the quick start does steps 2 to 4. With plain Docker, stop and remove the old container (`docker stop onetime`, `docker rm onetime`), then run the build and run commands again. With systemd, replace the three folders in `/opt/onetime` and restart the unit. This update order **(not tested)** as a whole; the single commands are the ones from the sections above.
+With Compose, the same `docker compose up -d --build` command as in the quick start does steps 2 to 4. With plain Docker, stop and remove the old container (`docker stop onetime`, `docker rm onetime`), then run the build and run commands again. This update order **(not tested)** as a whole; the single commands are the ones from the sections above.
+
+With systemd, do not copy over the old folders: `cp -r` merges, so assets of the old build (`dist-selfhost/assets/main-<old hash>.js`) stay behind. Replace the folders instead, from the folder with the new build:
+
+```sh
+sudo systemctl stop onetime
+sudo rm -rf /opt/onetime/dist-server /opt/onetime/dist-selfhost /opt/onetime/migrations
+sudo cp -r dist-server dist-selfhost migrations /opt/onetime/
+sudo chmod -R a+rX /opt/onetime
+sudo systemctl start onetime
+```
+
+The database is not in `/opt/onetime` (it is in `/var/lib/onetime`), so it stays. Run in a temporary folder with an old install containing a stale asset: after the `rm` and `cp` only the new files were there **(tested in a temporary folder; the `systemctl` lines not tested)**.
 
 ## Command-line client
 
@@ -259,6 +285,7 @@ Set these in the server's environment.
 |---|---|---|
 | `HOST` | `127.0.0.1` (Docker image: `0.0.0.0`) | Address to listen on. |
 | `PORT` | `8080` | Port. |
+| `ONETIME_DIST` | `dist-selfhost` next to `dist-server/` (image: `/app/dist-selfhost`, systemd layout: `/opt/onetime/dist-selfhost`) | Folder with the built site (`pnpm build:selfhost`). The server refuses to start if it has no `_selfhost.json`, for example the Pages `dist/`. Relative paths are resolved against the working directory. |
 | `ONETIME_DB` | `./data/onetime.db` (image: `/data/onetime.db`, systemd unit: `/var/lib/onetime/onetime.db`) | Database file. Its folder is created with mode 0700. |
 | `ONETIME_MAX_STORED` | `20000` | Most unexpired secrets stored at once. Creating a secret answers 503 when full. |
 
@@ -298,6 +325,8 @@ The project ran these checks on 2026-11-19 on Linux with Docker 26.1.4, Node 22.
 - **systemd unit:** `systemd-analyze verify` passes; `systemd-analyze security` rates it 1.3 OK. The unit was not started.
 - **Without Docker:** the three folders copied to a temporary location and started with `node dist-server/server.mjs`: health check 200, data folder 0700, database 0600, ExperimentalWarning on Node 22. The operator settings appear on the privacy page.
 - **CLI** downloaded from the container: checksum OK, `send` and `get` work with `--server` and `ONETIME_SERVER`, a second `get` reports the secret as already opened, and without a server option it uses the built-in origin.
-- **Backup:** `tar` of the volume after `docker stop` holds the database.
+- **Backup:** `tar` of the volume after `docker stop` holds the database; the final command with `umask` and `chown` was run on a plain named volume (archive owned by the host user, mode 0600). With a Compose test project, the volume name found with `docker inspect` is the prefixed one, the archive made with `umask 077` and an in-container `chown` belongs to the host user with mode 0600, and `--user` with a host uid other than 1000 fails with "Permission denied". The test project, its volume and its image were removed afterwards.
+- **systemd layout, in a temporary folder:** replacing the three folders removes stale assets of the old build; `chmod -R a+rX` turns `drwx------`/`-rw-------` copies into `drwxr-xr-x`/`-rw-r--r--`.
+- **Start-up warning:** a world-readable data folder makes the server print one line to stderr and keep running; a folder it creates itself prints nothing.
 
 Not tested by the project: starting the systemd unit, `chown` for bind mounts, certbot and acme.sh, a public CA certificate with Caddy, proxy rate limiting, the Compose recreate order, pnpm via corepack on a bare host, restoring a backup, arm64 images, AWS EC2 and Lightsail instances, Azure VMs, and macOS or Windows hosts.
