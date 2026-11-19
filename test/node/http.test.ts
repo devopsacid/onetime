@@ -9,6 +9,8 @@ import { openSqliteStore, type SqliteStore } from "../../server/store-sqlite";
 import { MAX_BLOB_BYTES } from "../../src/shared/limits";
 import { makeDist, migrations, tempDir } from "./helpers";
 
+// Under the server's 2 MB drain cap (so a correct server drains it all), written over ~0.5 s (so a server that closes without draining always has data still arriving).
+const SIZE = 1536 * 1024;
 const tmp = tempDir();
 let store: SqliteStore;
 let server: Server;
@@ -173,12 +175,18 @@ describe("API bridge", () => {
         (mode === "chunked" ? "Transfer-Encoding: chunked\\r\\n\\r\\n" : "Content-Length: " + total + "\\r\\n\\r\\n");
       s.pause();
       s.write(head);
-      if (mode === "chunked") {
-        for (let i = 0; i < total; i += 4096) { const p = body.subarray(i, i + 4096); s.write(p.length.toString(16) + "\\r\\n"); s.write(p); s.write("\\r\\n"); }
-        s.write("0\\r\\n\\r\\n");
-      } else s.write(body);
-      setTimeout(() => s.resume(), 300);
-      setTimeout(() => process.exit(2), 5000);
+      const PIECE = 65536;
+      let i = 0;
+      const pump = () => {
+        if (i >= total) { if (mode === "chunked") s.write("0\\r\\n\\r\\n"); return; }
+        const p = body.subarray(i, i + PIECE);
+        i += PIECE;
+        if (mode === "chunked") { s.write(p.length.toString(16) + "\\r\\n"); s.write(p); s.write("\\r\\n"); } else s.write(p);
+        setTimeout(pump, 20);
+      };
+      pump();
+      setTimeout(() => s.resume(), 700);
+      setTimeout(() => process.exit(2), 8000);
     `;
     const run = (mode: string, size: number) =>
       new Promise<string>((resolve) => {
@@ -189,7 +197,7 @@ describe("API bridge", () => {
       });
     const results: string[] = [];
     for (let i = 0; i < 4; i++) {
-      results.push(await run("chunked", 1024 * 1024), await run("length", 1024 * 1024));
+      results.push(await run("chunked", SIZE), await run("length", SIZE));
     }
     expect(results).toEqual(Array(8).fill("HTTP/1.1 413 Payload Too Large"));
   }, 60_000);
