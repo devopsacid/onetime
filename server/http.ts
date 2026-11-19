@@ -23,7 +23,7 @@ function logFailure(error: unknown): void {
   process.stderr.write(`onetime: request failed (${label.replace(/[^\w.-]/g, "").slice(0, 60)})\n`);
 }
 
-interface BoundedBody {
+export interface BoundedBody {
   stream: ReadableStream<Uint8Array>;
   /** True once the request body was read to its end. */
   complete(): boolean;
@@ -34,7 +34,7 @@ interface BoundedBody {
  * Not Readable.toWeb(req): its cancel() destroys the socket, so the router's 413 could not be written.
  * Cancelling here only pauses the request.
  */
-function boundedBody(req: IncomingMessage): BoundedBody {
+export function boundedBody(req: IncomingMessage): BoundedBody {
   const limit = MAX_BLOB_BYTES + 1;
   let total = 0;
   let complete = false;
