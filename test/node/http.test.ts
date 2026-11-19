@@ -1,0 +1,312 @@
+import { request as httpRequest, type Server } from "node:http";
+import { connect, type AddressInfo } from "node:net";
+import { join } from "node:path";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { createApp } from "../../server/http";
+import { loadSite } from "../../server/static";
+import { openSqliteStore, type SqliteStore } from "../../server/store-sqlite";
+import { MAX_BLOB_BYTES } from "../../src/shared/limits";
+import { makeDist, migrations, tempDir } from "./helpers";
+
+const tmp = tempDir();
+let store: SqliteStore;
+let server: Server;
+let drain: () => Promise<void>;
+let base: string;
+let port: number;
+let bytesReadAtFinish: number[] = [];
+
+beforeAll(async () => {
+  store = openSqliteStore(join(tmp.path, "http.db"), migrations());
+  const app = createApp({ store, site: loadSite(makeDist(tmp.path)), maxStored: 20_000 });
+  server = app.server;
+  drain = app.drain;
+  server.on("request", (req, res) => res.on("close", () => bytesReadAtFinish.push(req.socket.bytesRead)));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  port = (server.address() as AddressInfo).port;
+  base = `http://127.0.0.1:${port}`;
+});
+afterAll(async () => {
+  server.closeAllConnections();
+  await new Promise((resolve) => server.close(resolve));
+  await drain();
+  await store.close();
+  tmp.remove();
+});
+afterEach(() => {
+  bytesReadAtFinish = [];
+  vi.restoreAllMocks();
+});
+
+const blobOf = (n: number) => crypto.getRandomValues(new Uint8Array(n));
+const create = (body: Uint8Array, ttl = 3600) =>
+  fetch(`${base}/api/secrets?ttl=${ttl}`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body });
+
+interface Raw {
+  status: number;
+  headers: Record<string, string | string[] | undefined>;
+  body: string;
+  serverBytesRead: number;
+}
+
+/** Sends `total` bytes as a chunked body in 1 KB pieces, stopping when the server stops reading or closes. */
+function sendChunked(path: string, total: number): Promise<Raw> {
+  return new Promise((resolve, reject) => {
+    bytesReadAtFinish = [];
+    const req = httpRequest({ host: "127.0.0.1", port, method: "POST", path, headers: { "Content-Type": "application/octet-stream" } });
+    let finished = false;
+    req.on("response", (res) => {
+      let body = "";
+      res.on("data", (d) => (body += d));
+      res.on("end", () => {
+        finished = true;
+        req.destroy();
+        setTimeout(() => resolve({ status: res.statusCode!, headers: res.headers, body, serverBytesRead: bytesReadAtFinish[0] ?? -1 }), 50);
+      });
+    });
+    req.on("error", (e) => (finished ? undefined : reject(e)));
+    let sent = 0;
+    const chunk = Buffer.alloc(1024, 7);
+    const pump = () => {
+      while (!finished && sent < total) {
+        sent += chunk.length;
+        if (!req.write(chunk)) return void req.once("drain", pump);
+      }
+      if (!finished) req.end();
+    };
+    pump();
+  });
+}
+
+describe("API bridge", () => {
+  it("round-trips a secret and burns it only on POST reveal", async () => {
+    const blob = blobOf(300);
+    const created = await create(blob);
+    expect(created.status).toBe(201);
+    const { id } = (await created.json()) as { id: string };
+
+    expect((await fetch(`${base}/api/secrets/${id}`)).status).toBe(200);
+    const preview = await fetch(`${base}/api/secrets/${id}/reveal`);
+    expect(preview.status).toBe(405);
+    expect(preview.headers.get("allow")).toBe("POST");
+    expect((await fetch(`${base}/api/secrets/${id}`)).status).toBe(200);
+
+    const first = await fetch(`${base}/api/secrets/${id}/reveal`, { method: "POST" });
+    expect(first.status).toBe(200);
+    expect(first.headers.get("content-type")).toBe("application/octet-stream");
+    expect(first.headers.get("content-length")).toBe(String(blob.length));
+    expect(new Uint8Array(await first.arrayBuffer())).toEqual(blob);
+    expect((await fetch(`${base}/api/secrets/${id}/reveal`, { method: "POST" })).status).toBe(404);
+  });
+
+  it("returns every byte value unchanged", async () => {
+    const blob = new Uint8Array(300);
+    for (let i = 0; i < blob.length; i++) blob[i] = i % 256;
+    const { id } = (await (await create(blob)).json()) as { id: string };
+    const r = await fetch(`${base}/api/secrets/${id}/reveal`, { method: "POST" });
+    expect(new Uint8Array(await r.arrayBuffer())).toEqual(blob);
+  });
+
+  it("accepts a chunked upload within the limit", async () => {
+    const r = await sendChunked("/api/secrets?ttl=3600", 4096);
+    expect(r.status).toBe(201);
+  });
+
+  it("carries the API headers and no CSP on API responses, success or error", async () => {
+    for (const r of [await create(blobOf(64)), await fetch(`${base}/api/secrets`), await fetch(`${base}/api/nope`), await fetch(`${base}/api`)]) {
+      expect(r.headers.get("cache-control")).toBe("no-store");
+      expect(r.headers.get("x-robots-tag")).toBe("noindex");
+      expect(r.headers.get("content-security-policy")).toBeNull();
+      await r.arrayBuffer();
+    }
+    expect((await fetch(`${base}/api`)).status).toBe(404);
+  });
+
+  it("answers an over-limit chunked body with a 413 response, not a reset, and stops reading early", async () => {
+    const r = await sendChunked("/api/secrets?ttl=3600", MAX_BLOB_BYTES * 50);
+    expect(r.status).toBe(413);
+    expect(r.headers["connection"]).toBe("close");
+    expect(r.serverBytesRead).toBeGreaterThan(0);
+    expect(r.serverBytesRead).toBeLessThan(MAX_BLOB_BYTES * 10);
+    expect(JSON.parse(r.body)).toEqual({ error: "Secret is too large" });
+  });
+
+  it("answers an honest oversized Content-Length with 413 without reading the body", async () => {
+    const result = await new Promise<Raw>((resolve, reject) => {
+      bytesReadAtFinish = [];
+      const req = httpRequest({
+        host: "127.0.0.1",
+        port,
+        method: "POST",
+        path: "/api/secrets?ttl=3600",
+        headers: { "Content-Type": "application/octet-stream", "Content-Length": String(MAX_BLOB_BYTES * 10) },
+      });
+      req.on("response", (res) => {
+        let body = "";
+        res.on("data", (d) => (body += d));
+        res.on("end", () => {
+          req.destroy();
+          setTimeout(() => resolve({ status: res.statusCode!, headers: res.headers, body, serverBytesRead: bytesReadAtFinish[0] ?? -1 }), 50);
+        });
+      });
+      req.on("error", reject);
+      req.write(Buffer.alloc(100, 1)); // a little body, the rest never comes
+    });
+    expect(result.status).toBe(413);
+    expect(result.serverBytesRead).toBeLessThan(MAX_BLOB_BYTES);
+  });
+
+  it("stores nothing for a rejected upload and still serves the next request on a new connection", async () => {
+    const before = (store.db.prepare("SELECT COUNT(*) AS n FROM secrets").get() as { n: number }).n;
+    expect((await sendChunked("/api/secrets?ttl=3600", MAX_BLOB_BYTES * 30)).status).toBe(413);
+    expect((store.db.prepare("SELECT COUNT(*) AS n FROM secrets").get() as { n: number }).n).toBe(before);
+    expect((await create(blobOf(64))).status).toBe(201);
+  });
+
+  it("answers 415 and 400 without leaving the connection in a bad state", async () => {
+    const bad = await fetch(`${base}/api/secrets?ttl=3600`, { method: "POST", headers: { "Content-Type": "text/plain" }, body: "hello" });
+    expect(bad.status).toBe(415);
+    expect((await fetch(`${base}/api/secrets?ttl=1`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: blobOf(64) })).status).toBe(400);
+    expect((await create(blobOf(64))).status).toBe(201);
+  });
+
+  it("answers 500 with the API headers and logs one line without the path or id", async () => {
+    const write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const app = createApp({
+      store: { ...store, take: async () => Promise.reject(Object.assign(new Error("boom with id AAAAAAAAAAAAAAAAAAAAAA"), { code: "X_FAIL" })) },
+      site: loadSite(makeDist(tempDir().path)),
+      maxStored: 10,
+    });
+    await new Promise<void>((resolve) => app.server.listen(0, "127.0.0.1", resolve));
+    const p = (app.server.address() as AddressInfo).port;
+    const r = await fetch(`http://127.0.0.1:${p}/api/secrets/AAAAAAAAAAAAAAAAAAAAAA/reveal`, { method: "POST" });
+    expect(r.status).toBe(500);
+    expect(r.headers.get("cache-control")).toBe("no-store");
+    expect(r.headers.get("x-robots-tag")).toBe("noindex");
+    expect(r.headers.get("content-security-policy")).toBeNull();
+    app.server.closeAllConnections();
+    await new Promise((resolve) => app.server.close(resolve));
+    const lines = write.mock.calls.map((c) => String(c[0]));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).not.toMatch(/AAAAAAAAAAAAAAAAAAAAAA|\/api\//);
+    expect(lines[0]).toContain("X_FAIL");
+  });
+});
+
+describe("/healthz", () => {
+  it("answers 200 ok with no-store and noindex for GET and HEAD, 405 for others", async () => {
+    const get = await fetch(`${base}/healthz`);
+    expect(get.status).toBe(200);
+    expect(await get.text()).toBe("ok");
+    expect(get.headers.get("cache-control")).toBe("no-store");
+    expect(get.headers.get("x-robots-tag")).toBe("noindex");
+    const head = await fetch(`${base}/healthz`, { method: "HEAD" });
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe("");
+    const post = await fetch(`${base}/healthz`, { method: "POST" });
+    expect(post.status).toBe(405);
+    expect(post.headers.get("allow")).toBe("GET, HEAD");
+  });
+
+  it("answers 503 when the store does not respond", async () => {
+    const app = createApp({
+      store: { ...store, ping: async () => Promise.reject(new Error("down")) },
+      site: loadSite(makeDist(tempDir().path)),
+      maxStored: 10,
+    });
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    await new Promise<void>((resolve) => app.server.listen(0, "127.0.0.1", resolve));
+    const r = await fetch(`http://127.0.0.1:${(app.server.address() as AddressInfo).port}/healthz`);
+    expect(r.status).toBe(503);
+    expect(r.headers.get("cache-control")).toBe("no-store");
+    app.server.closeAllConnections();
+    await new Promise((resolve) => app.server.close(resolve));
+  });
+});
+
+describe("static through HTTP", () => {
+  it("serves pages with the _headers rules and keeps them off the API", async () => {
+    const root = await fetch(`${base}/`);
+    expect(root.status).toBe(200);
+    expect(root.headers.get("content-security-policy")).toContain("default-src 'none'");
+    expect(root.headers.get("cache-control")).toBe("no-store");
+    expect(root.headers.get("content-length")).toBe(String((await root.arrayBuffer()).byteLength));
+  });
+
+  it("redirects, 404s, HEAD and 304 work", async () => {
+    const redirect = await fetch(`${base}/how-it-works.html`, { redirect: "manual" });
+    expect(redirect.status).toBe(308);
+    expect(redirect.headers.get("location")).toBe("/how-it-works");
+    expect((await fetch(`${base}/nope`)).status).toBe(404);
+    const head = await fetch(`${base}/robots.txt`, { method: "HEAD" });
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe("");
+    const etag = head.headers.get("etag")!;
+    const cached = await fetch(`${base}/robots.txt`, { headers: { "If-None-Match": etag } });
+    expect(cached.status).toBe(304);
+    expect(await cached.text()).toBe("");
+    expect((await fetch(`${base}/`, { method: "POST" })).status).toBe(405);
+  });
+
+  it("never serves _headers, _routes.json or _selfhost.json", async () => {
+    for (const path of ["/_headers", "/_routes.json", "/_selfhost.json"]) expect((await fetch(`${base}${path}`)).status).toBe(404);
+  });
+
+  it("answers 400 for traversal and for a request target that is not a path", async () => {
+    const reply = await new Promise<string>((resolve) => {
+      const socket = connect(port, "127.0.0.1", () => socket.write("GET /%2e%2e/etc/passwd HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"));
+      let data = "";
+      socket.on("data", (d) => (data += d));
+      socket.on("close", () => resolve(data));
+    });
+    expect(reply.startsWith("HTTP/1.1 400")).toBe(true);
+    for (const target of ["http://evil.example/", "*"]) {
+      const out = await new Promise<string>((resolve) => {
+        const socket = connect(port, "127.0.0.1", () => socket.write(`GET ${target} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n`));
+        let data = "";
+        socket.on("data", (d) => (data += d));
+        socket.on("close", () => resolve(data));
+      });
+      expect([target, out.startsWith("HTTP/1.1 400")]).toEqual([target, true]);
+    }
+  });
+
+  it("ignores the Host header", async () => {
+    const reply = await new Promise<string>((resolve) => {
+      const socket = connect(port, "127.0.0.1", () =>
+        socket.write("GET /how-it-works.html HTTP/1.1\r\nHost: evil.example\r\nX-Forwarded-Host: evil.example\r\nX-Forwarded-For: 1.2.3.4\r\nConnection: close\r\n\r\n"),
+      );
+      let data = "";
+      socket.on("data", (d) => (data += d));
+      socket.on("close", () => resolve(data));
+    });
+    expect(reply).toMatch(/^HTTP\/1\.1 308/);
+    expect(reply).toMatch(/\r\nlocation: \/how-it-works\r\n/i);
+    expect(reply).not.toMatch(/evil\.example|1\.2\.3\.4/);
+  });
+});
+
+describe("server settings and silence", () => {
+  it("configures the timeouts and limits", () => {
+    expect(server.requestTimeout).toBe(15_000);
+    expect(server.headersTimeout).toBe(10_000);
+    expect(server.keepAliveTimeout).toBe(5_000);
+    expect(server.maxRequestsPerSocket).toBe(100);
+  });
+
+  it("writes nothing to stdout or stderr while serving requests", async () => {
+    const out = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const err = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const { id } = (await (await create(blobOf(64))).json()) as { id: string };
+    await fetch(`${base}/api/secrets/${id}`);
+    await fetch(`${base}/api/secrets/${id}/reveal`, { method: "POST" });
+    await fetch(`${base}/api/secrets/${id}/reveal`, { method: "POST" });
+    await fetch(`${base}/`);
+    await fetch(`${base}/nope`);
+    await fetch(`${base}/healthz`);
+    await sendChunked("/api/secrets?ttl=3600", MAX_BLOB_BYTES * 20);
+    await drain();
+    expect(out).not.toHaveBeenCalled();
+    expect(err).not.toHaveBeenCalled();
+  });
+});
