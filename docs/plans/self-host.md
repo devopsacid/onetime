@@ -177,9 +177,9 @@ Captured with curl from https://onetimepass.pages.dev on 2026-11-19. The Node se
 | `/how-it-works/` | 308 → `/how-it-works` | only `/*` (strict CSP, no Cache-Control) |
 | `/404` | 200 (404.html) | `/*` + `/404` |
 | `/nope`, `/nope.html`, `/assets/`, `/assets/nope.js`, `/cli`, `/cli/`, `/_headers`, `/_routes.json`, `/HOW-IT-WORKS` | 404 with 404.html body | request-path rules, then **Cache-Control forced to `no-store`** (`/assets/nope.js` is not `immutable`; `/cli/` keeps `X-Robots-Tag: noindex`) |
-| `/../etc/passwd`, `/%2e%2e/etc/passwd` | 400 | none |
+| `/../etc/passwd`, `/%2e%2e/etc/passwd` | 400 | live: Cloudflare's own error page, no site headers. Node: `Content-Type: text/plain` and `Cache-Control: no-store` only, no rule headers (see Deviations, fix round 2) |
 | files without a Cache-Control rule (`/robots.txt`, `/favicon.svg`, `/cli/onetime.mjs`, `/manifest.webmanifest`) | 200 | Pages default `Cache-Control: public, max-age=0, must-revalidate` + ETag |
-| `If-None-Match` matching | 304 | same headers, no body |
+| `If-None-Match` matching | 304 | the 200's headers without a body, including `ETag` and the `Cache-Control` (live omits `ETag` and a default `Cache-Control` on a 304; see Deviations, fix round 2) |
 
 Content types seen live: html `text/html; charset=utf-8`; js/mjs `application/javascript`; `.webmanifest` `application/manifest+json`; svg `image/svg+xml`; png `image/png`; txt `text/plain; charset=utf-8`; xml `application/xml`; `.cmd` and `.sha256` `application/octet-stream`. Use css `text/css; charset=utf-8`, json `application/json`, and `application/octet-stream` for anything else.
 
@@ -457,3 +457,9 @@ Verification results (Docker 26.1.4, Node 22.22.1 on the host, `node:24-alpine` 
 - Volume backup with `tar` after `docker stop`: archive holds `onetime.db` (0600, node:node).
 
 Not tested: systemd start of the unit, `chown 1000` for bind mounts, certbot/acme.sh, proxy rate limiting, corepack on a bare host (it ran in the Docker build), AWS, Azure, arm64 images, a public CA certificate with Caddy.
+
+## Deviations (fix round 2, 2026-11-19)
+
+- 304 (3.4): live sends no `ETag`, and for files without a `Cache-Control` rule no `Cache-Control`, on a 304 (checked with curl on `/robots.txt` and `/how-it-works`). The Node server keeps both. RFC 9110 section 15.4.5 says a 304 should carry the headers a 200 would have, so a cache can update its stored entry; sending `ETag` and `Cache-Control` is safe and more correct. The table in 3.4 now says so; `test/node/static.test.ts` pins it.
+- 400 for dot-segments (3.4): the live 400 is Cloudflare's edge error page, which carries none of the site's rule headers. The Node 400 sends `Content-Type: text/plain; charset=utf-8` and `Cache-Control: no-store` and nothing from `_headers` (no CSP on a plain-text error). Kept as is, because an uncacheable 400 is safer than a bare one; the table says so and a test pins the exact header names.
+- Slow clients: Node reports `headersTimeout` and `requestTimeout` through `clientError` with `ERR_HTTP_REQUEST_TIMEOUT`. The bridge's handler answered those with 400; it now answers 408 and still closes. Other client errors stay 400. Tests: a fake-socket unit test and a real socket that never finishes its headers (about 10 s).

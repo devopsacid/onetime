@@ -151,6 +151,26 @@ describe("static site", () => {
     expect(site.resolve("/robots.txt", "GET", '"other"').status).toBe(200);
   });
 
+  it("keeps ETag, the rule headers and Cache-Control on a 304 (live omits ETag and the default Cache-Control; RFC 9110 asks for them)", () => {
+    for (const path of ["/how-it-works", "/robots.txt", "/assets/main-abc123.js"]) {
+      const full = get(path);
+      const r = site.resolve(path, "GET", hdr(full, "ETag"));
+      expect([path, r.status]).toEqual([path, 304]);
+      expect(r.headers.map(([n]) => n.toLowerCase()).filter((n) => n !== "content-type" && n !== "content-length")).toEqual(
+        full.headers.map(([n]) => n.toLowerCase()).filter((n) => n !== "content-type" && n !== "content-length"),
+      );
+      expect(hdr(r, "Cache-Control")).toBe(hdr(full, "Cache-Control"));
+      expect(hdr(r, "ETag")).toBe(hdr(full, "ETag"));
+    }
+  });
+
+  it("sends a 400 with only Content-Type, Cache-Control and no site rule headers", () => {
+    const r = get("/%2e%2e/etc/passwd");
+    expect(r.status).toBe(400);
+    expect(r.headers.map(([n]) => n.toLowerCase()).sort()).toEqual(["cache-control", "content-type"]);
+    expect(hdr(r, "Cache-Control")).toBe("no-store");
+  });
+
   it("answers HEAD with the GET headers and no body", () => {
     const head = site.resolve("/how-it-works", "HEAD");
     const full = get("/how-it-works");

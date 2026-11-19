@@ -237,8 +237,10 @@ export function createApp({ store, site, maxStored }: AppDeps): App {
     },
   );
   server.maxRequestsPerSocket = 100;
-  server.on("clientError", (_error, socket) => {
-    if (socket.writable) socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+  server.on("clientError", (error: NodeJS.ErrnoException, socket) => {
+    // headersTimeout and requestTimeout both arrive here with this code; Node's own default answers them with 408.
+    const line = error.code === "ERR_HTTP_REQUEST_TIMEOUT" ? "408 Request Timeout" : "400 Bad Request";
+    if (socket.writable) socket.end(`HTTP/1.1 ${line}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
     else socket.destroy();
   });
 

@@ -309,6 +309,32 @@ describe("static through HTTP", () => {
     }
   });
 
+  it("answers a client that is too slow with 408 and closes, not with 400", async () => {
+    const written: string[] = [];
+    let destroyed = false;
+    const socket = { writable: true, end: (text: string) => void written.push(text), destroy: () => void (destroyed = true) };
+    const slow = Object.assign(new Error("timeout"), { code: "ERR_HTTP_REQUEST_TIMEOUT" });
+    server.emit("clientError", slow, socket);
+    expect(written).toHaveLength(1);
+    expect(written[0]).toMatch(/^HTTP\/1\.1 408 Request Timeout\r\n/);
+    expect(written[0]).toMatch(/\r\nConnection: close\r\n/);
+    const broken = Object.assign(new Error("bad"), { code: "HPE_INVALID_METHOD" });
+    server.emit("clientError", broken, { ...socket, end: (text: string) => void written.push(text) });
+    expect(written[1]).toMatch(/^HTTP\/1\.1 400 Bad Request\r\n/);
+    server.emit("clientError", slow, { ...socket, writable: false });
+    expect(destroyed).toBe(true);
+  });
+
+  it("answers 408 over a real socket that never finishes its headers", async () => {
+    const reply = await new Promise<string>((resolve) => {
+      const socket = connect(port, "127.0.0.1", () => socket.write("GET / HTTP/1.1\r\nHost: x\r\n"));
+      let data = "";
+      socket.on("data", (d) => (data += d));
+      socket.on("close", () => resolve(data));
+    });
+    expect(reply.startsWith("HTTP/1.1 408")).toBe(true);
+  }, 30_000);
+
   it("ignores the Host header", async () => {
     const reply = await new Promise<string>((resolve) => {
       const socket = connect(port, "127.0.0.1", () =>
