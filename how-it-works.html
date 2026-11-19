@@ -30,6 +30,7 @@
     <meta name="twitter:description" content="How onetime encrypts a secret in your browser, what the server stores and never sees, when the data is deleted, and what it cannot protect against." />
     <meta name="twitter:image" content="https://onetimepass.pages.dev/og-image.png" />
     <meta name="twitter:image:alt" content="onetime: share a secret with a link that works once" />
+    <!-- site:onetimepass -->
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -115,6 +116,94 @@
         ]
       }
     </script>
+    <!-- /site:onetimepass -->
+    <!-- site:selfhost
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "onetime",
+                "item": "https://onetimepass.pages.dev/"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "How it works",
+                "item": "https://onetimepass.pages.dev/how-it-works"
+              }
+            ]
+          },
+          {
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "Can you read my secret?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. The server only receives encrypted data. The key that decrypts it is in the part of the link after #, which is never sent to the server."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Why does opening the link not show the secret right away?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Chat apps and email scanners often open links to build previews. If opening the link used the secret up, a preview could destroy it before the recipient sees it. Only pressing “Reveal” uses it."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "The recipient says the secret is “no longer available”. What now?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "The link was already opened or has expired. If the recipient did not open it, someone else may have. Change the password or token you shared, then send a new link."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What happens if the link is cut off or changed?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "If the link is incomplete, the page says so before anything is used up. If the key was changed, decryption fails instead of showing wrong text. In that case the secret has already been deleted, so ask for a new link."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "I lost the link. Can you send it again?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. The link is the only copy of the key, and the server never had it. Create a new link."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How large can a secret be?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Up to 16 KB. The service holds a limited number of unopened secrets at once (20,000 unless the operator of this instance changed it); when it is full, creating a new link fails until space frees up."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Does the site use cookies or analytics?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. No page of this site sets cookies, runs analytics or loads anything from other sites. Your theme choice is remembered only in your own browser’s storage."
+                }
+              }
+            ]
+          }
+        ]
+      }
+    </script>
+    site:selfhost -->
     <link rel="stylesheet" href="/src/web/style.css" />
     <script type="module" src="/src/web/info.ts"></script>
   </head>
@@ -231,9 +320,15 @@
           <li>
             <h3>The server stores unreadable data</h3>
             <p>
+              <!-- site:onetimepass -->
               Only the encrypted data (IV, ciphertext and authentication tag) is uploaded. The server, a Cloudflare
               Pages Function, picks a random 128-bit id and stores one row: the id, the encrypted data and the expiry
               time.
+              <!-- /site:onetimepass -->
+              <!-- site:selfhost
+              Only the encrypted data (IV, ciphertext and authentication tag) is uploaded. The server picks a random
+              128-bit id and stores one row: the id, the encrypted data and the expiry time.
+              site:selfhost -->
             </p>
           </li>
           <li>
@@ -299,7 +394,12 @@
               <li>The expiry time</li>
             </ul>
             <p class="hint">
+              <!-- site:onetimepass -->
               One row in a Cloudflare D1 database. It is deleted when the secret is revealed, or after it expires (see
+              <!-- /site:onetimepass -->
+              <!-- site:selfhost
+              One row in an SQLite database on the server. It is deleted when the secret is revealed, or after it expires (see
+              site:selfhost -->
               <a href="#deletion">when the data is deleted</a>).
             </p>
           </div>
@@ -313,14 +413,28 @@
             <ul class="crosses">
               <li>Your IP address</li>
               <li>Accounts</li>
+              <!-- site:onetimepass -->
               <li>Cookies (the page where secrets are handled sets none; this page sets Google Analytics cookies only if you accept)</li>
               <li>Your browser and device details (user agent)</li>
               <li>Analytics (none on the page where secrets are handled)</li>
+              <!-- /site:onetimepass -->
+              <!-- site:selfhost
+              <li>Cookies (no page of this site sets any)</li>
+              <li>Your browser and device details (user agent)</li>
+              <li>Analytics (none on any page)</li>
+              site:selfhost -->
             </ul>
             <p class="hint">
+              <!-- site:onetimepass -->
               Cloudflare, the host, sees IP addresses and request details as part of serving any website. The page where secrets are handled loads
               no third-party scripts, fonts or trackers. Only the information pages, and only if you accept, use Google Analytics
               (see <a href="/privacy">privacy</a>).
+              <!-- /site:onetimepass -->
+              <!-- site:selfhost
+              The host of this instance sees IP addresses and request details as part of serving any website; whether it keeps
+              connection logs is up to the operator of this instance. No page of this site loads third-party scripts, fonts or
+              trackers (see <a href="/privacy">privacy</a>).
+              site:selfhost -->
             </p>
           </div>
         </div>
@@ -353,6 +467,7 @@
               you leave it.
             </p>
           </li>
+          <!-- site:onetimepass -->
           <li>
             <h3>Cloudflare’s recovery copy</h3>
             <p>
@@ -361,6 +476,17 @@
               Without the key in the link it cannot be read.
             </p>
           </li>
+          <!-- /site:onetimepass -->
+          <!-- site:selfhost
+          <li>
+            <h3>Database files and backups</h3>
+            <p>
+              This instance keeps secrets in an SQLite database. A deleted row can remain for a while in the database’s
+              write-ahead log or in unused space in its files, and in any backups or disk snapshots the operator of this
+              instance makes. Those copies hold only the encrypted data. Without the key in the link they cannot be read.
+            </p>
+          </li>
+          site:selfhost -->
         </ul>
       </section>
 
@@ -456,14 +582,25 @@
           <details>
             <summary>How large can a secret be?</summary>
             <p>
+              <!-- site:onetimepass -->
               Up to 16 KB. The service holds at most 20,000 unopened secrets at once; when it is full, creating a new link
               fails until space frees up.
+              <!-- /site:onetimepass -->
+              <!-- site:selfhost
+              Up to 16 KB. The service holds a limited number of unopened secrets at once (20,000 unless the operator of
+              this instance changed it); when it is full, creating a new link fails until space frees up.
+              site:selfhost -->
             </p>
           </details>
           <details>
             <summary>Does the site use cookies or analytics?</summary>
             <p>
+              <!-- site:onetimepass -->
               The page where secrets are created and opened loads nothing from other sites and has no analytics or cookies. The information pages (how it works, command line, privacy) use Google Analytics to count visits only if you accept. Your theme choice and your cookie choice are remembered only in your own browser’s storage.
+              <!-- /site:onetimepass -->
+              <!-- site:selfhost
+              No. No page of this site sets cookies, runs analytics or loads anything from other sites. Your theme choice is remembered only in your own browser’s storage.
+              site:selfhost -->
             </p>
           </details>
         </div>
@@ -473,8 +610,14 @@
     </main>
 
     <footer class="site-footer site-footer-plain">
+      <!-- site:onetimepass -->
       <p>No accounts. Secrets are encrypted on your device. The page where secrets are created and opened has no analytics or cookies. This page uses Google Analytics only if you accept. Your theme choice and this choice are saved in your browser.</p>
       <p><a href="/">Share a secret</a> · <a href="/command-line">Command-line tool</a> · <a href="/privacy">Privacy</a> · <a href="/privacy#cookies" data-cookie-settings>Cookie settings</a></p>
+      <!-- /site:onetimepass -->
+      <!-- site:selfhost
+      <p>No accounts. Secrets are encrypted on your device. No page of this site uses analytics or cookies. Your theme choice is saved in your browser.</p>
+      <p><a href="/">Share a secret</a> · <a href="/command-line">Command-line tool</a> · <a href="/privacy">Privacy</a></p>
+      site:selfhost -->
     </footer>
   </body>
 </html>

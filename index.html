@@ -238,8 +238,14 @@
           <li>
             <strong>No accounts, no cookies.</strong>
             Unopened links expire after 1 hour, 1 day or 7 days. The site’s code stores no accounts, cookies or IP
+            <!-- site:onetimepass -->
             addresses. This page loads nothing from other sites and has no analytics. Cloudflare, which hosts it, handles
             connections as any host does. Your theme choice is kept in your browser.
+            <!-- /site:onetimepass -->
+            <!-- site:selfhost
+            addresses. This page loads nothing from other sites and has no analytics. The host of this instance handles
+            connections as any host does. Your theme choice is kept in your browser.
+            site:selfhost -->
           </li>
         </ol>
         <p class="summary-more"><a href="/how-it-works">How it works, step by step</a></p>
@@ -250,7 +256,12 @@
         <p><a href="/command-line">Command-line tool: install and examples</a></p>
       </section>
       <p class="hint">Passwords and tokens are generated in your browser with its cryptographic random generator.</p>
+      <!-- site:onetimepass -->
       <p class="hint"><a href="/privacy">Privacy</a> · <a href="/privacy#cookies">Cookie settings</a></p>
+      <!-- /site:onetimepass -->
+      <!-- site:selfhost
+      <p class="hint"><a href="/privacy">Privacy</a></p>
+      site:selfhost -->
     </footer>
   </body>
 </html>
