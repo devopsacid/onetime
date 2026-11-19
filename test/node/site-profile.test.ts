@@ -11,6 +11,7 @@ import {
   sitemapForSelfhost,
   transformHtml,
 } from "../../tools/site-profile-core.mjs";
+import { siteProfile } from "../../tools/site-profile.mjs";
 import { ROOT } from "./helpers";
 
 // Built from pieces so the owner's address is not spelled out in this file.
@@ -197,5 +198,22 @@ describe("robots and sitemap", () => {
     const out = sitemapForSelfhost(sitemap, "https://my.host");
     expect(out).toContain("<loc>https://my.host/</loc>");
     expect(out).not.toContain("pages.dev");
+  });
+});
+
+describe("siteProfile plugin config", () => {
+  const configFor = (env: Record<string, string>) => {
+    const plugin = siteProfile(env) as unknown as { config(c: { root?: string }): { define: Record<string, boolean>; build: { outDir: string } } };
+    return plugin.config({ root: ROOT });
+  };
+  it("enables Google Analytics only for the Pages profile", () => {
+    expect(configFor({}).define).toEqual({ __GA_ENABLED__: true });
+    expect(configFor({ ONETIME_SITE: "onetimepass" }).define).toEqual({ __GA_ENABLED__: true });
+    expect(configFor({ ONETIME_SITE: "selfhost", ONETIME_ORIGIN: "https://my.host" }).define).toEqual({ __GA_ENABLED__: false });
+    expect(configFor({ ONETIME_SITE: "selfhost", ONETIME_ORIGIN: "https://my.host", ONETIME_INDEXABLE: "1" }).define).toEqual({ __GA_ENABLED__: false });
+  });
+  it("writes the Pages build to dist and the self-host build to dist-selfhost", () => {
+    expect(configFor({}).build.outDir).toBe("dist");
+    expect(configFor({ ONETIME_SITE: "selfhost", ONETIME_ORIGIN: "https://my.host" }).build.outDir).toBe("dist-selfhost");
   });
 });
