@@ -3,13 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
+  "engines": {
+    "node": ">=22.13"
+  },
   "type": "module",
   "description": "One-time links for secrets, encrypted in the browser, deleted on first read",
   "scripts": {
     "dev": "pnpm build && wrangler pages dev",
     "build": "vite build && pnpm build:cli",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.worker.json --noEmit && tsc -p tsconfig.cli.json --noEmit",
-    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.worker.json --noEmit && tsc -p tsconfig.cli.json --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "test": "vitest run && vitest run -c vitest.node.config.ts",
     "check": "pnpm typecheck && pnpm test && pnpm build && node tools/check-dist.mjs",
     "db:migrate:local": "wrangler d1 migrations apply onetime --local",
     "db:migrate:remote": "wrangler d1 migrations apply onetime --remote",
@@ -19,7 +22,7 @@
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.8.3",
     "@cloudflare/workers-types": "^5.20261117.1",
-    "@types/node": "^20.19.43",
+    "@types/node": "^24.19.2",
     "esbuild": "^0.28.2",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
