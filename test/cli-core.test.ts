@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { decodeInput, EXIT, parseArgs, parseLinkInput, parseTtl, resolveServer, run, stripOneNewline, UsageError } from "../cli/core";
-import { makeIo } from "./cli-helpers";
+import { makeIo, routerFetch, type Recorded } from "./cli-helpers";
 
 const ID = "A".repeat(22);
 const KEY = "B".repeat(43);
@@ -41,6 +41,23 @@ describe("resolveServer", () => {
     expect(() => resolveServer("http://example.com", {})).toThrow(UsageError);
     expect(() => resolveServer("ftp://example.com", {})).toThrow(UsageError);
     expect(() => resolveServer("nonsense", {})).toThrow(UsageError);
+  });
+});
+
+describe("injectable default server", () => {
+  it("resolveServer uses the injected default only when nothing else is given", () => {
+    expect(resolveServer(undefined, {}, "https://my.host")).toBe("https://my.host");
+    expect(resolveServer(undefined, { ONETIME_SERVER: "https://x.example" }, "https://my.host")).toBe("https://x.example");
+    expect(resolveServer("https://y.example", {}, "https://my.host")).toBe("https://y.example");
+  });
+  it("an injected default still has to be https or localhost", () => {
+    expect(() => resolveServer(undefined, {}, "http://example.com")).toThrow(UsageError);
+  });
+  it("run() sends gen links to Io.defaultServer", async () => {
+    const rec: Recorded = { urls: [], methods: [] };
+    const io = { ...makeIo({ fetch: routerFetch(rec) }), defaultServer: "https://my.host" };
+    expect(await run(["gen"], io)).toBe(EXIT.ok);
+    expect(rec.urls[0]).toMatch(/^https:\/\/my\.host\/api\/secrets/);
   });
 });
 

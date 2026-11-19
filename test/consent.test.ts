@@ -5,6 +5,7 @@ import {
   CONSENT_MAX_AGE_MS,
   CONSENT_VERSION,
   analyticsCookieNames,
+  analyticsAllowedHere,
   analyticsEnabled,
   cookieDeletionStrings,
   isAnalyticsCookieName,
@@ -85,5 +86,27 @@ describe("cliDownloadKind", () => {
     expect(cliDownloadKind("/cli/onetime.mjs.sha256")).toBe("checksum");
     expect(cliDownloadKind("/cli/other")).toBeNull();
     expect(cliDownloadKind("/")).toBeNull();
+  });
+});
+
+describe("analyticsAllowedHere", () => {
+  it("allows only the original site", () => {
+    expect(analyticsAllowedHere("https://onetimepass.pages.dev")).toBe(true);
+  });
+  it("refuses forks, previews, localhost and look-alikes", () => {
+    for (const origin of [
+      "https://x.pages.dev",
+      "https://abc123.onetimepass.pages.dev",
+      "http://localhost",
+      "http://localhost:8080",
+      "https://onetimepass.pages.dev.evil.com",
+      "http://onetimepass.pages.dev",
+      "https://onetimepass.pages.dev:8443",
+      "https://my.host",
+      "",
+      "null",
+    ]) {
+      expect(analyticsAllowedHere(origin), origin).toBe(false);
+    }
   });
 });
