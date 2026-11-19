@@ -3,6 +3,7 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { onRequest } from "../functions/api/[[path]]";
 import { handle, type Options } from "../src/worker/index";
+import { d1Store } from "../src/worker/store-d1";
 import { defineApiContract } from "./contract/api-contract";
 
 const BASE = "https://onetime.test";
@@ -22,7 +23,7 @@ describe("API contract on D1", () => {
   defineApiContract({
     async call(path: string, init: RequestInit = {}, options?: Options): Promise<Response> {
       const ctx = createExecutionContext();
-      const response = await handle(new Request(`${BASE}${path}`, init), env, ctx, options);
+      const response = await handle(new Request(`${BASE}${path}`, init), d1Store(env.DB), ctx, options);
       await waitOnExecutionContext(ctx);
       return response;
     },

@@ -1,6 +1,7 @@
 import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { handle } from "../src/worker/index";
+import { d1Store } from "../src/worker/store-d1";
 import type { Io } from "../cli/core";
 
 export const SERVER = "https://onetime.test";
@@ -17,7 +18,7 @@ export function routerFetch(rec?: Recorded): typeof fetch {
     rec?.urls.push(request.url);
     rec?.methods.push(request.method);
     const ctx = createExecutionContext();
-    const response = await handle(request, env, ctx);
+    const response = await handle(request, d1Store(env.DB), ctx);
     await waitOnExecutionContext(ctx);
     return response;
   }) as typeof fetch;
