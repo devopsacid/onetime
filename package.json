@@ -2,6 +2,7 @@
   "name": "onetime",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "One-time links for secrets, encrypted in the browser, deleted on first read",
   "scripts": {

@@ -104,3 +104,7 @@ wrangler d1 create onetime      # once; put the printed id in wrangler.jsonc (da
 pnpm db:migrate:remote          # apply migrations to the remote database
 pnpm deploy                     # build and `wrangler pages deploy`
 ```
+
+## License
+
+MIT, see [LICENSE](LICENSE). Copyright (c) 2026 Michal Maxian.

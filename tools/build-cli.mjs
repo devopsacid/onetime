@@ -13,7 +13,7 @@ await build({
   platform: "node",
   format: "esm",
   target: "node20",
-  banner: { js: "#!/usr/bin/env node" },
+  banner: { js: "#!/usr/bin/env node\n// onetime CLI - MIT License, Copyright (c) 2026 Michal Maxian. https://onetimepass.pages.dev" },
   define: { __VERSION__: JSON.stringify(version) },
   legalComments: "none",
 });
