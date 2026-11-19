@@ -1,50 +1,80 @@
 # Self-hosting onetime
 
-Run your own copy of onetime on a Linux host or VM: one Node process with a SQLite file, behind a TLS reverse proxy. The code is the same as on the public site. Draft: wording will be polished.
+Run your own copy of onetime on a Linux host or VM. It is one Node process with one SQLite file, behind a reverse proxy that provides HTTPS. The code is the same as on the public site.
 
-How to read this page: commands marked **(tested)** were run on Linux with Docker 26 and Node 22 during development (output recorded in `docs/plans/self-host.md`). Commands marked **(not tested)** were not run by the project.
+Marks used on this page:
 
-> **Warning: one instance only.**
-> The database is one SQLite file with one writer.
-> - Do not run replicas, and do not scale the service above 1.
-> - Do not put the database on a network filesystem (NFS, EFS, SMB, Azure Files). SQLite locking is not reliable there.
-> - On a redeploy, stop the old container before you start the new one.
+- **(tested)**: the project ran this command or setup on Linux (Docker 26, Node 22 on the host, Node 24 in the image). See [What was tested](#what-was-tested).
+- **(not tested)**: the project did not run it. It should work, but check it yourself.
+
+> **Warning: run one instance only.**
 >
-> The server takes an exclusive lock at start and refuses to start (exit code 3) when another process on the same local disk holds it. It cannot detect every network-share setup, so this rule stays yours to keep.
+> The database is one SQLite file, and only one process may write to it.
+>
+> - Do not run replicas, and never scale the service above 1.
+> - Do not put the database on a network filesystem (NFS, EFS, SMB, Azure Files). SQLite locking is not reliable there.
+> - When you update, stop the old container or process before you start the new one.
+>
+> The server locks the database at start. A second server on the same local disk refuses to start (exit code 3). The server cannot detect every network-share setup, so keeping this rule is up to you.
 
-## Requirements
+## Contents
 
-- Docker, or Node.js 22.13 or newer (24 recommended). Node 22 prints "ExperimentalWarning: SQLite is an experimental feature" at start. It is harmless; Node 24 does not print it.
-- **HTTPS.** Browsers offer `crypto.subtle` (the encryption) only in a secure context. Over plain http the page works only on `localhost`. Use a reverse proxy with a certificate (see below).
-- A domain name that points to the host (for a public certificate).
+1. [Before you start](#before-you-start)
+2. [Quick start with Docker Compose](#quick-start-with-docker-compose)
+3. [Docker without Compose](#docker-without-compose)
+4. [systemd, without Docker](#systemd-without-docker)
+5. [Reverse proxy and HTTPS](#reverse-proxy-and-https)
+6. [Cloud VMs](#cloud-vms)
+7. [Backups](#backups)
+8. [Updating](#updating)
+9. [Command-line client](#command-line-client)
+10. [Settings reference](#settings-reference)
+11. [Troubleshooting](#troubleshooting)
+12. [What was tested](#what-was-tested)
 
-## Build settings
+## Before you start
 
-The public address is fixed when you build, so there is no ready-made image. Settings (build time):
+You need:
 
-| Variable | Needed | Meaning |
-|---|---|---|
-| `ONETIME_ORIGIN` | yes | The exact origin people type, e.g. `https://onetime.example`. No path, no trailing slash. `http` is accepted only as `http://localhost:<port>`. Links, canonical tags and the CLI default use it. |
-| `ONETIME_OPERATOR_NAME` | no | Your name or organisation, shown on the privacy page. |
-| `ONETIME_OPERATOR_CONTACT` | no | An email address or an https URL, shown on the privacy page. |
-| `ONETIME_INDEXABLE` | no | `1` writes a `robots.txt` that allows crawling and a sitemap. Default: `Disallow: /`. |
+- **Docker** (with Compose for the quick start), **or Node.js 22.13 or newer** for running without Docker. Node 24 is recommended. The Docker image uses Node 24.
+  - On Node 22 the server prints `ExperimentalWarning: SQLite is an experimental feature` at start. It is harmless. Node 24 does not print it.
+- **HTTPS.** Browsers only allow the page's encryption (`crypto.subtle`) in a secure context. Over plain http the page works only on `localhost`. For any other address, put a reverse proxy with a certificate in front.
+- **A domain name** that points to your host, so the proxy can get a public certificate.
 
-If you offer the service to other people, set both operator variables. Without them the privacy page says "the operator of this instance" and names no one.
+The public address (origin) is fixed when you build. That is why there is no ready-made image: you always build your own. Set it with `ONETIME_ORIGIN`, for example `https://onetime.example`. Use the exact origin people will type: no path, no trailing slash.
+
+If you offer the service to other people, also set `ONETIME_OPERATOR_NAME` and `ONETIME_OPERATOR_CONTACT`, so the privacy page names you. All build settings are in [Settings reference](#settings-reference).
 
 The self-host build contains no analytics and no Google code.
 
-Run-time settings (environment of the server):
+## Quick start with Docker Compose
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `HOST` | `127.0.0.1` (Docker image: `0.0.0.0`) | Bind address. |
-| `PORT` | `8080` | Port. |
-| `ONETIME_DB` | `./data/onetime.db` (image: `/data/onetime.db`) | Database file. Its directory is created with mode 0700. |
-| `ONETIME_MAX_STORED` | `20000` | Most unexpired secrets stored; create answers 503 when full. |
+`compose.yaml` builds the image and starts one service with a read-only root filesystem, no Linux capabilities, `no-new-privileges`, a restart policy, a named volume for the database, and the port bound to `127.0.0.1` only.
 
-A wrong value stops the server with exit code 2.
+**1. Try it on your own machine.** Plain http is fine on `localhost` **(tested)**:
 
-## Docker
+```sh
+ONETIME_ORIGIN=http://localhost:8080 docker compose up -d --build
+```
+
+Open http://localhost:8080, create a secret and open the link.
+
+**2. Run it for real.** Build with your public https origin **(tested)**:
+
+```sh
+ONETIME_ORIGIN=https://onetime.example docker compose up -d --build
+```
+
+Then set up the [reverse proxy](#reverse-proxy-and-https). Until the proxy runs, the site is not reachable from outside, which is intended.
+
+Notes:
+
+- Without `ONETIME_ORIGIN`, Compose refuses to build and prints why **(tested)**.
+- Never raise `scale`.
+- When Compose recreates the service, it stops the old container before it starts the new one **(not tested)**.
+- Compose adds a project prefix to names: the container is called something like `onetime-onetime-1` and the volume `onetime_onetime-data` (the prefix is the folder name by default). `docker compose ps` and `docker volume ls` show the real names. Use them in the backup commands below.
+
+## Docker without Compose
 
 Build and run **(tested)**:
 
@@ -56,25 +86,20 @@ docker run -d --name onetime --restart unless-stopped \
   -v onetime-data:/data -p 127.0.0.1:8080:8080 onetime
 ```
 
-The container runs as uid 1000 (`node`), the database in the volume is mode 0600, and the health check calls `/healthz`. `docker stop onetime` shuts down cleanly in well under 10 seconds. `docker logs onetime` holds one start-up line and no request lines.
+What you get:
 
-Do not publish port 8080 on all interfaces. The app speaks plain http; the proxy gives TLS and request limits.
+- The container runs as uid 1000 (user `node`). The database file in the volume has mode 0600.
+- The health check calls `/healthz`. The container shows as healthy after the first 30-second check.
+- `docker stop onetime` shuts down cleanly (about half a second in the test).
+- `docker logs onetime` holds one start-up line and no request lines.
 
-A bind mount instead of a named volume must belong to uid 1000 (`chown 1000:1000 <dir>`) **(not tested)**.
+Keep `-p 127.0.0.1:8080:8080`. Do not publish port 8080 on all interfaces: the app speaks plain http, and the proxy provides TLS and request limits.
 
-## Docker Compose
-
-`compose.yaml` builds the image and starts one service with the same settings (read-only root, no capabilities, `no-new-privileges`, restart policy, named volume, port on 127.0.0.1) **(tested)**:
-
-```sh
-ONETIME_ORIGIN=https://onetime.example docker compose up -d --build
-```
-
-Compose recreates the service by stopping the old container first **(not tested)**. Never raise `scale`.
+A bind mount (a host folder) instead of the named volume must belong to uid 1000: `chown 1000:1000 <dir>` **(not tested)**.
 
 ## systemd, without Docker
 
-The unit `deploy/onetime.service` expects this layout:
+Use this if you run Node directly on the host. The unit `deploy/onetime.service` expects this layout:
 
 ```
 /opt/onetime/dist-server/server.mjs
@@ -82,7 +107,7 @@ The unit `deploy/onetime.service` expects this layout:
 /opt/onetime/migrations/
 ```
 
-Build on any machine, then copy the three folders **(build and run from a copy of this layout: tested; copying to `/opt` and `systemctl`: not tested)**:
+Build on any Linux machine with Node 22.13+, then copy the three folders and install the unit:
 
 ```sh
 pnpm install --frozen-lockfile
@@ -94,52 +119,83 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now onetime
 ```
 
-The unit runs as a dynamic user, keeps the database in `/var/lib/onetime`, listens on `127.0.0.1:8080`, and has strict sandbox settings. `systemd-analyze verify deploy/onetime.service` passes and `systemd-analyze security` rates it 1.3 OK **(tested)**. The unit was not started under systemd by the project. It needs `node` at `/usr/bin/node`; edit `ExecStart` otherwise.
+What was tested here: the build, and running `node dist-server/server.mjs` from a copy of this layout **(tested)**. Copying to `/opt`, `systemctl` and starting the unit under systemd **(not tested)**. Getting pnpm on a bare host (the project pins the version in `package.json`; `corepack enable` provides it) **(not tested)**; it was only run inside the Docker build.
 
-The sandbox does not set `MemoryDenyWriteExecute`, because V8 needs it.
+About the unit:
 
-## Reverse proxy
+- It runs as a dynamic user, keeps the database in `/var/lib/onetime`, and listens on `127.0.0.1:8080`.
+- It expects `node` at `/usr/bin/node`. If yours is elsewhere, edit `ExecStart`.
+- It does not restart on exit code 2 (bad settings) or 3 (database locked), so a broken setup does not loop.
+- It has strict sandbox settings. `systemd-analyze verify` passes and `systemd-analyze security` rates it 1.3 OK **(tested)**. It does not set `MemoryDenyWriteExecute`, because Node's JIT compiler needs writable and executable memory.
 
-The proxy must: terminate TLS, forward to `127.0.0.1:8080`, **keep no access log** (request paths contain secret ids), and limit request bodies to about 64 KB.
+## Reverse proxy and HTTPS
 
-- `deploy/Caddyfile.example`: Caddy gets the certificate itself. It has no `log` directive; do not add one. Tested with `tls internal` (Caddy's local CA) in a container: page, security headers, the full create / reveal round trip, 413 on a 70 KB body, and no request line in the container log **(tested)**.
-- `deploy/nginx.conf.example`: `access_log off`, `error_log ... crit`, `client_max_body_size 64k`, no forwarding headers. Tested with a self-signed certificate in a container: same checks **(tested)**. One catch: other server blocks, such as the distribution's default site, keep their own access log and catch requests with an unknown host name. Remove them. In the test, the image's `default.conf` logged one request line with a client IP until it was removed.
-- Certificates (certbot, acme.sh) **(not tested)**.
+The proxy must:
 
-The app never reads `Host` or `X-Forwarded-*` headers.
+- terminate TLS (HTTPS) and forward to `127.0.0.1:8080`;
+- **keep no access log**, because request paths contain secret ids;
+- limit request bodies to about 64 KB (a secret is at most 16 KB).
 
-### Optional rate limiting
+The app never reads `Host` or `X-Forwarded-*` headers, so the proxy needs no forwarding setup.
 
-The app has no per-IP limit, because it keeps no IPs. Only the 20,000-secret cap protects it from being filled. If you add rate limiting in the proxy, the proxy keeps client IPs in memory for it (nginx `limit_req`, Caddy rate-limit plugin) **(not tested)**. That is a trade-off against "no IPs are kept"; say so on your privacy page if you do it.
+### Caddy
+
+Use `deploy/Caddyfile.example`. Replace the host name.
+
+- Caddy gets and renews the certificate itself when the domain points to the host and ports 80 and 443 are open. With a public CA certificate **(not tested)**.
+- The example has no `log` directive. Do not add one: Caddy writes access logs only when `log` is present.
+- Tested with Caddy's local CA (`tls internal`) in a container: page, security headers, the full create and reveal round trip, a 70 KB body refused with 413, and no request line in Caddy's log **(tested)**.
+
+### nginx
+
+Use `deploy/nginx.conf.example` as `/etc/nginx/conf.d/onetime.conf`. Replace the host name and certificate paths.
+
+- It sets `access_log off`, `error_log ... crit` (lower levels write the request line, with the id), `client_max_body_size 64k`, and sends no forwarding headers.
+- Also set the global `error_log` in `nginx.conf` to `crit`.
+- **Remove the default site.** Other server blocks, such as the distribution's default site or the nginx image's `conf.d/default.conf`, keep their own access log and catch requests with an unknown host name. In the project's test, `default.conf` logged one request line with a client IP until it was removed.
+- Tested with a self-signed certificate in a container: same checks as Caddy **(tested)**.
+- Getting the certificate with certbot or acme.sh **(not tested)**.
 
 ### HSTS
 
-`public/_headers` sends `Strict-Transport-Security: max-age=31536000; includeSubDomains`. If you serve onetime from an apex domain and other subdomains still use plain http, edit that line before you build.
+The site sends `Strict-Transport-Security: max-age=31536000; includeSubDomains` (set in `public/_headers`). `includeSubDomains` makes browsers use HTTPS for every subdomain of the host that serves onetime. If you serve onetime from an apex domain (for example `example.com`) and some subdomains still use plain http, edit that line before you build.
+
+### Optional rate limiting
+
+The app has no per-IP limit, because it keeps no IPs. Only the cap on stored secrets (20,000 by default) stops someone from filling it; when full, creating a secret answers 503.
+
+You can add rate limiting in the proxy (nginx `limit_req`, or a Caddy rate-limit plugin; both examples contain commented hints) **(not tested)**. The proxy then keeps client IPs in memory. That is a trade-off against "no IPs are kept", so say so on your privacy page if you do it.
 
 ## Cloud VMs
 
-A VM with a local block disk works the same way as any Linux host. Follow the Docker or systemd steps above.
+A cloud VM with a local block disk works like any Linux host. Follow the Docker or systemd steps above.
 
-- **AWS EC2 or a Lightsail instance** (a VM, not the Lightsail container service): use the instance disk or EBS. **Not tested by the project.**
+- **AWS EC2 or a Lightsail instance** (a VM, not the Lightsail container service): keep the data on the instance disk or EBS. **Not tested by the project.**
 - **Azure VM** with a managed disk. **Not tested by the project.**
 
-Open only ports 80 and 443 to the world; keep 8080 closed.
+In the firewall or security group, open only ports 80 and 443 to the world. Keep 8080 closed.
 
-## Managed container platforms: not supported yet
+ARM (arm64) VMs: the base images support arm64, but the project built and ran only on amd64 **(not tested)**.
 
-Lightsail container service, ECS Fargate, Azure Container Apps and App Service are not supported:
+### Managed container platforms: not supported yet
 
-- SQLite documents that WAL mode does not work over a network filesystem. ECS Fargate persists data only on EFS (NFS), and Azure Container Apps only on Azure Files (SMB or NFS).
+Lightsail container service, ECS Fargate, Azure Container Apps and Azure App Service are not supported, because none of them gives this SQLite setup a safe local disk:
+
+- SQLite documents that its WAL mode does not work over a network filesystem. ECS Fargate keeps data only on EFS (NFS), and Azure Container Apps only on Azure Files (SMB or NFS).
 - App Service keeps serving from the old container while the new one starts, so two writers can overlap on shared storage.
-- The Lightsail container service documents no persistent volumes, so a redeploy would empty the database.
+- The Lightsail container service documents no persistent volumes, so every redeploy would empty the database.
 
-They need a different store (Postgres). That is not built.
+These platforms need a different database (such as Postgres). That is not built.
 
 ## Backups
 
-You do not need backups: a lost database only loses links that were not opened yet. But a backup keeps encrypted blobs for as long as you keep the backup, including secrets already revealed or expired, so a backup extends how long encrypted data exists. The key is never in it. Keep backups short-lived and protected, or skip them, and say so on your privacy page.
+You do not need backups. A lost database only loses links that nobody has opened yet.
 
-If you do back up, stop the server first. It holds an exclusive lock, so the file is not safe to copy while it runs. Docker volume **(tested)**:
+A backup has a cost: it keeps encrypted blobs for as long as you keep the backup, including secrets already revealed or expired. The keys and the plaintext are never in the database, so a backup cannot be read without the links. But it does extend how long encrypted data exists. Keep backups short-lived and protected, or skip them, and say on your privacy page what you do.
+
+If you back up, **stop the server first.** While it runs it holds the database locked and recent changes can sit in the WAL file next to it, so copying the files is not safe.
+
+Docker volume **(tested)**:
 
 ```sh
 docker stop onetime
@@ -147,29 +203,100 @@ docker run --rm -v onetime-data:/data:ro -v "$PWD":/backup node:24-alpine tar -c
 docker start onetime
 ```
 
-Also remember that the SQLite file keeps deleted data only until pages are reused; `secure_delete` zeroes deleted blobs in the main file.
+The archive `onetime-data.tgz` in the current folder holds the database. With Compose, use the prefixed container and volume names (see the quick start). Restoring a backup **(not tested)**.
+
+## Updating
+
+1. Get the new source.
+2. Build again with the same `ONETIME_ORIGIN` (and operator settings).
+3. Stop the old container or process.
+4. Start the new one on the same data (the same volume, or `/var/lib/onetime`).
+
+Database changes are applied automatically at start.
+
+With Compose, the same `docker compose up -d --build` command as in the quick start does steps 2 to 4. With plain Docker, stop and remove the old container (`docker stop onetime`, `docker rm onetime`), then run the build and run commands again. With systemd, replace the three folders in `/opt/onetime` and restart the unit. This update order **(not tested)** as a whole; the single commands are the ones from the sections above.
 
 ## Command-line client
 
-The CLI works with any instance:
+The `onetime` CLI works with any instance. Point it at yours with `--server` or `ONETIME_SERVER`:
 
 ```sh
 onetime send --server https://onetime.example
 ONETIME_SERVER=https://onetime.example onetime get
 ```
 
-Or download it from your own instance. That copy already defaults to your origin **(tested, with `http://localhost`)**:
+Or download the CLI from your own instance. That copy already uses your origin by default **(tested, with an http://localhost instance)**:
 
 ```sh
 curl -fsSL https://onetime.example/cli/onetime.mjs -o onetime && chmod +x onetime
 curl -fsSL https://onetime.example/cli/onetime.mjs.sha256 -o onetime.mjs.sha256
 ```
 
-Links from any instance open with any CLI build, because `get` uses the origin of the link. The CLI needs Node 20 or newer; the server needs 22.13.
+The README explains how to check the download with `sha256sum`.
 
-## Operating notes
+Links from any instance open with any CLI copy, because `get` uses the origin in the link. The CLI needs Node 20 or newer; the server needs Node 22.13 or newer.
 
-- Health check: `GET /healthz` returns 200 `ok`.
-- Expired secrets are never handed out. Their rows are removed on later API requests, not by a timer, so an idle instance keeps them until the next request.
-- Updating: pull the new source, build again with the same `ONETIME_ORIGIN`, stop the old process, start the new one on the same data.
-- Do not keep Docker or journal logs of request lines: the app writes none. Check that your proxy does not.
+## Settings reference
+
+### Build settings
+
+Set these when you build (Docker build args, Compose environment, or the environment of `pnpm build:selfhost`).
+
+| Variable | Needed | Meaning |
+|---|---|---|
+| `ONETIME_ORIGIN` | yes | The exact origin people type, e.g. `https://onetime.example`. No path, no trailing slash. `http` is accepted only as `http://localhost:<port>`. Links, canonical tags and the CLI default use it. |
+| `ONETIME_OPERATOR_NAME` | no | Your name or organisation, shown on the privacy page. |
+| `ONETIME_OPERATOR_CONTACT` | no | An email address or an https URL, shown on the privacy page. |
+| `ONETIME_INDEXABLE` | no | `1` writes a `robots.txt` that allows crawling, plus a sitemap. Default: `robots.txt` with `Disallow: /`. |
+
+Without the operator settings, the privacy page says "the operator of this instance" and names no one.
+
+### Run-time settings
+
+Set these in the server's environment.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `HOST` | `127.0.0.1` (Docker image: `0.0.0.0`) | Address to listen on. |
+| `PORT` | `8080` | Port. |
+| `ONETIME_DB` | `./data/onetime.db` (image: `/data/onetime.db`, systemd unit: `/var/lib/onetime/onetime.db`) | Database file. Its folder is created with mode 0700. |
+| `ONETIME_MAX_STORED` | `20000` | Most unexpired secrets stored at once. Creating a secret answers 503 when full. |
+
+## Troubleshooting
+
+### By exit code
+
+The server writes the reason to stderr (`docker logs`, or `journalctl -u onetime`).
+
+| Exit code | Meaning | What to do |
+|---|---|---|
+| 0 | Clean stop after SIGTERM or SIGINT. | Nothing. |
+| 1 | Any other start-up error, printed as `onetime: could not start (<code>)`. A second stop signal while shutting down also exits 1. | Read the code in brackets, for example a permission problem on the database folder. |
+| 2 | Bad settings, a missing or wrong site folder, or Node older than 22.13. | Fix the value named in the message. "has no _selfhost.json" means the folder is not a self-host build: build with `pnpm build:selfhost`, not `pnpm build`. |
+| 3 | The database is locked by another process: "Only one onetime server may use it." | Another server uses the same database. Stop it. See the warning at the top. |
+
+### Other problems
+
+- **The page loads, but creating or opening a secret fails.** The page is served over plain http on an address other than `localhost`. Browsers block the encryption there. Use HTTPS.
+- **Links point to the wrong address.** `ONETIME_ORIGIN` was wrong at build time. Build again with the right origin.
+- **Container shows "starting" for a while.** The first health check runs after 30 seconds.
+- **Health check by hand:** `GET /healthz` answers 200 `ok`.
+- **Expired secrets are still in the database.** Expected. Expired secrets are never handed out, but their rows are removed on later API requests, not by a timer. An idle instance keeps them until the next request.
+- **Deleted data on disk.** Deleted blobs are zeroed in the main database file (`secure_delete`). The WAL file next to it can still hold copies of recent encrypted blobs until SQLite folds it back into the main file; a clean stop empties it.
+- **Logs.** The app writes no request lines. Check that your proxy does not either, and that no Docker or journal setting adds them.
+
+## What was tested
+
+The project ran these checks on 2026-11-19 on Linux with Docker 26.1.4, Node 22.22.1 on the host and Node 24 in the image:
+
+- **Docker image:** builds with `ONETIME_ORIGIN` (refuses without it). Image size 172 MB. Runs with a read-only root, no capabilities and `no-new-privileges`: healthy, uid 1000, data folder 0700, database and WAL files 0600, no `-shm` file, one start-up line in the log.
+- **API round trip** with curl against the container: create, check, reveal once, second reveal refused. Security headers and caching headers as on the public site.
+- **Stop and lock:** `docker stop` took about half a second, exit code 0. A second container on the same volume refused to start with exit code 3.
+- **Compose:** starts with `ONETIME_ORIGIN=http://localhost:8080`, health check 200, read-only root, capabilities dropped, `no-new-privileges`, restart policy set, `robots.txt` with `Disallow: /`. Refuses without `ONETIME_ORIGIN`.
+- **Caddy** (local CA) and **nginx** (self-signed certificate) in containers in front of the app: HTTPS reaches the app, full round trip, 413 on a 70 KB body, no access-log lines and no secret ids in the proxy logs (nginx only after removing the image's default site).
+- **systemd unit:** `systemd-analyze verify` passes; `systemd-analyze security` rates it 1.3 OK. The unit was not started.
+- **Without Docker:** the three folders copied to a temporary location and started with `node dist-server/server.mjs`: health check 200, data folder 0700, database 0600, ExperimentalWarning on Node 22. The operator settings appear on the privacy page.
+- **CLI** downloaded from the container: checksum OK, `send` and `get` work with `--server` and `ONETIME_SERVER`, a second `get` reports the secret as already opened, and without a server option it uses the built-in origin.
+- **Backup:** `tar` of the volume after `docker stop` holds the database.
+
+Not tested by the project: starting the systemd unit, `chown` for bind mounts, certbot and acme.sh, a public CA certificate with Caddy, proxy rate limiting, the Compose recreate order, pnpm via corepack on a bare host, restoring a backup, arm64 images, AWS EC2 and Lightsail instances, Azure VMs, and macOS or Windows hosts.

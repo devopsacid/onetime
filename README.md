@@ -82,9 +82,9 @@ Security notes:
 | `src/shared/limits.ts` | Size and expiry limits used by both sides |
 | `public/_headers`, `public/_routes.json` | CSP and other security headers for the static files; the Function runs only for `/api/*` |
 | `cli/`, `tools/build-cli.mjs` | The `onetime` command line tool (bundled by esbuild into `dist/cli/onetime.mjs`, served at `/cli/onetime.mjs`) |
-| `server/`, `tools/build-server.mjs` | The self-hosted Node server (http, static files, SQLite store); bundled into `dist-server/server.mjs` |
-| `Dockerfile`, `compose.yaml`, `deploy/` | Docker image, compose file, systemd unit and Caddy / nginx examples for self-hosting |
-| `docs/self-hosting.md` | Self-hosting guide |
+| `server/`, `tools/build-server.mjs` | Self-hosted Node server (HTTP, static files, SQLite store), bundled into `dist-server/server.mjs` by `pnpm build:selfhost` |
+| `Dockerfile`, `compose.yaml`, `deploy/` | Self-hosting: Docker image, Compose file, systemd unit, Caddy and nginx examples |
+| `docs/self-hosting.md` | Self-hosting guide for operators |
 | `test/` | Vitest tests: the Cloudflare side runs inside the Workers runtime, `test/node/` runs in Node |
 
 API: `POST /api/secrets?ttl=<seconds>` (body: blob) → `{ id }`; `GET /api/secrets/<id>` → exists or 404; `POST /api/secrets/<id>/reveal` → blob, then deleted.
@@ -110,13 +110,15 @@ pnpm deploy                     # build and `wrangler pages deploy`
 
 ## Self-hosting
 
-You can run your own copy on a Linux host or VM: one Node process with a SQLite file (Node 22.13 or newer, or Docker), behind a TLS reverse proxy. One instance only, no network filesystems. The public address is set at build time:
+You can run your own copy on a Linux host or VM: one Node process with one SQLite file (Docker, or Node 22.13 or newer), behind a reverse proxy that provides HTTPS. HTTPS is required, because browsers allow the encryption only in a secure context (plain http works only on `localhost`). Run one instance only, and keep the database off network filesystems.
+
+The public address is set at build time, so you build your own image. To try it on your machine:
 
 ```sh
-docker build --build-arg ONETIME_ORIGIN=https://onetime.example -t onetime .
+ONETIME_ORIGIN=http://localhost:8080 docker compose up -d --build
 ```
 
-See [docs/self-hosting.md](docs/self-hosting.md) for compose, systemd, Caddy and nginx.
+[docs/self-hosting.md](docs/self-hosting.md) covers Docker Compose, plain Docker, systemd, Caddy and nginx, cloud VMs, backups and troubleshooting. Managed container platforms are not supported yet.
 
 ## License
 
