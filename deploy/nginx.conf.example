@@ -1,0 +1,67 @@
+# nginx in front of onetime. Put this in /etc/nginx/conf.d/onetime.conf (http context) and replace the host name and certificate paths.
+# Get the certificate with your usual tool (certbot, acme.sh). Plain http only redirects.
+#
+# Logging is OFF on purpose: the request paths contain secret ids.
+#  - access_log off
+#  - error_log at "crit": error lines at lower levels include the request line, with the id.
+# The global error_log in nginx.conf (outside http) must be set to crit as well; nginx's default writes at "error".
+# Other server blocks (the distribution's default site, the nginx image's conf.d/default.conf) keep their own access
+# log, and a request with an unknown Host header or a plain IP lands there. Remove them, or set `access_log off;` in
+# the http context. Tested: with the image's default.conf removed, no request line was logged.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name onetime.example.com;
+    access_log off;
+    error_log /var/log/nginx/onetime-error.log crit;
+    server_tokens off;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name onetime.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/onetime.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/onetime.example.com/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+
+    access_log off;
+    error_log /var/log/nginx/onetime-error.log crit;
+    server_tokens off;
+
+    # A secret is at most 16 KB plus 28 bytes.
+    client_max_body_size 64k;
+    client_header_timeout 10s;
+    client_body_timeout 10s;
+    send_timeout 15s;
+    keepalive_timeout 5s;
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+
+    location / {
+        # The app on the same host. If nginx runs in a container on a shared Docker network, use onetime:8080.
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        # The app never reads client IPs or forwarding headers, so none are sent.
+        proxy_set_header X-Forwarded-For "";
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 15s;
+        proxy_send_timeout 15s;
+        # Responses from the app carry their own Cache-Control and security headers; do not cache or rewrite them.
+        proxy_buffering on;
+        proxy_cache off;
+    }
+
+    # Optional rate limiting keeps client IPs in nginx's shared memory zone (a trade-off against "no IPs are kept").
+    # Off by default. To enable, in the http context:
+    #   limit_req_zone $binary_remote_addr zone=onetime_create:1m rate=30r/m;
+    # and inside this server block:
+    #   location = /api/secrets { limit_req zone=onetime_create burst=10 nodelay; proxy_pass http://127.0.0.1:8080; }
+}

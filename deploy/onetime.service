@@ -1,0 +1,65 @@
+# Install:
+#   /opt/onetime/dist-server/server.mjs   (from pnpm build:server)
+#   /opt/onetime/dist-selfhost/           (from pnpm build:selfhost)
+#   /opt/onetime/migrations/
+# Copy this file to /etc/systemd/system/onetime.service, then:
+#   systemctl daemon-reload && systemctl enable --now onetime
+# The database lives in /var/lib/onetime (StateDirectory). The server listens on 127.0.0.1:8080;
+# a TLS reverse proxy on the same host connects there. Needs Node 22.13 or newer at /usr/bin/node
+# (change ExecStart if your node is elsewhere). One instance only: never run two units on one database.
+[Unit]
+Description=onetime, one-time secret links
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/node /opt/onetime/dist-server/server.mjs
+WorkingDirectory=/opt/onetime
+Environment=HOST=127.0.0.1
+Environment=PORT=8080
+Environment=ONETIME_DB=/var/lib/onetime/onetime.db
+Environment=NODE_ENV=production
+# Optional: Environment=ONETIME_MAX_STORED=20000
+
+# Stop: SIGTERM, the server finishes requests in flight for up to 8 s, then closes the database.
+KillSignal=SIGTERM
+TimeoutStopSec=10
+# Do not restart on a bad configuration (exit 2) or when the database is locked by another process (exit 3).
+Restart=on-failure
+RestartSec=2
+RestartPreventExitStatus=2 3
+
+# Database directory, created for the dynamic user. Files are 0600, the directory 0700.
+DynamicUser=yes
+StateDirectory=onetime
+StateDirectoryMode=0700
+UMask=0077
+
+# Hardening. MemoryDenyWriteExecute is NOT set: V8 needs writable and executable memory for its JIT.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+
+[Install]
+WantedBy=multi-user.target
