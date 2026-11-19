@@ -156,7 +156,7 @@ function reachable(page) {
 
 for (const name of ["index.html", "404.html"]) {
   const page = join(root, name);
-  const targets = [page, ...(() => { try { return reachable(page); } catch { return []; } })()];
+  const targets = [page, ...reachable(page)];
   for (const file of targets) {
     let text;
     try {
@@ -166,6 +166,43 @@ for (const name of ["index.html", "404.html"]) {
     }
     const hit = FORBIDDEN.exec(text);
     if (hit) problems.push(`${relative(process.cwd(), file)}: analytics string "${hit[0]}" in ${name} or a file it loads`);
+  }
+}
+// _headers guard: Google hosts only in the CSP of the info paths; strict policy everywhere else.
+{
+  const INFO_PATHS = ["/how-it-works", "/how-it-works.html", "/command-line", "/command-line.html", "/privacy", "/privacy.html"];
+  const STRICT = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+  const NO_OVERRIDE = ["/", "/index.html", "/404", "/404.html"];
+  let headersText = null;
+  try {
+    headersText = readFileSync(join(root, "_headers"), "utf8");
+  } catch {
+    problems.push(`${root}/_headers is missing`);
+  }
+  if (headersText !== null) {
+    const rules = new Map();
+    let current = null;
+    for (const raw of headersText.split("\n")) {
+      if (raw.trim() === "" || raw.trim().startsWith("#")) continue;
+      if (!/^\s/.test(raw)) {
+        current = raw.trim();
+        rules.set(current, rules.get(current) ?? []);
+      } else if (current !== null) rules.get(current).push(raw.trim());
+    }
+    if (/unsafe-inline/i.test(headersText)) problems.push("_headers: 'unsafe-inline' appears");
+    const csp = (lines) => lines.filter((l) => /^content-security-policy:/i.test(l));
+    const star = csp(rules.get("/*") ?? []);
+    if (star.length !== 1 || star[0].replace(/^[^:]+:\s*/, "") !== STRICT) problems.push("_headers: the /* CSP is not the strict policy");
+    for (const [path, lines] of rules) {
+      const google = /googletagmanager|google-analytics|analytics\.google/i.test(lines.join("\n"));
+      if (google && !INFO_PATHS.includes(path)) problems.push(`_headers: Google host in the rule for ${path}`);
+      if (NO_OVERRIDE.includes(path) && lines.some((l) => /content-security-policy/i.test(l))) problems.push(`_headers: ${path} must not override the CSP`);
+    }
+    for (const path of INFO_PATHS) {
+      const lines = rules.get(path) ?? [];
+      const i = lines.findIndex((l) => l === "! Content-Security-Policy");
+      if (i === -1 || csp(lines).length !== 1) problems.push(`_headers: ${path} must detach the CSP and set exactly one`);
+    }
   }
 }
 for (const file of files) {
