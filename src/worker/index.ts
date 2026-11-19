@@ -6,10 +6,9 @@ import {
   MAX_TTL_SECONDS,
   MIN_TTL_SECONDS,
 } from "../shared/limits";
+import type { SecretStore, WaitUntil } from "./store";
 
-export type Env = Cloudflare.Env;
-
-/** Test hooks: a fixed clock (ms since epoch) and a smaller cap. */
+/** Test hooks: a fixed clock (ms since epoch) and a smaller cap. The Node server also sets maxStored. */
 export interface Options {
   now?: number;
   maxStored?: number;
@@ -38,11 +37,6 @@ function newId(): string {
     .replaceAll("=", "");
 }
 
-/** Deletes expired rows. Expiry is enforced on read too, so this only frees space. */
-function purge(env: Env, now: number): Promise<unknown> {
-  return env.DB.prepare("DELETE FROM secrets WHERE expires_at <= ?").bind(now).run();
-}
-
 /** Reads at most `limit` bytes; cancels the stream and returns null as soon as more arrive. */
 async function readBounded(body: ReadableStream<Uint8Array> | null, limit: number): Promise<Uint8Array<ArrayBuffer> | null> {
   if (body === null) return new Uint8Array(0);
@@ -68,7 +62,7 @@ async function readBounded(body: ReadableStream<Uint8Array> | null, limit: numbe
   return out;
 }
 
-async function createSecret(request: Request, env: Env, url: URL, now: number, maxStored: number): Promise<Response> {
+async function createSecret(request: Request, store: SecretStore, url: URL, now: number, maxStored: number): Promise<Response> {
   if (request.headers.get("Content-Type") !== "application/octet-stream") {
     return error(415, "Body must be application/octet-stream");
   }
@@ -89,31 +83,19 @@ async function createSecret(request: Request, env: Env, url: URL, now: number, m
   if (blob === null) return error(413, "Secret is too large");
   if (blob.byteLength <= BLOB_OVERHEAD_BYTES) return error(400, "Invalid secret size");
 
-  await purge(env, now);
+  await store.purgeExpired(now);
 
-  // One statement checks the cap and inserts, so concurrent creates cannot overshoot it.
   const id = newId();
-  const result = await env.DB.prepare(
-    "INSERT INTO secrets (id, blob, expires_at) SELECT ?1, ?2, ?3 WHERE (SELECT COUNT(*) FROM secrets WHERE expires_at > ?4) < ?5",
-  )
-    .bind(id, blob.buffer, now + ttl * 1000, now, maxStored)
-    .run();
-  if (result.meta.changes === 0) return error(503, "The service is full right now, try again later", { "Retry-After": "300" });
+  const stored = await store.insertIfBelowCap(id, blob, now + ttl * 1000, now, maxStored);
+  if (!stored) return error(503, "The service is full right now, try again later", { "Retry-After": "300" });
   return json(201, { id });
-}
-
-/** D1 hands BLOB columns to JavaScript as an array of numbers. */
-function toBytes(value: unknown): Uint8Array<ArrayBuffer> {
-  if (Array.isArray(value)) return Uint8Array.from(value as number[]);
-  if (value instanceof ArrayBuffer) return new Uint8Array(value.slice(0));
-  throw new Error("Unexpected blob type");
 }
 
 /** The router: a plain function so tests can call it and the Pages Function can delegate to it. */
 export async function handle(
   request: Request,
-  env: Env,
-  ctx: Pick<ExecutionContext, "waitUntil">,
+  store: SecretStore,
+  ctx: WaitUntil,
   options: Options = {},
 ): Promise<Response> {
   const now = options.now ?? Date.now();
@@ -121,7 +103,7 @@ export async function handle(
 
   if (url.pathname === "/api/secrets") {
     if (request.method !== "POST") return error(405, "Method not allowed", { Allow: "POST" });
-    return createSecret(request, env, url, now, options.maxStored ?? MAX_STORED_SECRETS);
+    return createSecret(request, store, url, now, options.maxStored ?? MAX_STORED_SECRETS);
   }
 
   const match = /^\/api\/secrets\/([^/]+)(\/reveal)?$/.exec(url.pathname);
@@ -133,19 +115,16 @@ export async function handle(
   if (isReveal) {
     // POST only: link previews and prefetchers send GET and must not burn the secret.
     if (request.method !== "POST") return error(405, "Method not allowed", { Allow: "POST" });
-    // One statement reads and deletes, so only one caller can get the row.
-    const row = await env.DB.prepare("DELETE FROM secrets WHERE id = ? AND expires_at > ? RETURNING blob")
-      .bind(id, now)
-      .first<{ blob: unknown }>();
-    ctx.waitUntil(purge(env, now));
-    if (row === null) return error(404, "This secret was already opened or has expired");
-    return new Response(toBytes(row.blob), {
+    const blob = await store.take(id, now);
+    ctx.waitUntil(store.purgeExpired(now));
+    if (blob === null) return error(404, "This secret was already opened or has expired");
+    return new Response(blob, {
       headers: { ...API_HEADERS, "Content-Type": "application/octet-stream" },
     });
   }
 
   if (request.method !== "GET") return error(405, "Method not allowed", { Allow: "GET" });
-  const found = await env.DB.prepare("SELECT 1 AS found FROM secrets WHERE id = ? AND expires_at > ?").bind(id, now).first();
-  ctx.waitUntil(purge(env, now));
-  return found !== null ? json(200, { exists: true }) : error(404, "This secret was already opened or has expired");
+  const found = await store.exists(id, now);
+  ctx.waitUntil(store.purgeExpired(now));
+  return found ? json(200, { exists: true }) : error(404, "This secret was already opened or has expired");
 }
