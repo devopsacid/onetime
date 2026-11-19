@@ -118,10 +118,34 @@ export function runServer(bundle: string, env: Record<string, string>): Child {
   return { process: child, stdout: () => out, stderr: () => err, exited };
 }
 
-export async function waitFor(check: () => boolean, ms = 5000): Promise<void> {
+/** Generous default for process start-up and exit under heavy machine load; stays below the Node config's 60 s testTimeout (two waits per test at most). */
+export const PROCESS_WAIT_MS = 25_000;
+
+export async function waitFor(check: () => boolean, ms = PROCESS_WAIT_MS, what = "condition"): Promise<void> {
   const end = Date.now() + ms;
   while (!check()) {
-    if (Date.now() > end) throw new Error("timed out");
+    if (Date.now() > end) throw new Error(`timed out after ${ms} ms waiting for ${what}`);
     await new Promise((r) => setTimeout(r, 20));
   }
+}
+
+/** Waits for the startup line. Fails with the child's output if it exits first or never prints it. */
+export async function waitListening(child: Child, ms = PROCESS_WAIT_MS): Promise<void> {
+  const dump = () => `exitCode=${child.process.exitCode} signal=${child.process.signalCode}\nstdout: ${child.stdout()}\nstderr: ${child.stderr()}`;
+  try {
+    await waitFor(() => /listening on/.test(child.stdout()) || child.process.exitCode !== null || child.process.signalCode !== null, ms, "the listening line");
+  } catch (e) {
+    throw new Error(`${(e as Error).message}\n${dump()}`);
+  }
+  if (!/listening on/.test(child.stdout())) throw new Error(`server exited before listening\n${dump()}`);
+}
+
+/** Resolves with the exit code; fails with the child's output if it does not exit in time or is killed by a signal. */
+export async function expectExit(child: Child, code: number, ms = PROCESS_WAIT_MS): Promise<void> {
+  const timer = new Promise<never>((_, reject) => {
+    const t = setTimeout(() => reject(new Error(`no exit within ${ms} ms\nstdout: ${child.stdout()}\nstderr: ${child.stderr()}`)), ms);
+    void child.exited.finally(() => clearTimeout(t));
+  });
+  const got = await Promise.race([child.exited, timer]);
+  if (got !== code) throw new Error(`exit code ${got} (signal ${child.process.signalCode}), expected ${code}\nstdout: ${child.stdout()}\nstderr: ${child.stderr()}`);
 }

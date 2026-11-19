@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { permissionWarning } from "../../server/permissions";
-import { buildServerBundle, makeDist, runServer, tempDir, waitFor } from "./helpers";
+import { buildServerBundle, makeDist, expectExit, runServer, tempDir, waitListening } from "./helpers";
 
 function layout(dirMode: number, dbMode: number, walMode?: number) {
   const dir = tempDir();
@@ -60,19 +60,18 @@ describe("the built server and permissions", () => {
     mkdirSync(data);
     chmodSync(data, 0o755);
     const child = runServer(bundle, env(join(data, "o.db")));
-    await waitFor(() => /listening on/.test(child.stdout()) || child.process.exitCode !== null);
-    expect(child.stdout()).toMatch(/listening on/);
+    await waitListening(child);
     expect(child.stderr().trim().split("\n")).toHaveLength(1);
     expect(child.stderr()).toMatch(/^onetime: warning: folder .*mode 755/);
     child.process.kill("SIGTERM");
-    expect(await child.exited).toBe(0);
+    await expectExit(child, 0);
   });
 
   it("prints nothing to stderr when the server creates its own folder", async () => {
     const child = runServer(bundle, env(join(tmp.path, "fresh", "o.db")));
-    await waitFor(() => /listening on/.test(child.stdout()) || child.process.exitCode !== null);
+    await waitListening(child);
     expect(child.stderr()).toBe("");
     child.process.kill("SIGTERM");
-    expect(await child.exited).toBe(0);
+    await expectExit(child, 0);
   });
 });

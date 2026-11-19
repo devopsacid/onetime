@@ -40,10 +40,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const warning = permissionWarning(dbPath);
-  if (warning !== null) process.stderr.write(`${warning}\n`);
-  process.stdout.write(`onetime ${version} listening on ${running.host}:${running.port}, db ${dbPath}, max ${maxStored} secrets\n`);
-
+  // Handlers go in before the listening line: whoever reads that line may signal at once, and a signal that
+  // arrives before this would kill the process by default (no clean shutdown, no exit 0).
   let stopping = false;
   const stop = (): void => {
     // A second signal ends the process at once.
@@ -56,6 +54,10 @@ async function main(): Promise<void> {
   };
   process.on("SIGTERM", stop);
   process.on("SIGINT", stop);
+
+  const warning = permissionWarning(dbPath);
+  if (warning !== null) process.stderr.write(`${warning}\n`);
+  process.stdout.write(`onetime ${version} listening on ${running.host}:${running.port}, db ${dbPath}, max ${maxStored} secrets\n`);
 }
 
 void main();

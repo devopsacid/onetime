@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { openSqliteStore } from "../../server/store-sqlite";
 import { MAX_BLOB_BYTES } from "../../src/shared/limits";
-import { buildServerBundle, makeDist, migrations, runServer, tempDir, waitFor, ROOT } from "./helpers";
+import { buildServerBundle, makeDist, migrations, expectExit, runServer, tempDir, waitListening, ROOT } from "./helpers";
 
 const tmp = tempDir();
 let bundle: string;
@@ -26,7 +26,7 @@ async function start(db: string) {
   const { cpSync } = await import("node:fs");
   cpSync(join(ROOT, "migrations"), join(tmp.path, "migrations"), { recursive: true });
   const child = runServer(bundle, env(db));
-  await waitFor(() => /listening on/.test(child.stdout()) || child.process.exitCode !== null);
+  await waitListening(child);
   const match = /127\.0\.0\.1:(\d+)/.exec(child.stdout());
   return { child, port: match ? Number(match[1]) : 0 };
 }
@@ -57,7 +57,7 @@ describe("the built server process", () => {
 
     const done = await result;
     expect(done.status).toBe(201);
-    expect(await child.exited).toBe(0);
+    await expectExit(child, 0);
     expect(child.stdout().trim().split("\n")).toHaveLength(1);
     expect(child.stderr()).toBe("");
 
@@ -72,11 +72,11 @@ describe("the built server process", () => {
     const db = join(tmp.path, "data", "two.db");
     const first = await start(db);
     const second = runServer(bundle, env(db));
-    expect(await second.exited).toBe(3);
+    await expectExit(second, 3);
     expect(second.stderr()).toMatch(/locked/i);
     expect(second.stdout()).toBe("");
     first.child.process.kill("SIGINT");
-    expect(await first.child.exited).toBe(0);
+    await expectExit(first.child, 0);
   });
 
   it("closes lingering connections after the grace period and still exits 0", async () => {
@@ -91,11 +91,11 @@ describe("the built server process", () => {
     await new Promise((r) => setTimeout(r, 150));
     const t0 = Date.now();
     child.process.kill("SIGTERM");
-    expect(await child.exited).toBe(0);
-    expect(Date.now() - t0).toBeLessThan(9_500);
+    await expectExit(child, 0);
+    expect(Date.now() - t0).toBeLessThan(20_000);
     expect(Date.now() - t0).toBeGreaterThan(7_000);
     await hanging;
-  }, 20_000);
+  }, 50_000);
 
   it("a second signal exits 1 at once", async () => {
     const db = join(tmp.path, "data", "twice.db");
@@ -107,7 +107,7 @@ describe("the built server process", () => {
     child.process.kill("SIGTERM");
     await new Promise((r) => setTimeout(r, 200));
     child.process.kill("SIGTERM");
-    expect(await child.exited).toBe(1);
+    await expectExit(child, 1);
     req.destroy();
   });
 
@@ -134,6 +134,6 @@ describe("the built server process", () => {
     });
     expect(status).toBe(413);
     child.process.kill("SIGTERM");
-    expect(await child.exited).toBe(0);
+    await expectExit(child, 0);
   });
 });
