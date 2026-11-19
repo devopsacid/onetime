@@ -1,0 +1,35 @@
+# Self-hosted onetime, one instance only (SQLite, one writer; never scale this service).
+#   ONETIME_ORIGIN=https://onetime.example docker compose up -d --build
+# Optional: ONETIME_OPERATOR_NAME, ONETIME_OPERATOR_CONTACT, ONETIME_INDEXABLE (build-time, same variables as pnpm build:selfhost).
+# Put a TLS reverse proxy in front (deploy/Caddyfile.example or deploy/nginx.conf.example).
+services:
+  onetime:
+    image: onetime:local
+    build:
+      context: .
+      args:
+        ONETIME_ORIGIN: ${ONETIME_ORIGIN:?set ONETIME_ORIGIN to the public https origin, e.g. https://onetime.example}
+        ONETIME_OPERATOR_NAME: ${ONETIME_OPERATOR_NAME:-}
+        ONETIME_OPERATOR_CONTACT: ${ONETIME_OPERATOR_CONTACT:-}
+        ONETIME_INDEXABLE: ${ONETIME_INDEXABLE:-}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      # Localhost only: the reverse proxy on the same host connects here. Do not publish 8080 on all
+      # interfaces: the app speaks plain http and has no request limits that replace a proxy.
+      # If the proxy runs in another container on a shared compose network, remove this and use the service name.
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - onetime-data:/data
+    stop_grace_period: 10s
+    logging:
+      driver: local
+      options:
+        max-size: 1m
+        max-file: "2"
+
+volumes:
+  onetime-data:
