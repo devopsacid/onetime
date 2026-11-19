@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { request as httpRequest, type Server } from "node:http";
 import { connect, type AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -122,14 +123,51 @@ describe("API bridge", () => {
     expect((await fetch(`${base}/api`)).status).toBe(404);
   });
 
-  it("answers an over-limit chunked body with a 413 response, not a reset, and stops reading early", async () => {
-    const r = await sendChunked("/api/secrets?ttl=3600", MAX_BLOB_BYTES * 50);
+  it("answers an over-limit chunked body with a 413 response, not a reset, and stops reading after a bounded drain", async () => {
+    const r = await sendChunked("/api/secrets?ttl=3600", MAX_BLOB_BYTES * 1000);
     expect(r.status).toBe(413);
     expect(r.headers["connection"]).toBe("close");
     expect(r.serverBytesRead).toBeGreaterThan(0);
-    expect(r.serverBytesRead).toBeLessThan(MAX_BLOB_BYTES * 10);
+    expect(r.serverBytesRead).toBeLessThan(3 * 1024 * 1024);
     expect(JSON.parse(r.body)).toEqual({ error: "Secret is too large" });
   });
+
+  it("delivers the 413 to a client in another process that writes the whole over-limit body before it reads", async () => {
+    // A raw socket: send everything, only then read. A server that closes at once would reset the connection and lose the 413.
+    const script = `
+      const net = require("node:net");
+      const [port, mode, size] = process.argv.slice(1);
+      const total = Number(size);
+      const s = net.connect(Number(port), "127.0.0.1");
+      let got = "";
+      s.on("data", (d) => (got += d));
+      s.on("error", () => {});
+      s.on("close", () => { console.log(got.split("\\r\\n")[0]); process.exit(0); });
+      const body = Buffer.alloc(total, 7);
+      const head = "POST /api/secrets?ttl=3600 HTTP/1.1\\r\\nHost: x\\r\\nContent-Type: application/octet-stream\\r\\n" +
+        (mode === "chunked" ? "Transfer-Encoding: chunked\\r\\n\\r\\n" : "Content-Length: " + total + "\\r\\n\\r\\n");
+      s.pause();
+      s.write(head);
+      if (mode === "chunked") {
+        for (let i = 0; i < total; i += 4096) { const p = body.subarray(i, i + 4096); s.write(p.length.toString(16) + "\\r\\n"); s.write(p); s.write("\\r\\n"); }
+        s.write("0\\r\\n\\r\\n");
+      } else s.write(body);
+      setTimeout(() => s.resume(), 300);
+      setTimeout(() => process.exit(2), 5000);
+    `;
+    const run = (mode: string, size: number) =>
+      new Promise<string>((resolve) => {
+        const child = spawn(process.execPath, ["-e", script, String(port), mode, String(size)], { stdio: ["ignore", "pipe", "ignore"] });
+        let out = "";
+        child.stdout.on("data", (d) => (out += d));
+        child.on("close", () => resolve(out.trim()));
+      });
+    const results: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      results.push(await run("chunked", 1024 * 1024), await run("length", 1024 * 1024));
+    }
+    expect(results).toEqual(Array(8).fill("HTTP/1.1 413 Payload Too Large"));
+  }, 60_000);
 
   it("answers an honest oversized Content-Length with 413 without reading the body", async () => {
     const result = await new Promise<Raw>((resolve, reject) => {
