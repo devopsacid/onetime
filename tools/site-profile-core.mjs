@@ -127,17 +127,32 @@ export function transformHtml(html, opts) {
 
 const GOOGLE = /google|gtag/i;
 
-/** `_headers` for the self-host build: the info-path CSP overrides (detach and Google policy) are removed, so `/*` applies. */
-export function headersForSelfhost(text) {
+/**
+ * `_headers` for the self-host build: the info-path CSP overrides (detach and Google policy) are removed, so `/*` applies.
+ * Not indexable (the default): `X-Robots-Tag: noindex` goes into the `/*` rule, so every response that carries rule
+ * headers has it, and the separate rule on `/cli/*` is dropped (a header set twice would be joined as "noindex, noindex").
+ */
+export function headersForSelfhost(text, { indexable = false } = {}) {
   const lines = text.split("\n");
   const out = [];
   let inStar = false;
   for (const line of lines) {
-    if (line.trim() !== "" && !/^\s/.test(line) && !line.trim().startsWith("#")) inStar = line.trim() === "/*";
+    const isRule = line.trim() !== "" && !/^\s/.test(line) && !line.trim().startsWith("#");
+    if (isRule) inStar = line.trim() === "/*";
     if (!inStar && /^\s+(?:! )?Content-Security-Policy\b/i.test(line)) continue;
+    if (!indexable && /^\s+(?:! )?X-Robots-Tag\b/i.test(line)) continue;
     out.push(line);
+    if (!indexable && isRule && inStar) out.push("  X-Robots-Tag: noindex");
   }
-  const result = out.join("\n");
+  // A rule left without any header (the /cli/* one) goes with the comment lines above it.
+  const blocks = out.join("\n").split("\n\n");
+  let result = blocks
+    .filter((block) => {
+      const rest = block.split("\n").filter((line) => line.trim() !== "" && !line.trim().startsWith("#"));
+      return !(rest.length === 1 && !/^\s/.test(rest[0]) && !indexable && /^\/cli\/\*$/.test(rest[0].trim()));
+    })
+    .join("\n\n");
+  if (text.endsWith("\n") && !result.endsWith("\n")) result += "\n";
   if (GOOGLE.test(result)) throw new Error("_headers still mentions Google after the self-host rewrite");
   return result;
 }

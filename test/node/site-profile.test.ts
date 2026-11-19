@@ -177,8 +177,21 @@ describe("headersForSelfhost", () => {
     expect(out).toContain("/assets/*\n  Cache-Control: public, max-age=31536000, immutable");
     expect(out).toContain("/how-it-works\n  Cache-Control: no-store\n");
   });
-  it("leaves a file without overrides unchanged", () => {
-    expect(headersForSelfhost("/*\n  A: b\n")).toBe("/*\n  A: b\n");
+  it("indexable: leaves a file without overrides unchanged", () => {
+    expect(headersForSelfhost("/*\n  A: b\n", { indexable: true })).toBe("/*\n  A: b\n");
+  });
+  it("not indexable: X-Robots-Tag: noindex once, in the /* rule, so every response with rule headers carries it", () => {
+    expect(headersForSelfhost("/*\n  A: b\n", { indexable: false })).toBe("/*\n  X-Robots-Tag: noindex\n  A: b\n");
+    const out = headersForSelfhost(source, { indexable: false });
+    expect(out.match(/^[ \t]+X-Robots-Tag:/gm)).toHaveLength(1);
+    expect(out).toMatch(/^\/\*\n {2}X-Robots-Tag: noindex\n/m);
+    expect(out).not.toContain("/cli/*");
+    expect(out.endsWith("\n") && !out.endsWith("\n\n")).toBe(true);
+  });
+  it("indexable keeps the original rule on /cli/* only", () => {
+    const out = headersForSelfhost(source, { indexable: true });
+    expect(out.match(/^[ \t]+X-Robots-Tag:/gm)).toHaveLength(1);
+    expect(out).toContain("/cli/*\n  X-Robots-Tag: noindex");
   });
 });
 

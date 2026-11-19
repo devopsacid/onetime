@@ -91,6 +91,15 @@ try {
     const status = await rawStatus(port, target);
     expect(status === 400, `${target}: expected 400, got ${status}`);
   }
+  // X-Robots-Tag: a build that is not indexable (no sitemap) marks every response noindex; an indexable one only /cli/*.
+  const indexable = existsSync(join(siteDir, "sitemap.xml"));
+  for (const path of ["/", "/how-it-works", "/robots.txt", "/favicon.svg", "/cli/onetime.mjs", "/nope", "/how-it-works/"]) {
+    const r = await get(path);
+    await r.arrayBuffer();
+    const tag = r.headers.get("x-robots-tag");
+    const want = path.startsWith("/cli/") || !indexable ? "noindex" : null;
+    expect(tag === want, `${path}: X-Robots-Tag is ${JSON.stringify(tag)}, expected ${JSON.stringify(want)} (${indexable ? "indexable" : "not indexable"} build)`);
+  }
   const robots = await (await get("/robots.txt")).text();
   expect(/Disallow: \/\s*$/m.test(robots) || robots.includes("Sitemap:"), "robots.txt looks wrong");
   const post = await get("/", { method: "POST" });

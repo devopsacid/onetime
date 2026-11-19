@@ -49,7 +49,7 @@ export function siteProfile(env = process.env) {
     async closeBundle() {
       if (settings.profile !== "selfhost") return;
       const read = (name) => readFile(join(outDir, name), "utf8");
-      await writeFile(join(outDir, "_headers"), headersForSelfhost(await read("_headers")));
+      await writeFile(join(outDir, "_headers"), headersForSelfhost(await read("_headers"), { indexable: settings.indexable }));
       await writeFile(join(outDir, "robots.txt"), robotsForSelfhost(await read("robots.txt"), settings));
       if (settings.indexable) await writeFile(join(outDir, "sitemap.xml"), sitemapForSelfhost(await read("sitemap.xml"), settings.origin));
       else await rm(join(outDir, "sitemap.xml"), { force: true });

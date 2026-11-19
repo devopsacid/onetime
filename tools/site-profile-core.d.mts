@@ -8,6 +8,6 @@ export function transformHtml(
   html: string,
   opts: { profile: Profile; origin: string; operatorName: string | undefined; operatorContact: string | undefined },
 ): string;
-export function headersForSelfhost(text: string): string;
+export function headersForSelfhost(text: string, options?: { indexable?: boolean }): string;
 export function robotsForSelfhost(text: string, opts: { origin: string; indexable: boolean }): string;
 export function sitemapForSelfhost(text: string, origin: string): string;

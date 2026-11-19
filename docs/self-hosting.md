@@ -247,7 +247,7 @@ Set these when you build (Docker build args, Compose environment, or the environ
 | `ONETIME_ORIGIN` | yes | The exact origin people type, e.g. `https://onetime.example`. No path, no trailing slash. `http` is accepted only as `http://localhost:<port>`. Links, canonical tags and the CLI default use it. |
 | `ONETIME_OPERATOR_NAME` | no | Your name or organisation, shown on the privacy page. |
 | `ONETIME_OPERATOR_CONTACT` | no | An email address or an https URL, shown on the privacy page. |
-| `ONETIME_INDEXABLE` | no | `1` writes a `robots.txt` that allows crawling, plus a sitemap. Default: `robots.txt` with `Disallow: /`. |
+| `ONETIME_INDEXABLE` | no | `1` writes a `robots.txt` that allows crawling, plus a sitemap. Default: `robots.txt` with `Disallow: /`, no sitemap, and `X-Robots-Tag: noindex` on every response the static site sends. |
 
 Without the operator settings, the privacy page says "the operator of this instance" and names no one.
 
