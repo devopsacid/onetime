@@ -16,13 +16,17 @@ let drain: () => Promise<void>;
 let base: string;
 let port: number;
 let bytesReadAtFinish: number[] = [];
+let statusAtFinish: number[] = [];
 
 beforeAll(async () => {
   store = openSqliteStore(join(tmp.path, "http.db"), migrations());
   const app = createApp({ store, site: loadSite(makeDist(tmp.path)), maxStored: 20_000 });
   server = app.server;
   drain = app.drain;
-  server.on("request", (req, res) => res.on("close", () => bytesReadAtFinish.push(req.socket.bytesRead)));
+  server.on("request", (req, res) => {
+    res.on("finish", () => statusAtFinish.push(res.statusCode));
+    res.on("close", () => bytesReadAtFinish.push(req.socket.bytesRead));
+  });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   port = (server.address() as AddressInfo).port;
   base = `http://127.0.0.1:${port}`;
@@ -36,6 +40,7 @@ afterAll(async () => {
 });
 afterEach(() => {
   bytesReadAtFinish = [];
+  statusAtFinish = [];
   vi.restoreAllMocks();
 });
 
@@ -51,21 +56,36 @@ interface Raw {
 }
 
 /** Sends `total` bytes as a chunked body in 1 KB pieces, stopping when the server stops reading or closes. */
-function sendChunked(path: string, total: number): Promise<Raw> {
+function sendChunked(path: string, total: number, tolerant = false): Promise<Raw> {
   return new Promise((resolve, reject) => {
     bytesReadAtFinish = [];
+    statusAtFinish = [];
     const req = httpRequest({ host: "127.0.0.1", port, method: "POST", path, headers: { "Content-Type": "application/octet-stream" } });
     let finished = false;
+    // tolerant: a write error or reset before the response is not a failure; wait for the server to finish the request.
+    const settle = (status: number, headers: Raw["headers"], body: string): void => {
+      finished = true;
+      const started = Date.now();
+      const poll = (): void => {
+        if (bytesReadAtFinish.length > 0 && statusAtFinish.length > 0) return resolve({ status, headers, body, serverBytesRead: bytesReadAtFinish[0] ?? -1 });
+        if (Date.now() - started > 5000) return resolve({ status, headers, body, serverBytesRead: -1 });
+        setTimeout(poll, 20);
+      };
+      poll();
+    };
     req.on("response", (res) => {
       let body = "";
       res.on("data", (d) => (body += d));
       res.on("end", () => {
-        finished = true;
         req.destroy();
-        setTimeout(() => resolve({ status: res.statusCode!, headers: res.headers, body, serverBytesRead: bytesReadAtFinish[0] ?? -1 }), 50);
+        settle(res.statusCode!, res.headers, body);
       });
     });
-    req.on("error", (e) => (finished ? undefined : reject(e)));
+    req.on("error", (e) => {
+      if (finished) return;
+      if (tolerant) return settle(0, {}, "");
+      reject(e);
+    });
     let sent = 0;
     const chunk = Buffer.alloc(1024, 7);
     const pump = () => {
@@ -123,13 +143,18 @@ describe("API bridge", () => {
     expect((await fetch(`${base}/api`)).status).toBe(404);
   });
 
-  it("answers an over-limit chunked body with a 413 response, not a reset, and stops reading after a bounded drain", async () => {
-    const r = await sendChunked("/api/secrets?ttl=3600", MAX_BLOB_BYTES * 1000);
-    expect(r.status).toBe(413);
-    expect(r.headers["connection"]).toBe("close");
+  it("answers an over-limit chunked body with a 413 response and stops reading after a bounded drain", async () => {
+    // Asserted on the server side: client and server share this event loop, so under load the server's drain fallback can
+    // destroy the socket while this client still writes (EPIPE). Delivery of the 413 to a client is proven out of process below.
+    const r = await sendChunked("/api/secrets?ttl=3600", MAX_BLOB_BYTES * 1000, true);
+    expect(statusAtFinish).toEqual([413]);
     expect(r.serverBytesRead).toBeGreaterThan(0);
     expect(r.serverBytesRead).toBeLessThan(3 * 1024 * 1024);
-    expect(JSON.parse(r.body)).toEqual({ error: "Secret is too large" });
+    if (r.status !== 0) {
+      expect(r.status).toBe(413);
+      expect(r.headers["connection"]).toBe("close");
+      expect(JSON.parse(r.body)).toEqual({ error: "Secret is too large" });
+    }
   });
 
   it("delivers the 413 to a client in another process that writes the whole over-limit body before it reads", async () => {
