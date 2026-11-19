@@ -12,8 +12,10 @@ import {
 import { createLatestGuard } from "./latest";
 import { buildLink, parseFragment, type SecretLink } from "./link";
 import { initThemeToggle } from "./theme-toggle";
+import { clearLeftoverAnalyticsCookies } from "./ga-cookies";
 
 initThemeToggle();
+clearLeftoverAnalyticsCookies();
 
 function el<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);

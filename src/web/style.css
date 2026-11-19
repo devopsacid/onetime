@@ -1117,3 +1117,38 @@ html {
 .explainer :is(p, dd, li) > code {
   white-space: nowrap;
 }
+
+/* ---------- Consent banner (info pages) ---------- */
+
+.consent-banner {
+  margin-block: 1rem;
+  padding: 1rem 1.15rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--field-border);
+  border-radius: 10px;
+}
+
+.consent-banner:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.consent-banner h2 {
+  margin: 0 0 0.4rem;
+  font-size: 1.05rem;
+}
+
+.consent-banner p {
+  margin: 0 0 0.9rem;
+}
+
+.consent-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.consent-actions .button {
+  flex: 1 1 8rem;
+}
