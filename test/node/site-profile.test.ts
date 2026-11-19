@@ -120,7 +120,7 @@ describe("transformHtml", () => {
     const out = transformHtml(SAMPLE, { ...OPTS, profile: "selfhost", operatorName: "Ann & Co", operatorContact: "ann@example.com" });
     expect(out).toContain('<p>mine Ann &amp; Co / <a href="mailto:ann@example.com">ann@example.com</a> at https://my.host/x</p>');
     expect(out).toContain("tail https://my.host/");
-    expect(out).not.toMatch(/site:|\{\{|onetimepass\.pages\.dev/);
+    expect(out).not.toMatch(/site:(?:onetimepass|selfhost)|\{\{|onetimepass\.pages\.dev/);
   });
   it("selfhost: unset operator gives the generic texts", () => {
     const out = transformHtml(SAMPLE, { ...OPTS, profile: "selfhost" });
@@ -147,9 +147,9 @@ describe("real pages", () => {
     it(`${page}: both profiles transform cleanly`, () => {
       const source = readFileSync(join(ROOT, page), "utf8");
       const owner = transformHtml(source, { ...OPTS, profile: "onetimepass" });
-      expect(owner).not.toMatch(/site:|\{\{/);
+      expect(owner).not.toMatch(/site:(?:onetimepass|selfhost)|\{\{/);
       const mine = transformHtml(source, { ...OPTS, profile: "selfhost", operatorName: "Op", operatorContact: "op@example.com" });
-      expect(mine).not.toMatch(/site:|\{\{|onetimepass\.pages\.dev|googletagmanager|data-cookie-settings/i);
+      expect(mine).not.toMatch(/site:(?:onetimepass|selfhost)|\{\{|onetimepass\.pages\.dev|googletagmanager|data-cookie-settings/i);
       expect(mine).not.toContain(OWNER_MAIL);
     });
   }

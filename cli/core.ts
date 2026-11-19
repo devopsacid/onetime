@@ -28,6 +28,8 @@ export interface Io {
   fetch: typeof fetch;
   env: Record<string, string | undefined>;
   version: string;
+  /** Server used when neither --server nor ONETIME_SERVER is given (a self-host build injects its own origin). */
+  defaultServer?: string;
   /** Reads at most `max + 1` bytes of stdin (one extra byte lets the core see an overflow). */
   stdin: { isTTY: boolean; readBytes(max: number): Promise<Uint8Array> };
   promptHidden(label: string): Promise<string>;
@@ -87,8 +89,8 @@ function isAllowedOrigin(url: URL): boolean {
 }
 
 /** Picks --server, then ONETIME_SERVER, then the default; returns a bare origin. */
-export function resolveServer(flag: string | undefined, env: Record<string, string | undefined>): string {
-  const text = flag ?? (env.ONETIME_SERVER ? env.ONETIME_SERVER : DEFAULT_SERVER);
+export function resolveServer(flag: string | undefined, env: Record<string, string | undefined>, defaultServer: string = DEFAULT_SERVER): string {
+  const text = flag ?? (env.ONETIME_SERVER ? env.ONETIME_SERVER : defaultServer);
   let url: URL;
   try {
     url = new URL(text);
@@ -513,7 +515,7 @@ async function execute(command: Command, io: Io): Promise<number> {
       io.stdout.write(`${io.version}\n`);
       return EXIT.ok;
     case "send": {
-      const server = resolveServer(command.server, io.env);
+      const server = resolveServer(command.server, io.env, io.defaultServer);
       const secret = await readSecretInput(io);
       const link = await createLink(io, secret, command.ttl, server);
       io.stdout.write(`${link}\n`);
@@ -526,7 +528,7 @@ async function execute(command: Command, io: Io): Promise<number> {
         io.stdout.write(`${secret}\n`);
         return EXIT.ok;
       }
-      const server = resolveServer(command.server, io.env);
+      const server = resolveServer(command.server, io.env, io.defaultServer);
       const link = await createLink(io, secret, command.ttl, server);
       io.stdout.write(`${link}\n`);
       if (command.show) io.stderr.write(`Secret: ${secret}\n`);
@@ -535,7 +537,7 @@ async function execute(command: Command, io: Io): Promise<number> {
     }
     case "get":
     case "status": {
-      const defaultServer = resolveServer(command.server, io.env);
+      const defaultServer = resolveServer(command.server, io.env, io.defaultServer);
       const explicitText = command.server ?? (io.env.ONETIME_SERVER ? io.env.ONETIME_SERVER : undefined);
       const explicit = explicitText === undefined ? undefined : defaultServer;
       const input = await readLinkInput(io, command.link);

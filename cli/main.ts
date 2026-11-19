@@ -1,6 +1,7 @@
 import { run, type Io } from "./core";
 
 declare const __VERSION__: string | undefined;
+declare const __DEFAULT_SERVER__: string | undefined;
 
 /** Reads stdin up to `max + 1` bytes, then stops (the core rejects the overflow). */
 async function readStdinBytes(max: number): Promise<Uint8Array> {
@@ -59,6 +60,7 @@ const io: Io = {
   fetch: globalThis.fetch,
   env: process.env,
   version: typeof __VERSION__ === "string" ? __VERSION__ : "dev",
+  defaultServer: typeof __DEFAULT_SERVER__ === "string" ? __DEFAULT_SERVER__ : undefined,
   stdin: { isTTY: process.stdin.isTTY === true, readBytes: readStdinBytes },
   promptHidden,
   stdout: {

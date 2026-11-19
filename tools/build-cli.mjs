@@ -1,9 +1,12 @@
 import { createHash } from "node:crypto";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { build } from "esbuild";
+import { readProfileEnv } from "./site-profile.mjs";
 
 const { version } = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
-const out = new URL("../dist/cli/", import.meta.url);
+// ONETIME_SITE=selfhost builds into dist-selfhost/ and makes the instance's own origin the default server.
+const site = readProfileEnv();
+const out = new URL(`../${site.outDir}/cli/`, import.meta.url);
 await mkdir(out, { recursive: true });
 
 await build({
@@ -14,7 +17,10 @@ await build({
   format: "esm",
   target: "node20",
   banner: { js: "#!/usr/bin/env node\n// onetime CLI - MIT License, Copyright (c) 2026 Michal Maxian. https://onetimepass.pages.dev" },
-  define: { __VERSION__: JSON.stringify(version) },
+  define: {
+    __VERSION__: JSON.stringify(version),
+    ...(site.profile === "selfhost" ? { __DEFAULT_SERVER__: JSON.stringify(site.origin) } : {}),
+  },
   legalComments: "none",
 });
 await chmod(new URL("onetime.mjs", out), 0o755);

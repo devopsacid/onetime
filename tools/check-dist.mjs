@@ -6,16 +6,49 @@
 // Analytics guard: the app page (index.html) and 404.html, with every JS/CSS file they load (directly, via
 // modulepreload or via imports), must not contain googletagmanager, google-analytics or gtag; no HTML file may
 // contain a Google URL.
+// Profile: `dir/_selfhost.json` present = self-host build (its origin is the own origin, and no Google, GA ID, owner
+// address or onetimepass.pages.dev outside cli/ may appear anywhere); absent = the Pages build (no _selfhost.json).
+// Both: no `site:` block markers and no {{placeholders}} left in text files.
 // Usage: node tools/check-dist.mjs [dir]   (default: dist)
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 
-const OWN_ORIGIN = "https://onetimepass.pages.dev";
+const PAGES_ORIGIN = "https://onetimepass.pages.dev";
 const RESOURCE_ATTRS = new Set(["src", "href", "action", "poster", "srcset", "formaction", "data", "xlink:href"]);
 
 const root = process.argv[2] ?? "dist";
 const problems = [];
+
+// Profile: _selfhost.json decides. A broken one is a problem, not a fallback to the Pages rules.
+let selfhost = false;
+let OWN_ORIGIN = PAGES_ORIGIN;
+{
+  let raw = null;
+  try {
+    raw = readFileSync(join(root, "_selfhost.json"), "utf8");
+  } catch {
+    // Pages profile.
+  }
+  if (raw !== null) {
+    selfhost = true;
+    try {
+      const origin = JSON.parse(raw).origin;
+      if (typeof origin !== "string" || !/^https?:\/\/[^/\s]+$/.test(origin)) throw new Error("no valid origin");
+      OWN_ORIGIN = origin;
+    } catch (error) {
+      problems.push(`_selfhost.json is invalid: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+}
+
+function textFiles(dir) {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    if (statSync(path).isDirectory()) return textFiles(path);
+    return /\.(html|m?js|css|json|txt|xml|svg|webmanifest|sha256|cmd)$|^_headers$/.test(name) ? [path] : [];
+  });
+}
 
 function htmlFiles(dir) {
   return readdirSync(dir).flatMap((name) => {
@@ -200,6 +233,10 @@ for (const name of ["index.html", "404.html"]) {
     }
     for (const path of INFO_PATHS) {
       const lines = rules.get(path) ?? [];
+      if (selfhost) {
+        if (csp(lines).length > 0 || lines.some((l) => /content-security-policy/i.test(l))) problems.push(`_headers: ${path} must not override the CSP in a self-host build`);
+        continue;
+      }
       const i = lines.findIndex((l) => l === "! Content-Security-Policy");
       if (i === -1 || csp(lines).length !== 1) problems.push(`_headers: ${path} must detach the CSP and set exactly one`);
     }
@@ -211,9 +248,37 @@ for (const file of files) {
   if (hit) problems.push(`${relative(process.cwd(), file)}: Google URL in HTML: ${hit[0]}`);
 }
 
+// Markers and placeholders must not survive the build, in either profile.
+for (const file of textFiles(root)) {
+  if (!/\.(html|txt|xml|json|svg|webmanifest)$/.test(file)) continue;
+  const text = readFileSync(file, "utf8");
+  const marker = /<!-- \/?site:(?:onetimepass|selfhost)|^\s*site:selfhost -->/m.exec(text);
+  if (marker) problems.push(`${relative(process.cwd(), file)}:${lineOf(text, marker.index)}: site block marker left in the output`);
+  const placeholder = /\{\{[A-Z_]+\}\}/.exec(text);
+  if (placeholder) problems.push(`${relative(process.cwd(), file)}:${lineOf(text, placeholder.index)}: placeholder left in the output: ${placeholder[0]}`);
+}
+
+if (selfhost) {
+  // Nothing of the owner's analytics or identity may ship in a self-host build.
+  const GA = /googletagmanager|google-analytics|analytics\.google|gtag|G-W3GR41J2NR/i;
+  const OWNER_MAIL = new RegExp(["michal", "maxian\\.sk"].join("@"), "i");
+  for (const file of textFiles(root)) {
+    const text = readFileSync(file, "utf8");
+    const rel = relative(process.cwd(), file);
+    const inCli = relative(root, file).startsWith(`cli${"/"}`);
+    const ga = GA.exec(text);
+    if (ga) problems.push(`${rel}:${lineOf(text, ga.index)}: analytics string "${ga[0]}" in a self-host build`);
+    const mail = OWNER_MAIL.exec(text);
+    if (mail) problems.push(`${rel}:${lineOf(text, mail.index)}: the owner's address in a self-host build`);
+    if (!inCli && text.includes("onetimepass.pages.dev")) problems.push(`${rel}: onetimepass.pages.dev outside cli/ in a self-host build`);
+  }
+} else if (existsSync(join(root, "_selfhost.json"))) {
+  problems.push("_selfhost.json in the Pages build");
+}
+
 if (problems.length > 0) {
   console.error(`check-dist: ${problems.length} problem(s)`);
   for (const problem of problems) console.error(`  ${problem}`);
   process.exit(1);
 }
-console.log(`check-dist: ${files.length} HTML files OK (no inline script or style, no handlers, no external resources, JSON-LD valid, no analytics code reachable from index.html or 404.html)`);
+console.log(`check-dist: ${selfhost ? "self-host" : "Pages"} profile, ${files.length} HTML files OK (no inline script or style, no handlers, no external resources, JSON-LD valid, no analytics code reachable from index.html or 404.html)`);

@@ -4,6 +4,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig(async () => {
   const migrations = await readD1Migrations("./migrations");
   return {
+    define: { __GA_ENABLED__: true },
     plugins: [
       cloudflareTest({
         wrangler: { configPath: "./wrangler.jsonc" },

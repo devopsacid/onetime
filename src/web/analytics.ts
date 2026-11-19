@@ -2,6 +2,7 @@
 // Nothing is requested before the visitor accepts: the gtag.js loader is added to the page after Accept.
 import { GA_MEASUREMENT_ID } from "./analytics-config";
 import { cliDownloadKind } from "./analytics-events";
+import { analyticsAllowedHere } from "./analytics-origin";
 import { CONSENT_STORAGE_KEY, analyticsEnabled, sanitizePageLocation, serializeConsent, type Decision } from "./consent";
 import { deleteAnalyticsCookies, readConsentDecision } from "./ga-cookies";
 
@@ -139,6 +140,8 @@ function openBanner(focus: boolean): void {
 }
 
 export function initAnalytics(): void {
+  // Only on the original site's origin: a fork deployed elsewhere never loads gtag or shows the banner.
+  if (!analyticsAllowedHere(location.origin)) return;
   if (!analyticsEnabled(GA_MEASUREMENT_ID)) {
     deleteAnalyticsCookies();
     return;

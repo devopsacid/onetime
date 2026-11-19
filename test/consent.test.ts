@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { GA_MEASUREMENT_ID } from "../src/web/analytics-config";
+import { analyticsAllowedHere } from "../src/web/analytics-origin";
 import { cliDownloadKind } from "../src/web/analytics-events";
 import {
   CONSENT_MAX_AGE_MS,
   CONSENT_VERSION,
   analyticsCookieNames,
-  analyticsAllowedHere,
   analyticsEnabled,
   cookieDeletionStrings,
   isAnalyticsCookieName,
