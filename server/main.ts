@@ -1,6 +1,7 @@
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ConfigError, parseConfig } from "./config";
+import { permissionWarning } from "./permissions";
 import { SiteError } from "./static";
 import { startServer } from "./start";
 import { StoreLockedError } from "./store-sqlite";
@@ -39,6 +40,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  const warning = permissionWarning(dbPath);
+  if (warning !== null) process.stderr.write(`${warning}\n`);
   process.stdout.write(`onetime ${version} listening on ${running.host}:${running.port}, db ${dbPath}, max ${maxStored} secrets\n`);
 
   let stopping = false;

@@ -283,6 +283,7 @@ The server writes the reason to stderr (`docker logs`, or `journalctl -u onetime
 - **Health check by hand:** `GET /healthz` answers 200 `ok`.
 - **Expired secrets are still in the database.** Expected. Expired secrets are never handed out, but their rows are removed on later API requests, not by a timer. An idle instance keeps them until the next request.
 - **Deleted data on disk.** Deleted blobs are zeroed in the main database file (`secure_delete`). The WAL file next to it can still hold copies of recent encrypted blobs until SQLite folds it back into the main file; a clean stop empties it.
+- **Warning at start: "folder ... has mode 755" or "onetime.db has mode 644".** The data folder or the database files can be reached by other users on the host. The server prints one line to stderr and keeps running; it never changes modes itself. It happens with a folder you made yourself or a bind mount, because only a folder the server creates gets mode 0700. Fix it with `chmod 700 <folder>` and `chmod 600 <folder>/onetime.db*` (stop the server first). The blobs are encrypted and the keys are never stored, but the files are meant to be private. The check is skipped on Windows.
 - **Logs.** The app writes no request lines. Check that your proxy does not either, and that no Docker or journal setting adds them.
 
 ## What was tested
