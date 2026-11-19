@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { onRequest } from "../functions/api/[[path]]";
 import { handle, type Options } from "../src/worker/index";
 import { d1Store } from "../src/worker/store-d1";
-import { defineApiContract } from "./contract/api-contract";
+import { defineApiContract, expectAtomicSql, type IssuedSql } from "./contract/api-contract";
 
 const BASE = "https://onetime.test";
 
@@ -16,6 +16,29 @@ describe("Pages Function entry", () => {
       waitUntil: () => {},
     } as unknown as Parameters<typeof onRequest>[0];
     expect((await onRequest(context)).status).toBe(405);
+  });
+});
+
+describe("D1 store statements", () => {
+  it("issues exactly one DELETE ... RETURNING for a reveal and one capped INSERT, and no SELECT-then-DELETE", async () => {
+    let into: string[] = [];
+    const spy = new Proxy(env.DB, {
+      get(target, prop) {
+        if (prop === "prepare") return (sql: string) => (into.push(sql), target.prepare(sql));
+        if (prop === "exec" || prop === "batch") throw new Error(`unexpected ${String(prop)}`);
+        const value = Reflect.get(target, prop) as unknown;
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const store = d1Store(spy);
+    const id = "b".repeat(22);
+    const now = 1_800_000_000_000;
+    await store.insertIfBelowCap(id, new Uint8Array(40), now + 60_000, now, 10);
+    const issued: IssuedSql = { reveal: [], insert: into };
+    into = [];
+    expect(await store.take(id, now)).not.toBeNull();
+    issued.reveal = into;
+    expectAtomicSql(issued);
   });
 });
 

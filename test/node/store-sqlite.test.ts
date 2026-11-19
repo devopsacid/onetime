@@ -5,6 +5,7 @@ import { build } from "esbuild";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { readMigrations } from "../../server/migrate";
 import { openSqliteStore, StoreLockedError, type SqliteStore } from "../../server/store-sqlite";
+import { expectAtomicSql, type IssuedSql } from "../contract/api-contract";
 import { MIGRATIONS_DIR, migrations, tempDir } from "./helpers";
 
 const T0 = 1_800_000_000_000;
@@ -34,6 +35,21 @@ describe("SqliteStore", () => {
     expect(pragma("temp_store")).toBe(2);
     expect(pragma("busy_timeout")).toBe(5000);
     expect(pragma("journal_size_limit")).toBe(4194304);
+  });
+
+  it("issues exactly one DELETE ... RETURNING for a reveal and one capped INSERT, and no SELECT-then-DELETE", async () => {
+    let into: string[] = [];
+    const real = store.db.prepare.bind(store.db);
+    store.db.prepare = ((sql: string) => (into.push(sql), real(sql))) as typeof store.db.prepare;
+    const realExec = store.db.exec.bind(store.db);
+    store.db.exec = ((sql: string) => (into.push(sql), realExec(sql))) as typeof store.db.exec;
+    const issued: IssuedSql = { reveal: [], insert: [] };
+    await store.insertIfBelowCap("a".repeat(22), blobOf(40), T0 + 60_000, T0, 10);
+    issued.insert = into;
+    into = [];
+    expect(await store.take("a".repeat(22), T0)).not.toBeNull();
+    issued.reveal = into;
+    expectAtomicSql(issued);
   });
 
   it("round-trips every byte value", async () => {

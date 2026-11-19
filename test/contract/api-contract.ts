@@ -304,3 +304,19 @@ export function defineApiContract(h: ApiHarness): void {
     });
   });
 }
+
+/** The SQL a store sent while it served one reveal (`take`) and one capped insert, each recorded separately. */
+export interface IssuedSql {
+  reveal: string[];
+  insert: string[];
+}
+
+/** Structural guarantee behind the atomic claims: one statement each, and the reveal never SELECTs. */
+export function expectAtomicSql({ reveal, insert }: IssuedSql): void {
+  const squash = (sql: string) => sql.replace(/\s+/g, " ").trim();
+  expect(reveal.map(squash)).toHaveLength(1);
+  expect(reveal[0]).toMatch(/^DELETE FROM secrets WHERE id = \? AND expires_at > \? RETURNING blob$/i);
+  expect(reveal.join(" ")).not.toMatch(/\bselect\b/i);
+  expect(insert.map(squash)).toHaveLength(1);
+  expect(insert[0]).toMatch(/^INSERT INTO secrets \(id, blob, expires_at\) SELECT \S+, \S+, \S+ WHERE \(SELECT COUNT\(\*\) FROM secrets WHERE expires_at > \S+\) < \S+$/i);
+}
