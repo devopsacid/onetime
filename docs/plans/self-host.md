@@ -23,7 +23,7 @@ D1. **SQLite driver: built-in `node:sqlite`.** Minimum Node **22.13** for the se
 - In Node 26, `DatabaseSync` is a deprecated alias of `Database` (DEP0210). The store uses `sqlite.Database ?? sqlite.DatabaseSync`.
 - Load the module with `process.getBuiltinModule("node:sqlite")` (types via `import type`). On a Node that is too old, the server can then print "Node 22.13 or newer is required" instead of failing at module load.
 - Rejected: `better-sqlite3`. It is a native addon, so it needs a prebuilt binary per Node ABI and libc or a compiler toolchain in the build stage. It adds an install script to `pnpm-workspace.yaml` `allowBuilds` (supply-chain surface) and a runtime dependency, which breaks "no runtime dependencies". It brings nothing we need: RETURNING and WAL work in both.
-- Node 20 is end-of-life since 2026-04-30 (https://github.com/nodejs/Release). Changes: `package.json` gets `"engines": { "node": ">=22.13" }` (repo and server) and `@types/node` moves to `^24`. The CLI bundle keeps esbuild `target: "node20"` until the owner decides otherwise (Q5).
+- Node 20 is end-of-life since 2026-04-30 (https://github.com/nodejs/Release). Changes: `package.json` gets `"engines": { "node": ">=22.13" }` (repo and server) and `@types/node` moves to `^24`. The CLI bundle used esbuild `target: "node20"` at first; the owner decided on 2026-11-19 that the CLI needs Node 22+ and the target is now `node22` (Q5).
 
 D2. **Storage behind a small async interface; the router gets the store injected.** `handle(request, store, ctx, options)` replaces `handle(request, env, ctx, options)`. The Pages Function wraps `env.DB` in a D1 store per request. SQL stays exactly as it is today, now inside the stores. Async methods leave room for Postgres. Rejected: (a) keeping `env` and adding `options.store`, which leaves a Cloudflare type in the shared router; (b) one generic `query(sql)` adapter, which would let dialect differences leak into the router and hide the atomicity contract.
 
@@ -393,15 +393,15 @@ Cannot be verified:
 - behaviour on network filesystems;
 - a Pages deploy without the owner's explicit approval.
 
-## 9. Defaults chosen for the open questions (2026-11-19, pending the owner's confirmation)
+## 9. Defaults chosen for the open questions (2026-11-19, all 8 confirmed by the owner on 2026-11-19)
 
-The owner asked to start implementation as soon as the plan was ready, so these defaults apply until the owner says otherwise:
+The owner asked to start implementation as soon as the plan was ready, so these defaults applied from the start; the owner confirmed all eight on 2026-11-19 (Q5 with a change: the CLI now requires Node 22 or newer):
 
 - Q1: yes. v1 documents Linux VMs only (plain Linux, AWS EC2 / Lightsail instance, Azure VM). Managed container platforms come back with a Postgres store.
 - Q2: yes. `pnpm build` stays the Pages profile; the Node server refuses a build without `_selfhost.json`.
 - Q3: yes. Analytics only on `https://onetimepass.pages.dev`, also off on Pages preview URLs.
 - Q4: optional. Without `ONETIME_OPERATOR_NAME` / `ONETIME_OPERATOR_CONTACT` the privacy page uses generic text ("the operator of this instance"); the docs tell operators to set both.
-- Q5: server minimum Node 22.13 (the ExperimentalWarning on 22 is documented), Docker uses Node 24. The CLI docs say Node 22+; `engines` for the CLI is not tightened in code.
+- Q5: server minimum Node 22.13 (the ExperimentalWarning on 22 is documented), Docker uses Node 24. The CLI docs say Node 22+ (the esbuild target of the CLI bundle is `node22`); `engines` for the CLI is not tightened in code, and there is no runtime version check.
 - Q6: yes, pin pnpm with `packageManager`.
 - Q7: self-host builds default to `Disallow: /` and no sitemap; `ONETIME_INDEXABLE=1` at build time switches to robots + sitemap with the operator's origin.
 - Q8: yes, `pnpm check` includes the self-host build and the smoke test.

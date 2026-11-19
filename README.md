@@ -19,7 +19,7 @@ Opening the link does not use it up; only the Reveal button does. This keeps lin
 
 ## Command line
 
-`onetime` is a single Node file (Node 20 or newer is the only requirement; no other dependencies). It is compatible with the web page: links made by one can be opened by the other, and it encrypts on your machine, so the server never sees the secret or the key.
+`onetime` is a single Node file (Node 22 or newer is the only requirement; no other dependencies). It is compatible with the web page: links made by one can be opened by the other, and it encrypts on your machine, so the server never sees the secret or the key.
 
 Install on Linux or macOS:
 

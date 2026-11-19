@@ -260,7 +260,7 @@ curl -fsSL https://onetime.example/cli/onetime.mjs.sha256 -o onetime.mjs.sha256
 
 The README explains how to check the download with `sha256sum`.
 
-Links from any instance open with any CLI copy, because `get` uses the origin in the link. The CLI needs Node 20 or newer; the server needs Node 22.13 or newer.
+Links from any instance open with any CLI copy, because `get` uses the origin in the link. The CLI needs Node 22 or newer; the server needs Node 22.13 or newer.
 
 ## Settings reference
 

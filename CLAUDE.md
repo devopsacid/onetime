@@ -23,7 +23,7 @@ Public site for sharing a secret (password, token, credentials) through a link t
 
 ## Command-line client
 
-- `cli/core.ts` (pure, tested in the Workers runtime with `fetch` wired to the real router) and `cli/main.ts` (Node entry). `tools/build-cli.mjs` bundles them with esbuild into `dist/cli/onetime.mjs`, plus `onetime.cmd` (Windows shim) and `onetime.mjs.sha256`; the site serves them at `/cli/`. Node 20+ is the only requirement; no runtime dependencies.
+- `cli/core.ts` (pure, tested in the Workers runtime with `fetch` wired to the real router) and `cli/main.ts` (Node entry). `tools/build-cli.mjs` bundles them with esbuild into `dist/cli/onetime.mjs`, plus `onetime.cmd` (Windows shim) and `onetime.mjs.sha256`; the site serves them at `/cli/`. Node 22+ is the only requirement; no runtime dependencies.
 - It reuses `src/web/crypto.ts`, `generate.ts`, `link.ts` and the shared limits, so links are interchangeable with the web page. Do not fork the crypto; change the shared modules and keep both sides tested.
 - Rules: the secret is never accepted as an argument (stdin or hidden prompt only); stdout carries only the link (`send`, `gen`) or only the secret (`get`); hints on stderr never contain the link or key; server replies are size-capped and the returned id is validated; https only, except an explicitly named local server.
 - `pnpm build` = `vite build` then `build:cli` (vite empties `dist/` first). `dev` and `deploy` go through `pnpm build`.
@@ -95,4 +95,3 @@ ONETIME_ORIGIN=https://host pnpm build:selfhost   # self-host site + CLI + dist-
 - The Back-button (bfcache) clearing of the revealed secret is implemented but was not proven in a real bfcache restore.
 - There is no browser e2e test in the repo; UI flows were checked with throwaway Playwright scripts.
 - Some Node tests start real servers and can time out when the machine is very loaded (load average 40+); a rerun passes.
-- The CLI still states Node 20+ (Node 20 is end-of-life); raising it to 22+ is an open owner decision.
