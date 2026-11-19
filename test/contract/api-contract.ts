@@ -286,6 +286,15 @@ export function defineApiContract(h: ApiHarness): void {
       expect((await create(blobOf(64), { options: { maxStored: stored + 1 } })).status).toBe(201);
     });
 
+    it("lets exactly one of many simultaneous creates into a table with one free slot", async () => {
+      const options = { maxStored: 1 };
+      const responses = await Promise.all(Array.from({ length: 10 }, () => create(blobOf(64), { options })));
+      const codes = responses.map((response) => response.status).sort();
+      await Promise.all(responses.map((response) => response.arrayBuffer()));
+      expect(codes).toEqual([201, ...Array<number>(9).fill(503)]);
+      expect(await rowCount()).toBe(1);
+    });
+
     it("does not count expired secrets towards the cap", async () => {
       const T0 = 1_800_000_000_000;
       await createOk(blobOf(64), "60", { now: T0 });
