@@ -2,3 +2,5 @@ node_modules/
 dist/
 .wrangler/
 .dev.vars
+dist-selfhost/
+dist-server/

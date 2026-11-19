@@ -14,7 +14,7 @@ export interface Options {
   maxStored?: number;
 }
 
-const API_HEADERS = {
+export const API_HEADERS = {
   "Cache-Control": "no-store",
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "no-referrer",

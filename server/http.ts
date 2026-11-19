@@ -1,0 +1,247 @@
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { MAX_BLOB_BYTES } from "../src/shared/limits";
+import { API_HEADERS, handle } from "../src/worker/index";
+import type { Site } from "./static";
+import type { ManagedStore } from "./store-sqlite";
+
+export interface AppDeps {
+  store: ManagedStore;
+  site: Site;
+  maxStored: number;
+}
+
+export interface App {
+  server: Server;
+  /** Resolves when the background work started by requests (purges) has finished. */
+  drain(): Promise<void>;
+}
+
+/** The only thing logged for a failure: an error code or name. Never a URL, id, body or message (they could hold request data). */
+function logFailure(error: unknown): void {
+  const e = error as { code?: unknown; name?: unknown } | null;
+  const label = typeof e?.code === "string" ? e.code : typeof e?.name === "string" ? e.name : "error";
+  process.stderr.write(`onetime: request failed (${label.replace(/[^\w.-]/g, "").slice(0, 60)})\n`);
+}
+
+interface BoundedBody {
+  stream: ReadableStream<Uint8Array>;
+  /** True once the request body was read to its end. */
+  complete(): boolean;
+}
+
+/**
+ * The request body as a Web stream that hands out at most MAX_BLOB_BYTES + 1 bytes, then ends.
+ * Not Readable.toWeb(req): its cancel() destroys the socket, so the router's 413 could not be written.
+ * Cancelling here only pauses the request.
+ */
+function boundedBody(req: IncomingMessage): BoundedBody {
+  const limit = MAX_BLOB_BYTES + 1;
+  let total = 0;
+  let complete = false;
+  let detach = (): void => {};
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const onData = (chunk: Buffer): void => {
+        const room = limit - total;
+        const piece = chunk.length > room ? chunk.subarray(0, room) : chunk;
+        total += piece.length;
+        controller.enqueue(new Uint8Array(piece));
+        if (total >= limit) {
+          detach();
+          req.pause();
+          controller.close();
+        } else if ((controller.desiredSize ?? 0) <= 0) {
+          req.pause();
+        }
+      };
+      const onEnd = (): void => {
+        complete = true;
+        detach();
+        controller.close();
+      };
+      const onError = (error: Error): void => {
+        detach();
+        controller.error(error);
+      };
+      const onClose = (): void => {
+        if (!req.complete) onError(new Error("request closed early"));
+      };
+      detach = () => {
+        req.off("data", onData);
+        req.off("end", onEnd);
+        req.off("error", onError);
+        req.off("close", onClose);
+      };
+      req.on("data", onData);
+      req.on("end", onEnd);
+      req.on("error", onError);
+      req.on("close", onClose);
+    },
+    pull() {
+      req.resume();
+    },
+    cancel() {
+      detach();
+      req.pause();
+    },
+  });
+  return { stream, complete: () => complete };
+}
+
+const SKIPPED_REQUEST_HEADERS = new Set(["host", "connection", "keep-alive", "transfer-encoding", "upgrade", "proxy-connection", "te"]);
+
+function webRequest(req: IncomingMessage, url: URL): { request: Request; body: BoundedBody | null } {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(req.headers)) {
+    if (value === undefined || SKIPPED_REQUEST_HEADERS.has(name)) continue;
+    headers.set(name, Array.isArray(value) ? value.join(", ") : value);
+  }
+  const method = req.method ?? "GET";
+  if (method === "GET" || method === "HEAD") {
+    req.resume();
+    return { request: new Request(url, { method, headers }), body: null };
+  }
+  const body = boundedBody(req);
+  return { request: new Request(url, { method, headers, body: body.stream, duplex: "half" } as RequestInit), body };
+}
+
+function send(res: ServerResponse, status: number, headers: Iterable<[string, string]>, body: Uint8Array | null): void {
+  res.statusCode = status;
+  for (const [name, value] of headers) res.setHeader(name, value);
+  res.end(body === null ? undefined : body);
+}
+
+/**
+ * After a response that left (part of) the request body unread: say Connection: close, finish the response, then
+ * close our side. The socket is not destroyed at once, because closing with unread data makes the kernel send a reset
+ * that can swallow the response; a short timer destroys it if the client keeps sending.
+ */
+function closeAfter(res: ServerResponse, req: IncomingMessage): void {
+  res.setHeader("Connection", "close");
+  res.once("finish", () => {
+    const socket = req.socket;
+    socket.end();
+    const timer = setTimeout(() => socket.destroy(), 1000);
+    timer.unref();
+    socket.once("close", () => clearTimeout(timer));
+  });
+}
+
+export function createApp({ store, site, maxStored }: AppDeps): App {
+  const pending = new Set<Promise<unknown>>();
+  const ctx = {
+    waitUntil(promise: Promise<unknown>): void {
+      const tracked: Promise<unknown> = promise.catch(logFailure).finally(() => pending.delete(tracked));
+      pending.add(tracked);
+    },
+  };
+
+  async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+    const { request, body } = webRequest(req, url);
+    let response: Response;
+    try {
+      response = await handle(request, store, ctx, { maxStored });
+    } catch (error) {
+      logFailure(error);
+      response = Response.json({ error: "Internal error" }, { status: 500, headers: API_HEADERS });
+    }
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (body !== null && !body.complete()) closeAfter(res, req);
+    const headers: [string, string][] = [...response.headers];
+    headers.push(["Content-Length", String(bytes.length)]);
+    send(res, response.status, headers, req.method === "HEAD" ? null : bytes);
+  }
+
+  async function health(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const base: [string, string][] = [
+      ["Cache-Control", "no-store"],
+      ["X-Robots-Tag", "noindex"],
+      ["Content-Type", "text/plain; charset=utf-8"],
+    ];
+    if (req.method !== "GET" && req.method !== "HEAD") return send(res, 405, [...base, ["Allow", "GET, HEAD"]], null);
+    let ok = true;
+    try {
+      await store.ping();
+    } catch (error) {
+      logFailure(error);
+      ok = false;
+    }
+    const text = new TextEncoder().encode(ok ? "ok" : "unavailable");
+    send(res, ok ? 200 : 503, [...base, ["Content-Length", String(text.length)]], req.method === "HEAD" ? null : text);
+  }
+
+  function serve(req: IncomingMessage, res: ServerResponse): void {
+    const target = req.url ?? "";
+    if (!target.startsWith("/")) {
+      req.resume();
+      return send(res, 400, [["Cache-Control", "no-store"], ["Content-Length", "0"]], null);
+    }
+    const cut = target.search(/[?#]/);
+    const rawPath = cut === -1 ? target : target.slice(0, cut);
+
+    if (rawPath === "/api" || rawPath.startsWith("/api/")) {
+      // The Host header is never read: the router only needs the path and query.
+      void api(req, res, new URL(target, "http://localhost")).catch((error: unknown) => {
+        logFailure(error);
+        if (!res.headersSent) send(res, 500, Object.entries(API_HEADERS), null);
+        else res.destroy();
+      });
+      return;
+    }
+    req.resume();
+    if (rawPath === "/healthz") {
+      void health(req, res);
+      return;
+    }
+    const header = req.headers["if-none-match"];
+    const result = site.resolve(target, req.method ?? "GET", Array.isArray(header) ? header.join(",") : header);
+    send(res, result.status, result.headers, result.body);
+  }
+
+  const server = createServer(
+    {
+      requestTimeout: 15_000,
+      headersTimeout: 10_000,
+      keepAliveTimeout: 5_000,
+      maxHeaderSize: 8192,
+      connectionsCheckingInterval: 2_000,
+    },
+    (req, res) => {
+      try {
+        serve(req, res);
+      } catch (error) {
+        logFailure(error);
+        if (!res.headersSent) send(res, 500, [["Cache-Control", "no-store"]], null);
+        else res.destroy();
+      }
+    },
+  );
+  server.maxRequestsPerSocket = 100;
+  server.on("clientError", (_error, socket) => {
+    if (socket.writable) socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+    else socket.destroy();
+  });
+
+  return { server, drain: async () => void (await Promise.allSettled([...pending])) };
+}
+
+/** Stops accepting connections, lets requests in flight finish for up to `graceMs`, then cuts what is left. */
+export function closeGracefully(server: Server, graceMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    let closed = false;
+    server.close(() => {
+      closed = true;
+    });
+    const started = Date.now();
+    const tick = (): void => {
+      if (closed) return resolve();
+      if (Date.now() - started >= graceMs) {
+        server.closeAllConnections();
+      } else {
+        server.closeIdleConnections();
+      }
+      setTimeout(tick, 50);
+    };
+    tick();
+  });
+}
