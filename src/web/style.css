@@ -1121,7 +1121,10 @@ html {
 /* ---------- Consent banner (info pages) ---------- */
 
 .consent-banner {
+  box-sizing: border-box;
+  width: min(40rem, calc(100% - 2rem));
   margin-block: 1rem;
+  margin-inline: auto;
   padding: 1rem 1.15rem;
   background: var(--surface);
   color: var(--text);
