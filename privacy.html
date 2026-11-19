@@ -89,8 +89,8 @@
       <section id="secrets" aria-labelledby="secrets-title">
         <h2 id="secrets-title">Sharing a secret</h2>
         <p>
-          The site’s code stores no accounts, cookies or IP addresses and runs no analytics on the page where secrets are
-          created and opened. That page loads nothing from other sites. Cloudflare, which hosts the site, handles
+          The site’s own code stores no accounts, cookies or IP addresses. The page where secrets are created and opened
+          sets no cookies, runs no analytics and loads nothing from other sites. Cloudflare, which hosts the site, handles
           connections (IP address, request details) as any host does. What is stored for a secret is described in
           <a href="/how-it-works#server">how it works</a>.
         </p>
@@ -106,6 +106,7 @@
         <ul class="ticks">
           <li><strong>Provider:</strong> Google Ireland Limited.</li>
           <li><strong>Purpose:</strong> counting visits to the information pages.</li>
+          <li><strong>What Google receives:</strong> after you accept, Google receives your IP address, the page visited, and browser and device details, and the cookies identify your browser with a random id. This is personal data, not anonymous.</li>
           <li><strong>Cookies:</strong> <code>_ga</code> and <code>_ga_&lt;ID&gt;</code>, set by Google Analytics after you accept. They last up to 12 months.</li>
           <li><strong>Retention:</strong> analytics data is kept for 2 months (a setting in the Google Analytics account).</li>
           <li><strong>Transfer:</strong> data may be processed in the USA by Google, under the EU-US Data Privacy Framework.</li>
@@ -119,7 +120,7 @@
           The banner on the information pages offers Accept and Reject, and Reject is the same size as Accept. Nothing
           is sent to Google before you accept, or if you reject. To change your choice, use
           <a href="/privacy#cookies" data-cookie-settings>Cookie settings</a>, here or in the footer of any page. Rejecting
-          deletes the Google Analytics cookies on this site and reloads the page. You are asked again after 12 months or
+          deletes the Google Analytics cookies on this site. The page is reloaded only if the Google script had already been loaded on it (after an earlier Accept), because a loaded script cannot be unloaded. You are asked again after 12 months or
           when these purposes change. Without JavaScript nothing is loaded and no banner is shown.
         </p>
       </section>

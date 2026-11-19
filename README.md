@@ -11,7 +11,7 @@ Share a password, token or other secret with a link that works once. Anyone can 
 
 The page can also generate passwords, random tokens (hex or base64url) and UUIDs, all in the browser.
 
-What the server holds: the encrypted blob and its expiry time, until first read, or until the first API request after expiry. No plaintext, keys, IP addresses, accounts, cookies or request logs. The page where secrets are created and opened loads nothing from other sites and has no analytics or cookies. The information pages (`/how-it-works`, `/command-line`, `/privacy`) use Google Analytics 4 only after an explicit Accept in a consent banner (see `/privacy`); a separate, path-scoped CSP in `public/_headers` allows Google hosts only on those paths.
+What the server holds: the encrypted blob and its expiry time, until first read, or until the first API request after expiry. No plaintext, keys, IP addresses, accounts, cookies or request logs. The page where secrets are created and opened loads nothing from other sites and has no analytics or cookies. The information pages (`/how-it-works`, `/command-line`, `/privacy`) use Google Analytics 4 only after an explicit Accept in a consent banner (see `/privacy`); a separate, path-scoped CSP in `public/_headers` allows Google hosts only on those paths. After Accept, Google’s script runs on the origin of the information pages, which is the same origin as the app, but it never runs on the secret page, and only the theme choice and the consent record are kept in local storage.
 
 The reveal is one atomic SQL statement (`DELETE ... RETURNING`), so of many simultaneous attempts exactly one gets the blob.
 
