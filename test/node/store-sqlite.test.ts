@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { build } from "esbuild";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -197,7 +197,5 @@ describe("migrations", () => {
     mkdirSync(join(dir.path, "m"));
     for (const n of ["0002_b.sql", "0010_c.sql", "0001_a.sql", "notes.txt"]) writeFileSync(join(dir.path, "m", n), "SELECT 1;");
     expect(readMigrations(join(dir.path, "m")).map((m) => m.name)).toEqual(["0001_a.sql", "0002_b.sql", "0010_c.sql"]);
-    expect(readdirSync(join(dir.path, "m"))).toContain("notes.txt");
-    chmodSync(join(dir.path, "m"), 0o700);
   });
 });

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { ID_PATTERN, MAX_BLOB_BYTES, MAX_STORED_SECRETS, MAX_TTL_SECONDS } from "../../src/shared/limits";
 import type { Options } from "../../src/worker/index";
 
+type BodyInit = NonNullable<RequestInit["body"]>;
+
 /** What the contract suite needs from a runtime: the router wired to a fresh store, plus direct access to the rows. */
 export interface ApiHarness {
   /** Runs the router, then waits for background work (purges) to finish. */
