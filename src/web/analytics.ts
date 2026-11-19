@@ -92,12 +92,17 @@ function openBanner(focus: boolean): void {
   title.textContent = "Visit statistics";
   const text = document.createElement("p");
   text.append(
-    "May this page use Google Analytics to count visits? It sets cookies and sends anonymous usage data to Google. Nothing is sent unless you accept. The page where secrets are created and opened never uses it. ",
+    "May this page use Google Analytics to count visits? It sets cookies and sends usage data to Google (pages visited, IP address, approximate location, browser and device). Nothing is sent unless you accept. The page where secrets are created and opened never uses it. ",
   );
   const more = document.createElement("a");
   more.href = "/privacy#cookies";
   more.textContent = "Privacy and cookies";
   text.append(more, ".");
+
+  const current = document.createElement("p");
+  current.className = "consent-current";
+  const choice = readConsentDecision();
+  current.textContent = `Current choice: ${choice === "accepted" ? "accepted" : choice === "rejected" ? "rejected" : "not chosen"}.`;
 
   const actions = document.createElement("div");
   actions.className = "consent-actions";
@@ -117,14 +122,19 @@ function openBanner(focus: boolean): void {
     }),
   );
 
-  section.append(title, text, actions);
+  section.append(title, text, current, actions);
   const header = document.querySelector(".site-header");
   if (header) header.after(section);
   else document.body.prepend(section);
   banner = section;
   if (focus) {
-    section.scrollIntoView({ block: "start" });
-    section.focus();
+    const show = (): void => {
+      section.scrollIntoView({ block: "start" });
+      section.focus();
+    };
+    // The browser's own fragment scrolling after load would otherwise take the focus away again.
+    if (document.readyState === "complete") show();
+    else window.addEventListener("load", () => setTimeout(show, 0), { once: true });
   }
 }
 
@@ -136,7 +146,11 @@ export function initAnalytics(): void {
   const decision = readConsentDecision();
   if (decision === "accepted") loadAnalytics();
   else deleteAnalyticsCookies();
-  if (decision === null) openBanner(false);
+  const wantsSettings = (): boolean => /^\/privacy(\.html)?$/.test(location.pathname) && location.hash === "#cookies";
+  if (decision === null || wantsSettings()) openBanner(wantsSettings());
+  window.addEventListener("hashchange", () => {
+    if (wantsSettings()) openBanner(true);
+  });
 
   for (const link of document.querySelectorAll<HTMLAnchorElement>("[data-cookie-settings]")) {
     link.addEventListener("click", (event) => {
