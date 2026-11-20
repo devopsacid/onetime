@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  securityTxtForPages,
+  securityTxtForSelfhost,
   applyBlocks,
   headersForSelfhost,
   operatorContactHtml,
@@ -213,6 +215,43 @@ describe("robots and sitemap", () => {
     const out = sitemapForSelfhost(sitemap, "https://my.host");
     expect(out).toContain("<loc>https://my.host/</loc>");
     expect(out).not.toContain("pages.dev");
+  });
+});
+
+describe("security.txt", () => {
+  const now = new Date("2026-11-20T10:11:12.345Z");
+  const privacy = '<p>Contact: <a href="mailto:owner@pages.example">owner@pages.example</a>.</p>';
+  it("pages: advisory URL, the published address, Expires about 11 months ahead, canonical, policy, languages", () => {
+    const out = securityTxtForPages({ privacyHtml: privacy, now })!;
+    expect(out.endsWith("\n")).toBe(true);
+    const lines = out.trimEnd().split("\n");
+    expect(lines).toContain("Contact: https://github.com/devopsacid/onetime/security/advisories/new");
+    expect(lines).toContain("Contact: mailto:owner@pages.example");
+    expect(lines).toContain("Expires: 2027-10-20T10:11:12Z");
+    expect(lines).toContain("Canonical: https://onetimepass.pages.dev/.well-known/security.txt");
+    expect(lines).toContain("Policy: https://github.com/devopsacid/onetime/blob/main/SECURITY.md");
+    expect(lines).toContain("Preferred-Languages: en, sk");
+  });
+  it("pages: throws when privacy.html has no mailto address", () => {
+    expect(() => securityTxtForPages({ privacyHtml: "<p>none</p>", now })).toThrow(/mailto/);
+  });
+  it("selfhost: operator email becomes mailto, https URL stays, canonical from the origin, no owner data", () => {
+    const mail = securityTxtForSelfhost({ origin: "https://my.host", contact: "sec@my.host", now })!;
+    expect(mail).toContain("Contact: mailto:sec@my.host\n");
+    expect(mail).toContain("Canonical: https://my.host/.well-known/security.txt\n");
+    expect(mail).toContain("Expires: 2027-10-20T10:11:12Z\n");
+    const url = securityTxtForSelfhost({ origin: "https://my.host", contact: "https://my.host/report", now })!;
+    expect(url).toContain("Contact: https://my.host/report\n");
+    for (const out of [mail, url]) expect(out).not.toMatch(/devopsacid|onetimepass|maxian/);
+  });
+  it("selfhost: no contact gives no file; a bad contact throws", () => {
+    expect(securityTxtForSelfhost({ origin: "https://my.host", contact: undefined, now })).toBeNull();
+    expect(securityTxtForSelfhost({ origin: "https://my.host", contact: "", now })).toBeNull();
+    expect(() => securityTxtForSelfhost({ origin: "https://my.host", contact: "nonsense", now })).toThrow();
+  });
+  it("headersForSelfhost leaves no header-less rule for it", () => {
+    const out = headersForSelfhost(readFileSync(join(ROOT, "public", "_headers"), "utf8"));
+    expect(out).not.toMatch(/^\/\.well-known\/security\.txt\n(?:\n|$)/m);
   });
 });
 

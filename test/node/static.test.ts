@@ -31,6 +31,17 @@ describe("static site", () => {
     expect(hdr(get("/how-it-works"), "Cache-Control")).toBe("no-store");
   });
 
+  it("serves exactly /.well-known/security.txt from the dot directory, as text/plain", () => {
+    const r = get("/.well-known/security.txt");
+    expect(r.status).toBe(200);
+    expect(hdr(r, "Content-Type")).toBe("text/plain; charset=utf-8");
+    expect(text(r)).toContain("Contact: mailto:ops@onetime.example");
+    expect(hdr(r, "X-Content-Type-Options")).toBe("nosniff");
+    for (const path of ["/.well-known/other.txt", "/.well-known/", "/.well-known", "/.well-known/security.txt/x", "/.well-known/Security.txt"]) {
+      expect([path, get(path).status]).toEqual([path, 404]);
+    }
+  });
+
   it("redirects /index.html, /index and *.html with 308 to the clean URL", () => {
     for (const [from, to] of [
       ["/index.html", "/"],

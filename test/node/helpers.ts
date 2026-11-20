@@ -85,6 +85,9 @@ export function makeDist(root: string, extra: { selfhost?: boolean } = {}): stri
   writeFileSync(join(dist, "cli", "onetime.mjs"), "// cli\n");
   writeFileSync(join(dist, "cli", "onetime.cmd"), "@node\r\n");
   writeFileSync(join(dist, "cli", "onetime.mjs.sha256"), "00  onetime.mjs\n");
+  mkdirSync(join(dist, ".well-known"), { recursive: true });
+  writeFileSync(join(dist, ".well-known", "security.txt"), "Contact: mailto:ops@onetime.example\nExpires: 2027-10-01T00:00:00Z\n");
+  writeFileSync(join(dist, ".well-known", "other.txt"), "must not be served\n");
   copyFileSync(PUBLIC_HEADERS, join(dist, "_headers"));
   copyFileSync(join(ROOT, "public", "_routes.json"), join(dist, "_routes.json"));
   if (extra.selfhost !== false) writeFileSync(join(dist, "_selfhost.json"), JSON.stringify({ origin: "https://onetime.example" }));

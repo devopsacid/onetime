@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { headersForSelfhost } from "../../tools/site-profile-core.mjs";
+import { headersForSelfhost, securityTxtForPages } from "../../tools/site-profile-core.mjs";
 import { PUBLIC_HEADERS, ROOT, tempDir } from "./helpers";
 
 const ORIGIN = "https://onetime.example";
@@ -26,9 +26,17 @@ function fixture(root: string, profile: "selfhost" | "onetimepass"): string {
     for (const name of ["index", "404", "how-it-works", "command-line", "privacy"]) {
       writeFileSync(join(dir, `${name}.html`), page().replaceAll(ORIGIN, "https://onetimepass.pages.dev"));
     }
+    mkdirSync(join(dir, ".well-known"));
+    writeFileSync(join(dir, ".well-known", "security.txt"), securityTxtForPages({ privacyHtml: '<a href="mailto:o@example.org">o</a>', now: new Date() })!);
   }
   return dir;
 }
+
+const SELF_TXT = `Contact: mailto:sec@onetime.example\nExpires: ${new Date(Date.now() + 330 * 864e5).toISOString().slice(0, 19)}Z\nCanonical: ${ORIGIN}/.well-known/security.txt\n`;
+const writeTxt = (dir: string, text: string) => {
+  mkdirSync(join(dir, ".well-known"), { recursive: true });
+  writeFileSync(join(dir, ".well-known", "security.txt"), text);
+};
 
 function check(dir: string): { code: number | null; out: string } {
   const r = spawnSync(process.execPath, [join(ROOT, "tools", "check-dist.mjs"), dir], { encoding: "utf8" });
@@ -132,5 +140,55 @@ describe("check-dist profiles", () => {
     writeFileSync(join(dir, "_selfhost.json"), "{");
     expect(check(dir).code).toBe(1);
     rmSync(join(dir, "_selfhost.json"));
+  });
+
+  describe("security.txt", () => {
+    it("selfhost: absent is fine, an operator file passes", () => {
+      const dir = fixture(tmp.path, "selfhost");
+      expect(check(dir).code).toBe(0);
+      writeTxt(dir, SELF_TXT);
+      expect(check(dir).code).toBe(0);
+    });
+    it("selfhost: the owner's address or the original advisory URL fails", () => {
+      for (const leak of [`Contact: mailto:${["michal", "maxian.sk"].join("@")}\n`, "Contact: https://github.com/devopsacid/onetime/security/advisories/new\n"]) {
+        const dir = fixture(tmp.path, "selfhost");
+        writeTxt(dir, SELF_TXT + leak);
+        const r = check(dir);
+        expect(r.code).toBe(1);
+        expect(r.out).toMatch(/security\.txt|owner|devopsacid/);
+        rmSync(dir, { recursive: true });
+      }
+    });
+    it("pages: missing file fails", () => {
+      const dir = fixture(tmp.path, "onetimepass");
+      rmSync(join(dir, ".well-known"), { recursive: true });
+      const r = check(dir);
+      expect(r.code).toBe(1);
+      expect(r.out).toContain("security.txt");
+    });
+    it.each(["selfhost", "onetimepass"] as const)("%s: Expires missing, past, under 30 days or over a year fails", (profile) => {
+      const base = (expires: string) => `Contact: mailto:sec@example.org\n${expires}Canonical: ${profile === "selfhost" ? ORIGIN : "https://onetimepass.pages.dev"}/.well-known/security.txt\n`;
+      const iso = (days: number) => `Expires: ${new Date(Date.now() + days * 864e5).toISOString().slice(0, 19)}Z\n`;
+      for (const text of [base(""), base(iso(-1)), base(iso(29)), base(iso(400)), base("Expires: soon\n")]) {
+        const dir = fixture(tmp.path, profile);
+        writeTxt(dir, text);
+        const r = check(dir);
+        expect([text, r.code]).toEqual([text, 1]);
+        expect(r.out).toContain("Expires");
+        rmSync(dir, { recursive: true });
+      }
+      const dir = fixture(tmp.path, profile);
+      writeTxt(dir, base(iso(31)));
+      expect(check(dir).code).toBe(0);
+    });
+    it("a file without Contact or with a wrong Canonical fails", () => {
+      const dir = fixture(tmp.path, "selfhost");
+      writeTxt(dir, "Expires: 2099-01-01T00:00:00Z\n");
+      expect(check(dir).code).toBe(1);
+      writeTxt(dir, SELF_TXT.replace(ORIGIN, "https://elsewhere.example"));
+      const r = check(dir);
+      expect(r.code).toBe(1);
+      expect(r.out).toContain("Canonical");
+    });
   });
 });
