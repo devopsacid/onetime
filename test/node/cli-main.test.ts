@@ -93,7 +93,7 @@ describe("CLI file system access with a real directory", () => {
     const store = openSqliteStore(join(dir.path, "s.db"), migrations());
     const codec = createCodec({ writeFormat: 2, writeFiles: true, pbkdf2Iterations: 1000 });
     const posts: string[] = [];
-    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
       const request = new Request(input, init);
       if (request.method === "POST" && request.url.endsWith("/reveal")) posts.push(request.url);
       const pending: Promise<unknown>[] = [];

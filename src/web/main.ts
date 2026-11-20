@@ -12,7 +12,7 @@ import {
 } from "./generate";
 import { validatePassphrase } from "./passphrase";
 import { createLatestGuard } from "./latest";
-import { openSecret } from "./open-flow";
+import { openSecretGuarded } from "./open-flow";
 import { passphraseCreateEnabled, passphraseProblemText, planCreate } from "./passphrase-ui";
 import { buildLink, parseFragment, type SecretLink } from "./link";
 import { initThemeToggle } from "./theme-toggle";
@@ -227,7 +227,8 @@ el<HTMLFormElement>("open-form").addEventListener("submit", async (event) => {
   setError("open-error", null);
   revealButton.disabled = true;
   openPass.readOnly = true;
-  const outcome = await openSecret(link, openPass.value, { deriveKey, revealSecret, openBlob }, (phase) => {
+  // A hashchange while the request is out starts a new route: its outcome must not touch the page or the address bar.
+  const result = await openSecretGuarded(routeGuard, routeGuard.current(), link, openPass.value, { deriveKey, revealSecret, openBlob }, (phase) => {
     if (phase === "preparing") {
       revealButton.textContent = "Preparing…";
       announce("Preparing…");
@@ -239,6 +240,11 @@ el<HTMLFormElement>("open-form").addEventListener("submit", async (event) => {
   });
   revealButton.textContent = REVEAL_LABEL;
   openPass.readOnly = false;
+  if (result.stale) {
+    syncReveal();
+    return;
+  }
+  const outcome = result.outcome;
   switch (outcome.kind) {
     case "revealed":
       openPass.value = "";

@@ -64,3 +64,22 @@ export async function openSecret(
     return { kind: "undecryptable", passphrase: link.passphrase };
   }
 }
+
+/**
+ * Like openSecret, for a page that can be re-routed (hashchange) while the request is out. `ticket` is the guard's current
+ * ticket at submit time. If a newer route has started, the phases are no longer signalled (so the caller never rewrites the
+ * address bar of the new route) and the outcome is reported as stale: the caller must ignore it.
+ */
+export async function openSecretGuarded(
+  guard: { isCurrent(ticket: number): boolean },
+  ticket: number,
+  link: LinkKey & { id: string },
+  entry: string,
+  deps: OpenDeps,
+  onPhase: (phase: OpenPhase) => void = () => {},
+): Promise<{ stale: true } | { stale: false; outcome: OpenOutcome }> {
+  const outcome = await openSecret(link, entry, deps, (phase) => {
+    if (guard.isCurrent(ticket)) onPhase(phase);
+  });
+  return guard.isCurrent(ticket) ? { stale: false, outcome } : { stale: true };
+}

@@ -130,7 +130,7 @@ Rows: who opens. Columns: which link. "Old" = today's code (CLI 0.1.0, or an un-
 | old CLI 0.1.0 | works | exit 3 "damaged link", nothing burnt | same |
 | new CLI 0.2.0 | works | works | prompt or `--passphrase-file` |
 
-Writers: new web and new CLI write v2 after deploy 2; old CLI keeps writing v1 forever, which new readers accept. A new CLI pointed at an old self-host instance (`--server`) can upload v2 blobs; that instance's old web cannot open them (no burn), and its old router refuses blobs over 16,412 bytes (413) for secrets above 16,378 bytes. `docs/self-hosting.md` tells operators to update.
+Writers: new web and new CLI write v2 after deploy 2; old CLI keeps writing v1 forever, which new readers accept. A new CLI pointed at an old self-host instance (`--server`) can upload v2 blobs; that instance's old web cannot open them (no burn), and its old router refuses blobs over 16,412 bytes (413) for secrets above 4,092 bytes (their padded blob is 16,418 bytes, the largest bucket). `docs/self-hosting.md` tells operators to update.
 
 ## Deploy order (never breaks a live link)
 
