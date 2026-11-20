@@ -1,17 +1,17 @@
 # onetime
 
-Share a password, token or other secret with a link that works once. Anyone can use it; there are no accounts.
+Share a password, token, other secret or small file with a link that works once. Anyone can use it; there are no accounts.
 
 ## How it works
 
-1. The browser encrypts the secret with a new random AES-256-GCM key.
-2. Only the encrypted blob is sent to the server. The link is `https://<host>/#<id>.<key>`; the part after `#` is never sent by browsers, so the server cannot read the secret.
-3. The recipient opens the link and presses **Reveal**. The server returns the blob and deletes it in the same step. A second attempt gets "no longer available". The sender can check whether a link is still waiting without using it up: open it and do not press Reveal, or run `onetime status -`.
-4. A secret nobody opens expires after 1 hour, 1 day or 7 days. Expired secrets are never handed out (checked on every read). Their encrypted data is removed on the next request to the API, not by a timer, so on an idle site it can stay stored, still unreadable without the key, until then.
+1. The browser pads the secret to a fixed size class and encrypts it with AES-256-GCM. The key is derived (HKDF-SHA-256) from a new random key, and with an optional passphrase also from the passphrase (PBKDF2-SHA-256, 600,000 rounds). A file of up to 128 KB works the same way; its name and type are encrypted together with its contents.
+2. Only the encrypted blob is sent to the server. The link is `https://<host>/#2.<id>.<key>` (`2p` when a passphrase is needed, `2f` for a file, `2fp` for a file with a passphrase); older links of the form `https://<host>/#<id>.<key>` still open. The part after `#` is never sent by browsers, so the server cannot read the secret.
+3. The recipient opens the link and presses **Reveal**. The server returns the blob and deletes it in the same step. A second attempt gets "no longer available". A wrong passphrase destroys the secret: there is one try. A file is only offered as a download, never shown in the page. The sender can check whether a link is still waiting without using it up: open it and do not press Reveal, or run `onetime status -`.
+4. A secret nobody opens expires after 1 hour, 1 day or 7 days; a file after 1 hour or 1 day. Expired secrets are never handed out (checked on every read). Their encrypted data is removed on the next request to the API, not by a timer, so on an idle site it can stay stored, still unreadable without the key, until then.
 
 The page can also generate passwords, random tokens (hex or base64url) and UUIDs, all in the browser.
 
-What the server holds: the encrypted blob and its expiry time, until first read, or until the first API request after expiry. No plaintext, keys, IP addresses, accounts, cookies or request logs. The page where secrets are created and opened loads nothing from other sites and has no analytics or cookies. The information pages (how it works, privacy) live on a separate site, `https://onetimepass-info.pages.dev`, which is its own entry on the Public Suffix List and so a different origin and site from the app. Only that site uses Google Analytics 4, and only after an explicit Accept in a consent banner (see its privacy page). The app origin (`https://onetimepass.pages.dev`) serves no Google code on any path: one strict CSP in `public/_headers` covers every path, and the old `/how-it-works` and `/privacy` URLs there redirect (301) to the info site. Each site keeps only its own theme choice in local storage; the consent record exists on the info site only.
+What the server holds: the encrypted blob and its expiry time, until first read, or until the first API request after expiry. The blob shows its format, whether a passphrase is needed, whether it is a file, and its size class; never a file's name, type or contents. No plaintext, keys, passphrases, IP addresses, accounts, cookies or request logs. The page where secrets are created and opened loads nothing from other sites and has no analytics or cookies. The information pages (how it works, privacy) live on a separate site, `https://onetimepass-info.pages.dev`, which is its own entry on the Public Suffix List and so a different origin and site from the app. Only that site uses Google Analytics 4, and only after an explicit Accept in a consent banner (see its privacy page). The app origin (`https://onetimepass.pages.dev`) serves no Google code on any path: one strict CSP in `public/_headers` covers every path, and the old `/how-it-works` and `/privacy` URLs there redirect (301) to the info site. Each site keeps only its own theme choice in local storage; the consent record exists on the info site only.
 
 The reveal is one atomic SQL statement (`DELETE ... RETURNING`), so of many simultaneous attempts exactly one gets the blob.
 
@@ -51,13 +51,20 @@ Examples (on Windows, use `node onetime.mjs` or the `onetime.cmd` shim in place 
 ```sh
 echo -n 'hunter2' | ./onetime send            # prints the link; hints go to stderr
 ./onetime send --ttl 1h                       # no pipe: type the secret at a hidden prompt
+./onetime send --passphrase                   # also asks for a passphrase, twice (needs a terminal)
+./onetime send --passphrase-file pass.txt < secret.txt   # passphrase from the first line of a file
+./onetime send --file report.pdf --ttl 1h     # one file of up to 128 KB; files last 1 hour or 1 day
+tar czf - notes | ./onetime send --file - --name notes.tar.gz   # a file from a pipe
 ./onetime gen --type password --length 32     # generate and share in one step, secret not shown
 ./onetime gen --print-only --type uuid        # just print a secret, no server contact
 ./onetime get -                               # paste the link at the prompt / read it from stdin
+./onetime get - -o ~/Downloads/               # save a file into a folder (or -o new-name.pdf)
 ./onetime status "https://onetimepass.pages.dev/#<id>.<key>"   # still waiting? exit 0 or 1
 ```
 
-`onetime get "<link>"` also works and prints exactly the secret (a newline is added only on a terminal). Opening a link with `get` uses it up, like the Reveal button. `onetime --help` lists everything; exit codes: 0 ok, 1 gone (already opened or expired), 2 usage error, 3 damaged link, 4 decryption failed, 5 network or server error, 70 internal error. The server defaults to `https://onetimepass.pages.dev`; change it with `--server <url>` or `ONETIME_SERVER` (https only, except `http://localhost` and `http://127.0.0.1`).
+`onetime get "<link>"` also works and prints exactly the secret (a newline is added only on a terminal). Opening a link with `get` uses it up, like the Reveal button. A link that needs a passphrase asks for it at a hidden prompt, or reads the first line of `--passphrase-file PATH`. A file link needs `-o PATH` (a folder, or a file name that does not exist yet; nothing is ever overwritten) or redirected output; on a terminal without `-o` nothing is opened. `onetime --help` lists everything; exit codes: 0 ok, 1 gone (already opened or expired), 2 usage error (also a missing passphrase, an existing target, or a file link on a terminal without `-o`; nothing is opened), 3 damaged link (nothing is opened), 4 decryption failed (also a wrong passphrase; the link is used up), 5 network or server error, or the file could not be written after it was opened, 70 internal error.
+
+Links made since 2026-11-20 need version 0.3.0 or newer; older versions report them as damaged without using them up. `onetime --version` shows the version. The server defaults to `https://onetimepass.pages.dev`; change it with `--server <url>` or `ONETIME_SERVER` (https only, except `http://localhost` and `http://127.0.0.1`).
 
 Security notes:
 
@@ -66,6 +73,8 @@ Security notes:
 - Links to `http://localhost` or `http://127.0.0.1` are accepted only when `--server` or `ONETIME_SERVER` names that same server.
 - Input must be valid UTF-8 (or UTF-16 with a byte order mark) and at most 16 KB of text; anything else is refused instead of being altered.
 - `gen` prints only the link; `--show` prints the secret to stderr too.
+- The passphrase is never accepted as an argument either (`--passphrase=...` is refused). `--passphrase` needs a terminal; with a piped secret use `--passphrase-file`.
+- `get -o` creates the target with mode 0600 and never overwrites or follows a symlink at the final name. A file's name is cleaned (no path parts, control or bidi characters, reserved Windows names) before it is used.
 - No telemetry, config files or update checks.
 - Windows PowerShell may change the encoding or add line endings when piping text. Use the interactive prompt or `gen` there. The CLI strips one trailing newline and understands UTF-8 and UTF-16 byte order marks, but this has not been tried on Windows.
 
@@ -83,6 +92,7 @@ Security notes:
 | `migrations/` | D1 schema (`secrets` table) |
 | `src/shared/limits.ts` | Size and expiry limits used by both sides |
 | `public/_headers`, `public/_routes.json` | CSP and other security headers for the static files (the info build derives its own `_headers` from this file); the Function runs only for `/api/*` |
+| `tools/burn-id.mjs` | Deletes a reported link by its id without opening it (abuse reports; works for any instance) |
 | `tools/site-profile*.mjs`, `tools/deploy-info.mjs` | The three builds (app `dist/`, info `dist-info/`, self-host `dist-selfhost/`) and the info site deploy script |
 | `cli/`, `tools/build-cli.mjs` | The `onetime` command line tool (bundled by esbuild into `dist/cli/onetime.mjs`, served at `/cli/onetime.mjs`) |
 | `server/`, `tools/build-server.mjs` | Self-hosted Node server (HTTP, static files, SQLite store), bundled into `dist-server/server.mjs` by `pnpm build:selfhost` |
@@ -90,9 +100,9 @@ Security notes:
 | `docs/self-hosting.md` | Self-hosting guide for operators |
 | `test/` | Vitest tests: the Cloudflare side runs inside the Workers runtime, `test/node/` runs in Node |
 
-API: `POST /api/secrets?ttl=<seconds>` (body: blob, at most 16,418 bytes) → `{ id }`; `GET /api/secrets/<id>` → exists or 404; `POST /api/secrets/<id>/reveal` → blob, then deleted.
+API: `POST /api/secrets?ttl=<seconds>` (body: blob, at most 131,490 bytes; blobs over 16,418 bytes may last at most 1 day, otherwise `409` with `maxTtl: 86400`) → `{ id }`; `GET /api/secrets/<id>` → exists or 404; `POST /api/secrets/<id>/reveal` → blob, then deleted.
 
-Limits: 16 KB per secret. There is no per-IP rate limit (IPs are never stored). Instead, creating returns 503 while 20,000 secrets are stored, counting every secret not yet revealed (expired ones not yet purged count, but every create purges them first). While more than 80 % of that is in use (16,000), creating a link that lasts longer than 1 day is refused with `409` and `{"error": ..., "maxTtl": 86400}`; the web page and the CLI tell the sender and ask for a shorter expiry. The same rule applies against the operator's `ONETIME_MAX_STORED` when self-hosting.
+Limits: 16 KB per text secret, 128 KB per file (files last at most 1 day). There is no per-IP rate limit (IPs are never stored). Instead, creating returns 503 while 20,000 secrets are stored, counting every secret not yet revealed (expired ones not yet purged count, but every create purges them first). While more than 80 % of that is in use (16,000), creating a link that lasts longer than 1 day is refused with `409` and `{"error": ..., "maxTtl": 86400}`; the web page and the CLI tell the sender and ask for a shorter expiry. The same rule applies against the operator's `ONETIME_MAX_STORED` when self-hosting. Stored bytes are capped too: all blobs together at most 400 MB, and blobs over 16,418 bytes (files over about 16 KB) are accepted only while the total stays at or below 200 MB, so texts keep their room. An attacker can fill that file budget, which blocks larger files for everyone for up to a day; only a rate limit would fix that.
 
 ## Commands
 

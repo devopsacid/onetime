@@ -110,7 +110,12 @@
           <div id="file-field" class="field" hidden>
             <label for="file-input">File</label>
             <input id="file-input" type="file" aria-describedby="file-note" />
-            <p id="file-note" class="hint">One file, up to 1.0 MB. You can also drop a file on this form. The name and contents are encrypted in your browser.</p>
+            <!-- site:onetimepass -->
+            <p id="file-note" class="hint">One file, up to 128 KB. A file link lasts 1 hour or 1 day. You can also drop a file on this form. The name and contents are encrypted in your browser.</p>
+            <!-- /site:onetimepass -->
+            <!-- site:selfhost
+            <p id="file-note" class="hint">One file, up to 128 KB, or less if the operator of this instance set a lower limit. A file link lasts 1 hour or 1 day. You can also drop a file on this form. The name and contents are encrypted in your browser.</p>
+            site:selfhost -->
             <p id="file-summary" class="hint"></p>
           </div>
 
@@ -304,7 +309,14 @@
         <ol class="summary-list">
           <li>
             <strong>Encrypted in your browser.</strong>
-            It is locked with a new random key (AES-256-GCM) before anything is sent.
+            <!-- site:onetimepass -->
+            A text, or a file of up to 128 KB, is locked with a new random key (AES-256-GCM) before anything is sent.
+            <!-- /site:onetimepass -->
+            <!-- site:selfhost
+            A text, or a file of up to 128 KB (or less if the operator set a lower limit), is locked with a new random
+            key (AES-256-GCM) before anything is sent.
+            site:selfhost -->
+            You can add a passphrase as a second lock.
           </li>
           <li>
             <strong>The key stays in the link.</strong>
@@ -316,7 +328,8 @@
           </li>
           <li>
             <strong>No accounts, no cookies.</strong>
-            Unopened links expire after 1 hour, 1 day or 7 days. The site’s code stores no accounts, cookies or IP
+            Unopened links expire after 1 hour, 1 day or 7 days; files last 1 hour or 1 day. The site’s code stores no
+            accounts, cookies or IP
             <!-- site:onetimepass -->
             addresses. This page loads nothing from other sites and has no analytics. Cloudflare, which hosts it, handles
             connections as any host does. Your theme choice is kept in your browser.
@@ -336,10 +349,10 @@
       </section>
       <p class="hint">Passwords and tokens are generated in your browser with its cryptographic random generator.</p>
       <!-- site:onetimepass -->
-      <p class="hint"><a href="/privacy">Privacy</a></p>
+      <p class="hint"><a href="/privacy">Privacy</a> · <a href="/privacy#abuse">Report abuse</a></p>
       <!-- /site:onetimepass -->
       <!-- site:selfhost
-      <p class="hint"><a href="/privacy">Privacy</a></p>
+      <p class="hint"><a href="/privacy">Privacy</a> · <a href="/privacy#abuse">Report abuse</a></p>
       site:selfhost -->
     </footer>
   </body>

@@ -28,9 +28,11 @@ Marks used on this page:
 7. [Backups](#backups)
 8. [Updating](#updating)
 9. [Command-line client](#command-line-client)
-10. [Settings reference](#settings-reference)
-11. [Troubleshooting](#troubleshooting)
-12. [What was tested](#what-was-tested)
+10. [Files](#files)
+11. [Abuse reports](#abuse-reports)
+12. [Settings reference](#settings-reference)
+13. [Troubleshooting](#troubleshooting)
+14. [What was tested](#what-was-tested)
 
 ## Before you start
 
@@ -276,7 +278,33 @@ curl -fsSL https://onetime.example/cli/onetime.mjs.sha256 -o onetime.mjs.sha256
 
 The README explains how to check the download with `sha256sum`.
 
-Links from any instance open with any CLI copy, because `get` uses the origin in the link. The CLI needs Node 22 or newer; the server needs Node 22.13 or newer.
+Links from any instance open with any CLI copy, because `get` uses the origin in the link. The CLI needs Node 22 or newer; the server needs Node 22.13 or newer. Links made with this version (formats `2`, `2p`, `2f`, `2fp`) need CLI version 0.3.0 or newer; older copies report them as damaged without using them up.
+
+## Files
+
+People can send one file per link, up to 128 KiB, from the page or with `onetime send --file`. The file's name, type and contents are encrypted in the browser or the CLI; the database sees only that a blob is a file and its padded size class. A file link lasts 1 hour or 1 day: the clients offer nothing longer, and the server refuses blobs over 16,418 bytes with a longer expiry (409 with `maxTtl`). The page never displays a file; it only offers it as a download.
+
+Three run-time settings control files (see [Run-time settings](#run-time-settings)):
+
+- `ONETIME_MAX_STORED_BYTES` caps the bytes of all stored blobs together (default 400,000,000).
+- `ONETIME_MAX_LARGE_BYTES` lets blobs over 16,418 bytes (files over about 16 KB) in only while the total stays at or below this value (default 200,000,000), so they cannot take the room texts need. `0` turns them off: such bodies get 413 straight away, and files up to about 16 KB still work.
+- `ONETIME_MAX_UPLOADS` limits uploads handled at once (default 16); more get 503 with `Retry-After: 5`.
+
+Memory: each upload in progress is held a few times in memory (well under 1 MB at the 128 KiB limit), so `ONETIME_MAX_UPLOADS` bounds upload memory. On a small VM, lower `ONETIME_MAX_LARGE_BYTES` as well. The proxy body limit has to allow the largest blob, see [Reverse proxy and HTTPS](#reverse-proxy-and-https).
+
+Without a rate limit, anyone can fill the file budget with one-day uploads; files over about 16 KB are then refused (503) until some expire or are opened. Texts keep working.
+
+## Abuse reports
+
+If you offer the instance to other people, you are responsible for it, including what people send through it. Set `ONETIME_OPERATOR_CONTACT` so the privacy page's "Reporting abuse" section (`/privacy#abuse`) and the "Report abuse" link in the page footer lead to you. Without it, the section says the contact is not published. Whether running a public upload service brings legal duties where you are is for you to check; this guide is not legal advice.
+
+You cannot see what a link holds, and you should never open a reported link with its key. Delete it by id instead, from a checkout of the source (the tool is not in the Docker image):
+
+```sh
+node tools/burn-id.mjs https://onetime.example '<id or link>'
+```
+
+It takes the id from an id, an `<id>.<key>` fragment or a full link, drops the key without printing or sending it, sends `POST /api/secrets/<id>/reveal`, throws the answer away and prints `deleted` or `not stored`. Exit codes: 0 for either answer, 2 usage, 5 network or server error. Ask reporters to send the link without its last part (the key).
 
 ## Settings reference
 
@@ -304,6 +332,9 @@ Set these in the server's environment.
 | `ONETIME_DIST` | `dist-selfhost` next to `dist-server/` (image: `/app/dist-selfhost`, systemd layout: `/opt/onetime/dist-selfhost`) | Folder with the built site (`pnpm build:selfhost`). The server refuses to start if it has no `_selfhost.json`, for example the Pages `dist/`. Relative paths are resolved against the working directory. |
 | `ONETIME_DB` | `./data/onetime.db` (image: `/data/onetime.db`, systemd unit: `/var/lib/onetime/onetime.db`) | Database file. Its folder is created with mode 0700. |
 | `ONETIME_MAX_STORED` | `20000` | Most secrets stored at once (expired ones not yet purged count; they are purged on the next create). Creating a secret answers 503 when full. While more than 80 % of it is in use, a link that lasts longer than 1 day is refused with 409 and `maxTtl`. |
+| `ONETIME_MAX_STORED_BYTES` | `400000000` | Most bytes of all stored blobs together (1000000 to 1000000000000). Creating answers 503 when a new blob would go over it. |
+| `ONETIME_MAX_LARGE_BYTES` | `200000000` (or `ONETIME_MAX_STORED_BYTES`, if that is lower) | Blobs over 16,418 bytes are stored only while all blobs together stay at or below this (0 to `ONETIME_MAX_STORED_BYTES`). `0` turns them off: those bodies get 413, files up to about 16 KB still work. |
+| `ONETIME_MAX_UPLOADS` | `16` | Uploads (`POST /api/secrets`) handled at once (1 to 1000). More get 503 with `Retry-After: 5`. |
 | `ONETIME_MAX_CONNECTIONS` | `1000` | Most open connections (1 to 100000). Further connections are closed on arrival until some close, so idle sockets cannot exhaust the process. Keep it above the number your reverse proxy keeps open. |
 
 ## Troubleshooting

@@ -745,12 +745,19 @@ html {
   color: var(--muted);
 }
 
+.u-format,
 .u-id,
 .u-key {
   padding: 0.1em 0.15em;
   border-radius: 3px;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
+}
+
+.u-format {
+  color: var(--text);
+  font-weight: 700;
+  border-bottom: 3px dotted var(--field-border);
 }
 
 .u-id {
@@ -783,6 +790,10 @@ html {
   width: 1.5rem;
   height: 0.85rem;
   border-radius: 3px;
+}
+
+.part-format dt::before {
+  border-bottom: 3px dotted var(--field-border);
 }
 
 .part-id dt::before {

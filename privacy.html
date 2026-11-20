@@ -142,6 +142,48 @@
           site:selfhost -->
           <a href="/how-it-works#server">how it works</a>.
         </p>
+        <p>
+          Files are stored the same way, as encrypted data that cannot be read without the key in the link. Their name,
+          type and contents are encrypted in your browser. The stored data shows whether it is a file or a text, and
+          its size class (for a file: up to 1 KB, 4 KB, 16 KB, 64 KB or 128 KB), but not the name, type or contents.
+        </p>
+      </section>
+
+      <section id="abuse" aria-labelledby="abuse-title">
+        <h2 id="abuse-title">Reporting abuse</h2>
+        <!-- site:onetimepass -->
+        <p>
+          If a onetime link is used to send malware or illegal content, write to
+          <a href="mailto:michal@maxian.sk">michal@maxian.sk</a>.
+        </p>
+        <!-- /site:onetimepass -->
+        <!-- site:selfhost
+        <p>
+          If a link of this instance is used to send malware or illegal content, write to its operator. Contact:
+          {{OPERATOR_CONTACT}}.
+        </p>
+        site:selfhost -->
+        <ul class="plain-list">
+          <li>
+            <strong>Do not send the key.</strong> The key is the last part of the link, after the last dot. Remove it
+            before you send the link. The rest of the link holds the id, which is enough to delete it.
+          </li>
+          <li>
+            <strong>What is done with a report:</strong> a reported link that is still stored is deleted by its id,
+            without opening it.
+          </li>
+          <li>
+            <strong>What cannot be done:</strong> contents are encrypted end to end, so they cannot be read or scanned
+            without the key. This site’s code keeps no IP addresses or request logs, so it cannot identify the sender. A link that
+            was already opened or has expired is no longer stored and cannot be deleted again.
+          </li>
+          <!-- site:onetimepass -->
+          <li>
+            Cloudflare D1 keeps its own recovery history for 7 days (see
+            <a href="/how-it-works#deletion">when the data is deleted</a>). It holds only encrypted data, never keys.
+          </li>
+          <!-- /site:onetimepass -->
+        </ul>
       </section>
 
       <!-- site:onetimepass -->

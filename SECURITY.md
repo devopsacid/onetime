@@ -17,15 +17,20 @@ In scope: this repository and its deployment at https://onetimepass.pages.dev, i
 - a link that works more than once, or a secret that survives its reveal or expiry;
 - GET requests that burn a secret;
 - weaknesses in the browser or CLI crypto, the CSP, or the self-host server (`server/`);
+- file handling: file name cleaning, the download path, and anything that makes a sent file render or run on the app origin instead of being saved;
 - the CLI release (`dist/cli/onetime.mjs`) and its provenance attestation (all three released files are attested).
 
 ## Out of scope
 
-- No per-IP rate limit. This is a known open point (see `docs/plans/security-hardening.md`), as is the global cap of 20,000 stored secrets that an attacker can fill (HTTP 503). Reports about it alone will be closed as known.
+- No per-IP rate limit. This is a known open point (see `docs/plans/security-hardening.md`), as is the global cap of 20,000 stored secrets that an attacker can fill (HTTP 503), and the storage budget for files over 16 KB, which can be filled the same way. Reports about it alone will be closed as known.
 - Denial of service by volume, spam, and social engineering.
 - Compromise of the sender's or recipient's device or browser, or of the channel the link was sent through: whoever holds the full link can open it once.
 - Third-party services (Cloudflare, GitHub, Google Analytics on the info pages) and self-hosted instances run by others.
 - Findings that need a modified or outdated browser, or Windows and macOS CLI behaviour not described in the README.
+
+## Abuse is not a vulnerability
+
+If a link is used to send malware or illegal content, follow "Reporting abuse" on the privacy page (https://onetimepass-info.pages.dev/privacy#abuse) instead. Send the link without its key (the part after the last dot). Reported links that are still stored are deleted by id, without opening them; their contents are end-to-end encrypted and cannot be scanned. A self-hosted instance is run by its operator, whose contact is on that instance's privacy page.
 
 ## Honest status
 

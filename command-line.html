@@ -113,7 +113,19 @@
         <dl class="commands">
           <div>
             <dt><code>onetime send</code></dt>
-            <dd>Reads the secret from a pipe or a hidden prompt, encrypts it and prints only the link.</dd>
+            <dd>
+              Reads the secret from a pipe or a hidden prompt, encrypts it and prints only the link. With
+              <code>--passphrase</code> it also asks for a passphrase, twice; <code>--passphrase-file PATH</code> reads it
+              from the first line of a file instead.
+            </dd>
+          </div>
+          <div>
+            <dt><code>onetime send --file PATH</code></dt>
+            <dd>
+              Encrypts one file of up to 128 KB, its name included, and prints only the link. <code>--name NAME</code>
+              sets the name the recipient sees; <code>--file -</code> reads the file from a pipe. A file link lasts
+              1 hour or 1 day.
+            </dd>
           </div>
           <div>
             <dt><code>onetime gen</code></dt>
@@ -124,7 +136,11 @@
           </div>
           <div>
             <dt><code>onetime get -</code></dt>
-            <dd>Asks you to paste the link, reveals the secret and uses the link up.</dd>
+            <dd>
+              Asks you to paste the link, reveals the secret and uses the link up. If the link needs a passphrase, it asks
+              for it (or reads <code>--passphrase-file PATH</code>); a wrong one destroys the secret. A file is saved with
+              <code>-o PATH</code>, or written to the output when you redirect it.
+            </dd>
           </div>
           <div>
             <dt><code>onetime status -</code></dt>
@@ -132,6 +148,18 @@
           </div>
         </dl>
         <p>Run <code>onetime --help</code> or <code>onetime gen --help</code> for all options.</p>
+        <!-- site:onetimepass -->
+        <p>
+          Links made since 20 November 2026 need version 0.3.0 or newer; older versions report them as damaged without
+          using them up. <code>onetime --version</code> shows your version.
+        </p>
+        <!-- /site:onetimepass -->
+        <!-- site:selfhost
+        <p>
+          Links made with this version of the site need version 0.3.0 or newer of the command-line tool; older versions
+          report them as damaged without using them up. <code>onetime --version</code> shows your version.
+        </p>
+        site:selfhost -->
       </section>
 
       <section id="examples" aria-labelledby="examples-title">
@@ -143,6 +171,19 @@
 <pre class="code" tabindex="0" aria-label="Example: share a secret"><code>./onetime send --ttl 1h
 ./onetime send --ttl 1h &lt; secret.txt</code></pre>
 
+        <h3>Protect it with a passphrase</h3>
+        <p>
+          <code>--passphrase</code> asks at a hidden prompt, so it needs a terminal. With a piped secret, put the
+          passphrase in a file. Send the passphrase to the recipient another way than the link.
+        </p>
+<pre class="code" tabindex="0" aria-label="Example: share a secret with a passphrase"><code>./onetime send --passphrase
+./onetime send --passphrase-file passphrase.txt &lt; secret.txt</code></pre>
+
+        <h3>Send a file</h3>
+        <p>Up to 128 KB. The name and contents are encrypted on your computer.</p>
+<pre class="code" tabindex="0" aria-label="Example: send a file"><code>./onetime send --file report.pdf --ttl 1h
+tar czf - notes | ./onetime send --file - --name notes.tar.gz</code></pre>
+
         <h3>Generate a password and share it</h3>
 <pre class="code" tabindex="0" aria-label="Example: generate a password and share it"><code>./onetime gen --type password --length 32</code></pre>
 
@@ -150,8 +191,33 @@
         <p>Paste the link when asked. This uses the link up, like the Reveal button.</p>
 <pre class="code" tabindex="0" aria-label="Example: open a link"><code>./onetime get -</code></pre>
 
+        <h3>Save a file</h3>
+        <p>
+          Give a folder or a new file name with <code>-o</code>. An existing file is never overwritten, and the target is
+          checked before the link is used up. Without <code>-o</code>, redirect the output; on a terminal nothing is
+          opened.
+        </p>
+<pre class="code" tabindex="0" aria-label="Example: save a file"><code>./onetime get - -o ~/Downloads/
+./onetime get - &gt; report.pdf</code></pre>
+
         <h3>Check a link without opening it</h3>
 <pre class="code" tabindex="0" aria-label="Example: check a link"><code>./onetime status -</code></pre>
+      </section>
+
+      <section id="exit-codes" aria-labelledby="exit-codes-title">
+        <h2 id="exit-codes-title">Exit codes</h2>
+        <ul class="plain-list">
+          <li><code>0</code> done.</li>
+          <li><code>1</code> the link is gone: already opened or expired.</li>
+          <li>
+            <code>2</code> usage error, also a missing passphrase, a target file that already exists, or a file link on
+            a terminal without <code>-o</code>. Nothing is opened.
+          </li>
+          <li><code>3</code> damaged or incomplete link. Nothing is opened.</li>
+          <li><code>4</code> decryption failed, also after a wrong passphrase. The link is used up.</li>
+          <li><code>5</code> network or server error, or the file could not be written after it was opened.</li>
+          <li><code>70</code> internal error.</li>
+        </ul>
       </section>
 
       <section id="privacy" aria-labelledby="privacy-title">

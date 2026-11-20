@@ -56,6 +56,22 @@
               },
               {
                 "@type": "Question",
+                "name": "What does the passphrase do?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "It is a second lock. With a passphrase, the key that decrypts the secret comes from the link and the passphrase together, so the link alone does not open it. Send the passphrase another way than the link. Someone who gets the link can still destroy the secret, and can then try to guess the passphrase on their own computer, so use a long passphrase that you do not use anywhere else. A wrong passphrase destroys the secret: there is one try."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can I send a file?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes, one file of up to 128 KB. Its name, type and contents are encrypted in your browser. A file link lasts 1 hour or 1 day and works once, like any other link. The page never shows a file; it only offers it to save. Files are not checked for viruses, because the service cannot see them, and the page warns about kinds of files that can run code. On the command line, use onetime send --file."
+                }
+              },
+              {
+                "@type": "Question",
                 "name": "The recipient says the secret is “no longer available”. What now?",
                 "acceptedAnswer": {
                   "@type": "Answer",
@@ -75,7 +91,7 @@
                 "name": "What happens if the link is cut off or changed?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "If the link is incomplete, the page says so before anything is used up. If the key was changed, decryption fails instead of showing wrong text. In that case the secret has already been deleted, so ask for a new link."
+                  "text": "If the link is incomplete, the page says so before anything is used up. If the key was changed, or the passphrase is wrong, decryption fails instead of showing wrong text. In that case the secret has already been deleted, so ask the sender for a new link."
                 }
               },
               {
@@ -91,7 +107,7 @@
                 "name": "How large can a secret be?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Up to 16 KB. The secret site stores at most 20,000 secrets at once, counting every secret not yet revealed. Expired secrets count until they are removed on the next request. When it is full, creating a new link fails until space frees up. While more than 80 % of that is in use (16,000 secrets), new links can last at most 1 day."
+                  "text": "Texts up to 16 KB, files up to 128 KB. The secret site stores at most 20,000 secrets at once, counting every secret not yet revealed. Expired secrets count until they are removed on the next request. When it is full, creating a new link fails until space frees up. While more than 80 % of that is in use (16,000 secrets), new links can last at most 1 day. Files larger than 16 KB also have their own share of the storage; when it is used up, sending such a file fails until space frees up."
                 }
               },
               {
@@ -151,6 +167,22 @@
               },
               {
                 "@type": "Question",
+                "name": "What does the passphrase do?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "It is a second lock. With a passphrase, the key that decrypts the secret comes from the link and the passphrase together, so the link alone does not open it. Send the passphrase another way than the link. Someone who gets the link can still destroy the secret, and can then try to guess the passphrase on their own computer, so use a long passphrase that you do not use anywhere else. A wrong passphrase destroys the secret: there is one try."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can I send a file?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes, one file of up to 128 KB, or less if the operator of this instance set a lower limit. Its name, type and contents are encrypted in your browser. A file link lasts 1 hour or 1 day and works once, like any other link. The page never shows a file; it only offers it to save. Files are not checked for viruses, because the service cannot see them, and the page warns about kinds of files that can run code. On the command line, use onetime send --file."
+                }
+              },
+              {
+                "@type": "Question",
                 "name": "The recipient says the secret is “no longer available”. What now?",
                 "acceptedAnswer": {
                   "@type": "Answer",
@@ -170,7 +202,7 @@
                 "name": "What happens if the link is cut off or changed?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "If the link is incomplete, the page says so before anything is used up. If the key was changed, decryption fails instead of showing wrong text. In that case the secret has already been deleted, so ask for a new link."
+                  "text": "If the link is incomplete, the page says so before anything is used up. If the key was changed, or the passphrase is wrong, decryption fails instead of showing wrong text. In that case the secret has already been deleted, so ask the sender for a new link."
                 }
               },
               {
@@ -186,7 +218,7 @@
                 "name": "How large can a secret be?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Up to 16 KB. The service stores a limited number of secrets at once (20,000 unless the operator of this instance changed it), counting every secret not yet revealed. Expired secrets count until they are removed on the next request. When it is full, creating a new link fails until space frees up. While more than 80 % of that limit is in use, new links can last at most 1 day."
+                  "text": "Texts up to 16 KB, files up to 128 KB, or less if the operator of this instance set a lower limit. The service stores a limited number of secrets at once (20,000 unless the operator of this instance changed it), counting every secret not yet revealed. Expired secrets count until they are removed on the next request. When it is full, creating a new link fails until space frees up. While more than 80 % of that limit is in use, new links can last at most 1 day. The total stored size is limited too, and files larger than 16 KB have their own share of it; when it is used up, sending such a file fails until space frees up."
                 }
               },
               {
@@ -312,20 +344,26 @@
           <li>
             <h3>Your browser encrypts the secret</h3>
             <p>
-              It creates a new random 256-bit key and a random 96-bit IV for this one secret, and encrypts it with
-              AES-256-GCM using the browser’s built-in Web Crypto API.
+              It creates a new random 256-bit key and a random 96-bit IV for this one secret. It pads the secret to one
+              of four fixed sizes, so the stored size does not give away its exact length. A file is padded the same way,
+              to one of the file sizes, and its name and type are encrypted together with its contents. The encryption key
+              is derived from the random key with HKDF-SHA-256, and with a passphrase also from the passphrase
+              (PBKDF2-SHA-256, 600,000 rounds). The browser then encrypts with AES-256-GCM, using its built-in Web Crypto
+              API.
             </p>
           </li>
           <li>
             <h3>The server stores unreadable data</h3>
             <p>
               <!-- site:onetimepass -->
-              Only the encrypted data (IV, ciphertext and authentication tag) is uploaded. The server, a Cloudflare
+              Only the encrypted data (a format byte, a flags byte saying whether a passphrase is needed and whether it
+              is a file, the IV, the ciphertext and the authentication tag) is uploaded. The server, a Cloudflare
               Pages Function, picks a random 128-bit id and stores one row: the id, the encrypted data and the expiry
               time.
               <!-- /site:onetimepass -->
               <!-- site:selfhost
-              Only the encrypted data (IV, ciphertext and authentication tag) is uploaded. The server picks a random
+              Only the encrypted data (a format byte, a flags byte saying whether a passphrase is needed and whether it
+              is a file, the IV, the ciphertext and the authentication tag) is uploaded. The server picks a random
               128-bit id and stores one row: the id, the encrypted data and the expiry time.
               site:selfhost -->
             </p>
@@ -334,7 +372,8 @@
             <h3>You send the link</h3>
             <p>
               The link holds the id and the key after the <code>#</code>. You pass it on yourself, by chat, email or any
-              other way. The key is never sent to the server.
+              other way. The key is never sent to the server. If you set a passphrase, send it another way, not in the
+              same message as the link.
             </p>
           </li>
           <li>
@@ -348,9 +387,10 @@
           <li>
             <h3>The recipient’s browser decrypts it</h3>
             <p>
-              Decryption happens on the recipient’s device, with the key from the link. If the data was changed or
-              damaged, GCM’s authentication tag makes decryption fail instead of showing wrong text. The key is then
-              removed from the address bar.
+              Decryption happens on the recipient’s device, with the key from the link (and the passphrase, if one is
+              needed). If the data was changed or damaged, or the passphrase is wrong, GCM’s authentication tag makes
+              decryption fail instead of showing wrong text. The key is then removed from the address bar. A file is
+              never shown in the page: it is only offered to save, from that tab.
             </p>
           </li>
         </ol>
@@ -358,13 +398,21 @@
 
       <section id="anatomy" aria-labelledby="anatomy-title">
         <h2 id="anatomy-title">Anatomy of a link</h2>
-        <p>A one-time link has two parts after the <code>#</code>, separated by a dot.</p>
+        <p>A one-time link has three parts after the <code>#</code>, separated by dots.</p>
         <figure class="anatomy">
           <p class="anatomy-url">
-            <span class="u-origin">https://onetimepass.pages.dev/#</span><span class="u-id">q3Vb8sKx2LmN0pRtYw7uEa</span><span class="u-dot">.</span><span class="u-key">Zr4nT9vXc2bQ8hLk1mW5sJy0aDfG3pE7uN6iKoH2tRw</span>
+            <span class="u-origin">https://onetimepass.pages.dev/#</span><span class="u-format">2</span><span class="u-dot">.</span><span class="u-id">q3Vb8sKx2LmN0pRtYw7uEa</span><span class="u-dot">.</span><span class="u-key">Zr4nT9vXc2bQ8hLk1mW5sJy0aDfG3pE7uN6iKoH2tRw</span>
           </p>
-          <figcaption class="visually-hidden">An example link, split into its id and key.</figcaption>
+          <figcaption class="visually-hidden">An example link, split into its format, id and key.</figcaption>
           <dl class="anatomy-parts">
+            <div class="part part-format">
+              <dt>Format</dt>
+              <dd>
+                <code>2</code> for a text, <code>2p</code> when a passphrase is needed, <code>2f</code> for a file and
+                <code>2fp</code> for a file with a passphrase. Older links have no format part, only id and key; they
+                still open.
+              </dd>
+            </div>
             <div class="part part-id">
               <dt>Id</dt>
               <dd>Identifies the stored data. Your browser sends it to the server to fetch the encrypted data.</dd>
@@ -389,7 +437,7 @@
             <h3>Stored, for each secret</h3>
             <ul class="ticks">
               <li>A random id (128 bits)</li>
-              <li>The encrypted data: IV, ciphertext and authentication tag</li>
+              <li>The encrypted data: a format byte, a flags byte, IV, ciphertext and authentication tag</li>
               <li>The expiry time</li>
             </ul>
             <p class="hint">
@@ -401,12 +449,20 @@
               site:selfhost -->
               <a href="#deletion">when the data is deleted</a>).
             </p>
+            <p class="hint">
+              The stored size shows only a size class. For a text: up to about 250 bytes, 1 KB, 4 KB or 16 KB. For a
+              file: up to 1 KB, 4 KB, 16 KB, 64 KB or 128 KB. The flags byte shows whether a passphrase is needed and
+              whether the data is a file or a text. A file’s name, type and contents are never stored readable. Older
+              links without a format part (made by earlier versions of the page, or by command-line versions before
+              0.2.0) are not padded, so their stored size shows the exact length.
+            </p>
           </div>
           <div class="compare-card compare-never">
             <h3>Never sent to the server</h3>
             <ul class="crosses">
-              <li>Your secret as readable text</li>
+              <li>Your secret or file in readable form, including a file’s name and type</li>
               <li>The key</li>
+              <li>The passphrase</li>
             </ul>
             <!-- site:onetimepass -->
             <h3>Not stored by the secret site</h3>
@@ -458,7 +514,7 @@
           <li>
             <h3>If nobody opens the link</h3>
             <p>
-              The sender picks 1 hour, 1 day or 7 days. An expired secret is never handed out; this is checked on every
+              The sender picks 1 hour, 1 day or 7 days; a file lasts 1 hour or 1 day. An expired secret is never handed out; this is checked on every
               read. Its encrypted data is removed on the next request to the service’s API after expiry (creating, checking
               or revealing any secret), not by a timer and not by merely viewing a page. On an idle site it can stay stored
               until then, still unreadable without the key.
@@ -505,8 +561,33 @@
           <li>
             <h3>Someone gets the link first</h3>
             <p>
-              Whoever opens the link first can reveal the secret. The recipient then sees “no longer available”, which at
-              least shows that the link was intercepted. If that happens, change the password or token you shared.
+              Without a passphrase, whoever opens the link first can reveal the secret. With a passphrase, they can still
+              destroy it, and can then try to guess the passphrase on their own computer, as often as they like. So use a
+              long passphrase that you do not use anywhere else, and send it another way than the link. Either way the
+              recipient sees that the secret is gone, which at least shows that the link was intercepted. If that
+              happens, change the password or token you shared.
+            </p>
+          </li>
+          <li>
+            <h3>A wrong passphrase destroys the secret</h3>
+            <p>
+              There is one try. The passphrase can only be checked by decrypting, and by then the server has handed over
+              the data and deleted it. After a typo, the sender has to send a new link.
+            </p>
+          </li>
+          <li>
+            <h3>Files are not checked</h3>
+            <p>
+              The service cannot see a file, so it cannot scan it for viruses. Open a file only if you expected it from
+              the sender. The page warns about kinds of files that can run code.
+            </p>
+          </li>
+          <li>
+            <h3>A download that breaks after Reveal</h3>
+            <p>
+              Pressing Reveal deletes the file on the server before it reaches you. If the connection breaks while it
+              downloads, the file is lost and the sender has to send it again. After it arrives, it stays only in that
+              tab until you save it.
             </p>
           </li>
           <li>
@@ -574,37 +655,48 @@
           <details>
             <summary>Can you read my secret?</summary>
             <p>
-              No. The server only receives encrypted data. The key that decrypts it is in the part of the link after
-              <code>#</code>, which is never sent to the server.
+              No. The server only receives encrypted data. The key that decrypts it is in the part of the link after <code>#</code>, which is never sent to the server.
             </p>
           </details>
           <details>
             <summary>Why does opening the link not show the secret right away?</summary>
             <p>
-              Chat apps and email scanners often open links to build previews. If opening the link used the secret up,
-              a preview could destroy it before the recipient sees it. Only pressing “Reveal” uses it.
+              Chat apps and email scanners often open links to build previews. If opening the link used the secret up, a preview could destroy it before the recipient sees it. Only pressing “Reveal” uses it.
+            </p>
+          </details>
+          <details>
+            <summary>What does the passphrase do?</summary>
+            <p>
+              It is a second lock. With a passphrase, the key that decrypts the secret comes from the link and the passphrase together, so the link alone does not open it. Send the passphrase another way than the link. Someone who gets the link can still destroy the secret, and can then try to guess the passphrase on their own computer, so use a long passphrase that you do not use anywhere else. A wrong passphrase destroys the secret: there is one try.
+            </p>
+          </details>
+          <details>
+            <summary>Can I send a file?</summary>
+            <p>
+              <!-- site:onetimepass -->
+              Yes, one file of up to 128 KB. Its name, type and contents are encrypted in your browser. A file link lasts 1 hour or 1 day and works once, like any other link. The page never shows a file; it only offers it to save. Files are not checked for viruses, because the service cannot see them, and the page warns about kinds of files that can run code. On the command line, use <code>onetime send --file</code>.
+              <!-- /site:onetimepass -->
+              <!-- site:selfhost
+              Yes, one file of up to 128 KB, or less if the operator of this instance set a lower limit. Its name, type and contents are encrypted in your browser. A file link lasts 1 hour or 1 day and works once, like any other link. The page never shows a file; it only offers it to save. Files are not checked for viruses, because the service cannot see them, and the page warns about kinds of files that can run code. On the command line, use <code>onetime send --file</code>.
+              site:selfhost -->
             </p>
           </details>
           <details>
             <summary>The recipient says the secret is “no longer available”. What now?</summary>
             <p>
-              The link was already opened or has expired. If the recipient did not open it, someone else may have.
-              Change the password or token you shared, then send a new link.
+              The link was already opened or has expired. If the recipient did not open it, someone else may have. Change the password or token you shared, then send a new link.
             </p>
           </details>
           <details>
             <summary>Can I check whether my link was opened?</summary>
             <p>
-              Yes, without using it up. Open your own link and do not press “Reveal”, or run
-              <code>onetime status -</code> and paste the link. If the secret is still waiting, you see the Reveal button;
-              “no longer available” means it was revealed or has expired.
+              Yes, without using it up. Open your own link and do not press “Reveal”, or run <code>onetime status -</code> and paste the link. If the secret is still waiting, you see the Reveal button; “no longer available” means it was revealed or has expired.
             </p>
           </details>
           <details>
             <summary>What happens if the link is cut off or changed?</summary>
             <p>
-              If the link is incomplete, the page says so before anything is used up. If the key was changed, decryption
-              fails instead of showing wrong text. In that case the secret has already been deleted, so ask for a new link.
+              If the link is incomplete, the page says so before anything is used up. If the key was changed, or the passphrase is wrong, decryption fails instead of showing wrong text. In that case the secret has already been deleted, so ask the sender for a new link.
             </p>
           </details>
           <details>
@@ -617,16 +709,10 @@
             <summary>How large can a secret be?</summary>
             <p>
               <!-- site:onetimepass -->
-              Up to 16 KB. The secret site stores at most 20,000 secrets at once, counting every secret not yet revealed.
-              Expired secrets count until they are removed on the next request. When it is full, creating a new link fails
-              until space frees up. While more than 80 % of that is in use (16,000 secrets), new links can last at most
-              1 day.
+              Texts up to 16 KB, files up to 128 KB. The secret site stores at most 20,000 secrets at once, counting every secret not yet revealed. Expired secrets count until they are removed on the next request. When it is full, creating a new link fails until space frees up. While more than 80 % of that is in use (16,000 secrets), new links can last at most 1 day. Files larger than 16 KB also have their own share of the storage; when it is used up, sending such a file fails until space frees up.
               <!-- /site:onetimepass -->
               <!-- site:selfhost
-              Up to 16 KB. The service stores a limited number of secrets at once (20,000 unless the operator of this
-              instance changed it), counting every secret not yet revealed. Expired secrets count until they are removed on
-              the next request. When it is full, creating a new link fails until space frees up. While more than 80 % of that
-              limit is in use, new links can last at most 1 day.
+              Texts up to 16 KB, files up to 128 KB, or less if the operator of this instance set a lower limit. The service stores a limited number of secrets at once (20,000 unless the operator of this instance changed it), counting every secret not yet revealed. Expired secrets count until they are removed on the next request. When it is full, creating a new link fails until space frees up. While more than 80 % of that limit is in use, new links can last at most 1 day. The total stored size is limited too, and files larger than 16 KB have their own share of it; when it is used up, sending such a file fails until space frees up.
               site:selfhost -->
             </p>
           </details>
