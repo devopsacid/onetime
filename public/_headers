@@ -16,35 +16,25 @@
 /index.html
   Cache-Control: no-store
 
+# The info pages are built into the info site and the self-host site (this file is its base). On the app origin
+# these two rules are shadowed by the 301s in _redirects. The CSP is the /* one, except on the info site (headersForInfo).
 /how-it-works
   Cache-Control: no-store
-  ! Content-Security-Policy
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.googletagmanager.com; style-src 'self'; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; img-src 'self' https://*.google-analytics.com https://*.googletagmanager.com; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /how-it-works.html
   Cache-Control: no-store
-  ! Content-Security-Policy
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.googletagmanager.com; style-src 'self'; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; img-src 'self' https://*.google-analytics.com https://*.googletagmanager.com; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /command-line
   Cache-Control: no-store
-  ! Content-Security-Policy
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.googletagmanager.com; style-src 'self'; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; img-src 'self' https://*.google-analytics.com https://*.googletagmanager.com; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /command-line.html
   Cache-Control: no-store
-  ! Content-Security-Policy
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.googletagmanager.com; style-src 'self'; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; img-src 'self' https://*.google-analytics.com https://*.googletagmanager.com; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /privacy
   Cache-Control: no-store
-  ! Content-Security-Policy
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.googletagmanager.com; style-src 'self'; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; img-src 'self' https://*.google-analytics.com https://*.googletagmanager.com; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /privacy.html
   Cache-Control: no-store
-  ! Content-Security-Policy
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://www.googletagmanager.com; style-src 'self'; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; img-src 'self' https://*.google-analytics.com https://*.googletagmanager.com; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /404
   Cache-Control: no-store
