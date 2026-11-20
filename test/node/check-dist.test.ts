@@ -312,6 +312,14 @@ describe("check-dist rules per profile", () => {
         rmSync(dir, { recursive: true });
       }
     });
+    it("info: a _worker.js file or directory (advanced-mode Worker) fails", () => {
+      for (const name of ["_worker.js", "_worker.js/index.js"]) {
+        const dir = fixture(tmp.path, "info");
+        put(dir, name, "export default {};\n");
+        failsWith(dir, /_worker\.js/);
+        rmSync(dir, { recursive: true });
+      }
+    });
     it("selfhost: a _redirects file or a missing page fails", () => {
       let dir = fixture(tmp.path, "selfhost");
       put(dir, "_redirects", redirectsForApp());
