@@ -39,13 +39,25 @@
             { "type": "integer", "minimum": 1, "maximum": 10000000 }
           ]
         },
-        "dbPath": { "type": "string", "pattern": "^/data/.+" }
+        "dbPath": { "type": "string", "pattern": "^/data/.+" },
+        "maxFileBytes": {
+          "description": "ONETIME_MAX_FILE_BYTES: largest file in bytes, 0..5242880 (0 = files off). The ingress body limit and timeouts follow from it.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5242880
+        },
+        "maxFileTtl": {
+          "description": "ONETIME_MAX_FILE_TTL: longest life of a file in seconds, 60..604800.",
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 604800
+        }
       }
     },
     "extraEnv": {
-      "description": "Extra environment variables (name: value). HOST, PORT and ONETIME_DB are reserved.",
+      "description": "Extra environment variables (name: value). HOST, PORT, ONETIME_DB, ONETIME_MAX_FILE_BYTES and ONETIME_MAX_FILE_TTL are reserved.",
       "type": "object",
-      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$", "not": { "enum": ["HOST", "PORT", "ONETIME_DB"] } },
+      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$", "not": { "enum": ["HOST", "PORT", "ONETIME_DB", "ONETIME_MAX_FILE_BYTES", "ONETIME_MAX_FILE_TTL"] } },
       "additionalProperties": { "type": ["string", "number", "boolean"] }
     },
     "serviceAccount": {
@@ -86,7 +98,20 @@
         "path": { "type": "string" },
         "pathType": { "type": "string", "enum": ["Prefix", "ImplementationSpecific", "Exact"] },
         "tlsSecretName": { "type": "string" },
-        "maxBodyBytes": { "type": "integer", "minimum": 1024, "maximum": 104857600 },
+        "maxBodyBytes": {
+          "description": "Proxy body limit in bytes. Empty = derived from config.maxFileBytes.",
+          "oneOf": [
+            { "type": "string", "maxLength": 0 },
+            { "type": "integer", "minimum": 16418, "maximum": 104857600 }
+          ]
+        },
+        "proxyTimeoutSeconds": {
+          "description": "Proxy read/send timeout in seconds. Empty = derived from config.maxFileBytes.",
+          "oneOf": [
+            { "type": "string", "maxLength": 0 },
+            { "type": "integer", "minimum": 1, "maximum": 3600 }
+          ]
+        },
         "certManager": {
           "type": "object",
           "additionalProperties": false,

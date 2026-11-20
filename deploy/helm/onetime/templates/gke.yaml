@@ -11,6 +11,9 @@ metadata:
 spec:
   logging:
     enable: false
+  # GKE's default backend timeout is 30 s; uploads of large files on a slow line need longer (ingress.proxyTimeoutSeconds,
+  # derived from config.maxFileBytes).
+  timeoutSec: {{ include "onetime.proxyTimeoutSeconds" . }}
   healthCheck:
     type: HTTP
     requestPath: /healthz

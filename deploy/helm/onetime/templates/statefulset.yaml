@@ -58,6 +58,10 @@ spec:
             - name: ONETIME_MAX_STORED
               value: {{ . | toString | quote }}
             {{- end }}
+            - name: ONETIME_MAX_FILE_BYTES
+              value: {{ int64 .Values.config.maxFileBytes | toString | quote }}
+            - name: ONETIME_MAX_FILE_TTL
+              value: {{ int64 .Values.config.maxFileTtl | toString | quote }}
             {{- range $name, $value := .Values.extraEnv }}
             - name: {{ $name }}
               value: {{ $value | toString | quote }}

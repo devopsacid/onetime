@@ -35,6 +35,12 @@ Rules:
   - Every upgrade or node drain is a short outage: the old pod stops before the new one starts.
   - The volume must be block or local storage, never NFS/EFS/Azure Files/RWX.
   - Request paths contain secret ids: keep access logs OFF in the ingress controller and the load balancer.
+Files: up to {{ int64 .Values.config.maxFileBytes }} bytes (0 = off), at most {{ int64 .Values.config.maxFileTtl }} s.
+{{- if .Values.ingress.enabled }} Proxy body limit {{ include "onetime.proxyBodyBytes" . }} bytes, proxy timeout {{ include "onetime.proxyTimeoutSeconds" . }} s.{{ end }}
+{{- if gt (int64 .Values.config.maxFileBytes) 1048576 }}
+  Large files: each upload is held about 3 times in memory, up to ONETIME_MAX_UPLOADS (default 16) at once. Check
+  resources.limits.memory or lower extraEnv.ONETIME_MAX_UPLOADS. Files above 1 MiB need CLI 0.4.0.
+{{- end }}
 {{ if not .Values.persistence.enabled }}
 WARNING: persistence.enabled=false. The database is in an emptyDir and every restart deletes all stored secrets.
 {{- end }}

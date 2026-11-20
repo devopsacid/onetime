@@ -1,5 +1,10 @@
 # k3s (or any cluster) with Traefik. Traefik writes access logs only when accessLog is configured: do not enable it
 # (k3s: no "--accesslog" in the HelmChartConfig of traefik). See docs/deploy-helm.md.
+#
+# Large files: Traefik v3 entry points stop reading a request after 60 s (respondingTimeouts.readTimeout). That is
+# enough for the default 256 KiB files; with config.maxFileBytes above about 1 MiB, raise it in Traefik's static
+# configuration to at least the chart's proxy timeout (230 s at 5 MiB), e.g. in the k3s HelmChartConfig:
+#   additionalArguments: ["--entryPoints.websecure.transport.respondingTimeouts.readTimeout=240s"]
 
 image:
   repository: registry.example.com/onetime
@@ -34,7 +39,8 @@ networkPolicy:
           app.kubernetes.io/name: traefik
 
 extraObjects:
-  # Refuse bodies over ingress.maxBodyBytes at the proxy (the app also refuses anything over its own limit with 413).
+  # Refuse bodies over the chart's proxy body limit at the proxy (ingress.maxBodyBytes, or derived from
+  # config.maxFileBytes: 307200 by default). The app also refuses anything over its own limit with 413.
   # A string, so the value is rendered as a number after tpl.
   - |
     apiVersion: traefik.io/v1alpha1
@@ -44,4 +50,4 @@ extraObjects:
       namespace: {{ .Release.Namespace }}
     spec:
       buffering:
-        maxRequestBodyBytes: {{ .Values.ingress.maxBodyBytes }}
+        maxRequestBodyBytes: {{ include "onetime.proxyBodyBytes" . }}

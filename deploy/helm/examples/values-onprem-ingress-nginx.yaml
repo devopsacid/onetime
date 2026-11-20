@@ -29,8 +29,8 @@ ingress:
   annotations:
     nginx.ingress.kubernetes.io/enable-access-log: "false"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "15"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "15"
+    # proxy-body-size, proxy-read-timeout and proxy-send-timeout are set by the chart from config.maxFileBytes
+    # (300 KiB and 80 s for the default 256 KiB files). Set them here only to override.
 
 persistence:
   # Block or local storage only: local-path, OpenEBS LocalPV, Longhorn (RWO), Ceph RBD. Never NFS or CephFS.

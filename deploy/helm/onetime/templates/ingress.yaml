@@ -13,8 +13,15 @@ metadata:
     {{- range $k, $v := .Values.ingress.annotations }}
     {{ $k }}: {{ tpl ($v | toString) $ | quote }}
     {{- end }}
+    {{- /* Body limit and timeouts follow config.maxFileBytes (_helpers.tpl), unless given as annotations. */}}
     {{- if and $nginx (not (hasKey .Values.ingress.annotations "nginx.ingress.kubernetes.io/proxy-body-size")) }}
-    nginx.ingress.kubernetes.io/proxy-body-size: {{ printf "%d" (int .Values.ingress.maxBodyBytes) | quote }}
+    nginx.ingress.kubernetes.io/proxy-body-size: {{ include "onetime.proxyBodyBytes" . | quote }}
+    {{- end }}
+    {{- if and $nginx (not (hasKey .Values.ingress.annotations "nginx.ingress.kubernetes.io/proxy-read-timeout")) }}
+    nginx.ingress.kubernetes.io/proxy-read-timeout: {{ include "onetime.proxyTimeoutSeconds" . | quote }}
+    {{- end }}
+    {{- if and $nginx (not (hasKey .Values.ingress.annotations "nginx.ingress.kubernetes.io/proxy-send-timeout")) }}
+    nginx.ingress.kubernetes.io/proxy-send-timeout: {{ include "onetime.proxyTimeoutSeconds" . | quote }}
     {{- end }}
     {{- if .Values.ingress.certManager.enabled }}
     {{- if eq .Values.ingress.certManager.issuerKind "Issuer" }}

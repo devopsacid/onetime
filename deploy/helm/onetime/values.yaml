@@ -26,12 +26,21 @@ fullnameOverride: ""
 config:
   # Most unexpired secrets stored at once (ONETIME_MAX_STORED). Empty = server default (20000).
   maxStored: ""
+  # Largest file in bytes (ONETIME_MAX_FILE_BYTES), 0..5242880 (5 MiB); 0 turns files off. The ingress body limit and
+  # timeouts are derived from it (ingress.maxBodyBytes, ingress.proxyTimeoutSeconds). Files above 1 MiB need CLI 0.4.0.
+  # Memory: each upload in progress is held about 3 times (about 16 MB at 5 MiB) and up to ONETIME_MAX_UPLOADS (default
+  # 16) run at once, so 5 MiB files can take about 250 MB on top of the base: raise resources.limits.memory, or lower
+  # extraEnv.ONETIME_MAX_UPLOADS (for example "4"), before raising this above 1 MiB.
+  maxFileBytes: 262144
+  # Longest life of a file in seconds (ONETIME_MAX_FILE_TTL), 60..604800. Default 1 hour, like the hosted service.
+  maxFileTtl: 3600
   # Database file inside the volume. A subfolder, so the server creates it with mode 0700 itself (a volume root
   # often has group bits from fsGroup, or mode 0777 from local-path).
   dbPath: /data/db/onetime.db
 
-# More environment variables as a map, for settings added later (for example ONETIME_MAX_CONNECTIONS: "200").
-# HOST, PORT and ONETIME_DB are reserved and rejected here.
+# More environment variables as a map, for settings added later (for example ONETIME_MAX_CONNECTIONS: "200" or
+# ONETIME_MAX_UPLOADS: "4"). HOST, PORT, ONETIME_DB, ONETIME_MAX_FILE_BYTES and ONETIME_MAX_FILE_TTL are reserved and
+# rejected here (the last two are config.maxFileBytes and config.maxFileTtl).
 extraEnv: {}
 
 serviceAccount:
@@ -86,11 +95,21 @@ ingress:
     enabled: false
     issuerName: ""
     issuerKind: ClusterIssuer
-  # Largest request body the proxy accepts, in bytes (the largest file blob is 131,490 bytes, so 143360 = 140 KiB
-  # is the default and anything below 131,490 refuses the largest allowed file; the app refuses larger bodies with 413 itself). For ingress-nginx classes (className containing "nginx", or
-  # webapprouting.kubernetes.azure.com) the chart sets nginx.ingress.kubernetes.io/proxy-body-size from it, unless
-  # that annotation is given below. Other controllers: see the example files (Traefik Middleware uses it too).
-  maxBodyBytes: 143360
+  # Largest request body the proxy accepts, in bytes. Empty = derived from config.maxFileBytes: the largest blob
+  # (262,562 bytes for 256 KiB files, 5,243,298 at 5 MiB, 16,418 with files off) plus 3 %, rounded up to the next
+  # 100 KiB: 307200 (300 KiB) by default, 5427200 (5300 KiB) at 5 MiB, 102400 with files off. A number overrides it;
+  # rendering fails if it is below the largest blob (the proxy would refuse the largest allowed file). The app refuses
+  # larger bodies with 413 itself. For ingress-nginx classes (className containing "nginx", or
+  # webapprouting.kubernetes.azure.com) the chart sets nginx.ingress.kubernetes.io/proxy-body-size from it, unless that
+  # annotation is given below. The Traefik Middleware in values-k3s-traefik.yaml uses it too.
+  maxBodyBytes: ""
+  # Proxy read and send timeout in seconds. Empty = derived from config.maxFileBytes: the app's own upload timeout
+  # (60 s plus 1 s per 32 KiB of blob above 16 KB) plus 10 s, rounded up to 10 s: 80 by default, 230 at 5 MiB, 70 with
+  # files off, so a large file on a slow line is not cut off by the proxy before the app answers. The chart sets
+  # nginx.ingress.kubernetes.io/proxy-read-timeout and proxy-send-timeout (ingress-nginx) and the GKE BackendConfig
+  # timeoutSec from it, unless those annotations are given below. Other controllers have their own timeouts: see
+  # docs/deploy-helm.md ("Large files").
+  proxyTimeoutSeconds: ""
   # Controller-specific annotations. Access logs must stay off; see the files in deploy/helm/examples/.
   annotations: {}
 
@@ -106,6 +125,10 @@ persistence:
   size: 1Gi
   annotations: {}
 
+# Memory: the server holds each upload in progress about 3 times (3 x the blob: under 1 MB at the 256 KiB default,
+# about 16 MB at 5 MiB), times ONETIME_MAX_UPLOADS (default 16) at once. 256Mi is enough up to about 1 MiB files with
+# the defaults. With larger files raise limits.memory (5 MiB with 16 uploads: about 250 MB on top of the base, so 384Mi
+# or more) or lower extraEnv.ONETIME_MAX_UPLOADS (for example "4").
 resources:
   requests:
     cpu: 50m
