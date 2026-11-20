@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ID_PATTERN, MAX_BLOB_BYTES, MAX_STORED_SECRETS, MAX_TTL_SECONDS } from "../../src/shared/limits";
+import { ID_PATTERN, MAX_BLOB_BYTES, MAX_STORED_SECRETS, MAX_TTL_SECONDS, NEAR_FULL_MAX_TTL_SECONDS, longTtlCap } from "../../src/shared/limits";
 import type { Options } from "../../src/worker/index";
 
 type BodyInit = NonNullable<RequestInit["body"]>;
@@ -288,6 +288,65 @@ export function defineApiContract(h: ApiHarness): void {
       expect((await call("/api/secrets")).status).toBe(405);
       const id = await createOk();
       expect((await call(`/api/secrets/${id}`, { method: "DELETE" })).status).toBe(405);
+    });
+  });
+
+  describe("near-full rule", () => {
+    const WEEK = String(MAX_TTL_SECONDS);
+
+    /** Empties the table by revealing every row (the D1 table is shared between tests). */
+    async function empty(): Promise<void> {
+      for (const id of await h.ids()) await reveal(id);
+      expect(await rowCount()).toBe(0);
+    }
+
+    it("computes the long-TTL cap as 80 % of the cap, at least 1", () => {
+      expect(NEAR_FULL_MAX_TTL_SECONDS).toBe(86_400);
+      expect(longTtlCap(20_000)).toBe(16_000);
+      expect(longTtlCap(5)).toBe(4);
+      expect(longTtlCap(1)).toBe(1);
+      expect(longTtlCap(2)).toBe(1);
+    });
+
+    it("refuses long TTLs with 409 and maxTtl above 80 %, but not 1 day or shorter", async () => {
+      await empty();
+      const options = { maxStored: 5 };
+      for (let i = 0; i < 4; i++) expect((await create(blobOf(64), { ttl: WEEK, options })).status).toBe(201);
+
+      const refused = await create(blobOf(64), { ttl: WEEK, options });
+      expect(refused.status).toBe(409);
+      expect(refused.headers.get("Retry-After")).toBeNull();
+      const body = (await refused.json()) as { error: string; maxTtl: number };
+      expect(body.maxTtl).toBe(86_400);
+      expect(body.error).toMatch(/nearly full/);
+      expect(await rowCount()).toBe(4);
+
+      expect((await create(blobOf(64), { ttl: "86400", options })).status).toBe(201);
+      expect((await create(blobOf(64), { ttl: "86401", options })).status).toBe(409);
+      expect(await rowCount()).toBe(5);
+
+      // Completely full: short TTLs get 503.
+      expect((await create(blobOf(64), { ttl: "3600", options })).status).toBe(503);
+      await empty();
+    });
+
+    it("lets exactly the long-TTL cap of simultaneous 7-day creates in", async () => {
+      await empty();
+      const options = { maxStored: 5 };
+      const responses = await Promise.all(Array.from({ length: 20 }, () => create(blobOf(64), { ttl: WEEK, options })));
+      const codes = responses.map((r) => r.status).sort();
+      await Promise.all(responses.map((r) => r.arrayBuffer()));
+      expect(codes).toEqual([201, 201, 201, 201, ...Array<number>(16).fill(409)]);
+      expect(await rowCount()).toBe(4);
+      await empty();
+    });
+
+    it("with a cap of 1 the long-TTL cap is 1", async () => {
+      await empty();
+      const options = { maxStored: 1 };
+      expect((await create(blobOf(64), { ttl: WEEK, options })).status).toBe(201);
+      expect((await create(blobOf(64), { ttl: WEEK, options })).status).toBe(409);
+      await empty();
     });
   });
 

@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { KEY_PATTERN, MAX_SECRET_BYTES } from "../src/shared/limits";
 import { fromBase64Url, toBase64Url } from "../src/web/base64url";
 import { SecretTooLargeError, decryptSecret, encryptSecret } from "../src/web/crypto";
 import { CHARSETS, generatePassword, generateToken, generateUuid, randomInt } from "../src/web/generate";
 import { buildLink, parseFragment } from "../src/web/link";
+import { ApiError, createSecret } from "../src/web/api";
+import { pickTtlOption } from "../src/web/ttl";
 
 describe("base64url", () => {
   it("round-trips every byte value without padding or URL-unsafe characters", () => {
@@ -143,5 +145,45 @@ describe("link", () => {
     "#hello",
   ])("flags a damaged fragment: %s", (hash) => {
     expect(parseFragment(hash)).toBe("invalid");
+  });
+});
+
+describe("pickTtlOption", () => {
+  const values = [3600, 86400, 604800];
+  it("picks the largest option not above maxTtl", () => {
+    expect(pickTtlOption(86400, values)).toBe(86400);
+    expect(pickTtlOption(90000, values)).toBe(86400);
+    expect(pickTtlOption(3600, values)).toBe(3600);
+    expect(pickTtlOption(3600, [604800, 3600, 86400])).toBe(3600);
+  });
+  it("returns null when nothing fits", () => {
+    expect(pickTtlOption(60, values)).toBeNull();
+  });
+});
+
+describe("ApiError.maxTtl", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  async function failWith(body: unknown, status = 409): Promise<ApiError> {
+    vi.stubGlobal("fetch", async () => new Response(typeof body === "string" ? body : JSON.stringify(body), { status }));
+    try {
+      await createSecret(new Uint8Array(40), 604800);
+    } catch (e) {
+      return e as ApiError;
+    }
+    throw new Error("should have failed");
+  }
+  it("reads a valid maxTtl", async () => {
+    const e = await failWith({ error: "full", maxTtl: 86400 });
+    expect(e).toBeInstanceOf(ApiError);
+    expect(e.status).toBe(409);
+    expect(e.maxTtl).toBe(86400);
+  });
+  it("ignores missing, string, fractional and out-of-range values and non-JSON", async () => {
+    expect((await failWith({ error: "x" })).maxTtl).toBeUndefined();
+    expect((await failWith({ error: "x", maxTtl: "86400" })).maxTtl).toBeUndefined();
+    expect((await failWith({ error: "x", maxTtl: 1.5 })).maxTtl).toBeUndefined();
+    expect((await failWith({ error: "x", maxTtl: 59 })).maxTtl).toBeUndefined();
+    expect((await failWith({ error: "x", maxTtl: 604801 })).maxTtl).toBeUndefined();
+    expect((await failWith("not json")).maxTtl).toBeUndefined();
   });
 });

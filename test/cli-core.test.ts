@@ -359,3 +359,27 @@ describe("stdin, output and internal errors", () => {
     expect(EXIT.internal).toBe(70);
   });
 });
+
+describe("near-full refusal", () => {
+  it("exits 5 with the --ttl 1d hint and prints nothing on stdout", async () => {
+    const full = (async () =>
+      new Response(JSON.stringify({ error: "The service is nearly full, so new links can last at most 1 day right now.", maxTtl: 86400 }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" },
+      })) as unknown as typeof fetch;
+    const io = makeIo({ stdin: "hunter2\n", fetch: full });
+    expect(await run(["send", "--ttl", "7d", "--server", "https://onetime.test"], io)).toBe(EXIT.network);
+    expect(io.out).toBe("");
+    expect(io.err).toContain("nearly full");
+    expect(io.err).toContain("at most 1 day");
+    expect(io.err).toContain("--ttl 1d");
+    expect(io.err).not.toContain("hunter2");
+  });
+  it("without a valid maxTtl keeps the generic message", async () => {
+    const odd = (async () => new Response(JSON.stringify({ error: "busy", maxTtl: "x" }), { status: 409 })) as unknown as typeof fetch;
+    const io = makeIo({ stdin: "hunter2\n", fetch: odd });
+    expect(await run(["send", "--server", "https://onetime.test"], io)).toBe(EXIT.network);
+    expect(io.err).toContain("The server answered 409");
+    expect(io.err).not.toContain("--ttl 1d");
+  });
+});
