@@ -64,6 +64,23 @@ describe("check-dist profiles", () => {
     writeFileSync(join(dir, "assets", "unlinked.js"), "function gtag(){}\n");
     expect(check(dir).code).toBe(1);
   });
+  it.each(["selfhost", "onetimepass"] as const)("%s: a /* rule without Permissions-Policy or CORP fails", (profile) => {
+    for (const name of ["Permissions-Policy", "Cross-Origin-Resource-Policy"]) {
+      const dir = fixture(tmp.path, profile);
+      const text = readFileSync(join(dir, "_headers"), "utf8");
+      writeFileSync(join(dir, "_headers"), text.split("\n").filter((l) => !l.trim().startsWith(`${name}:`)).join("\n"));
+      const r = check(dir);
+      expect(r.code).toBe(1);
+      expect(r.out).toContain(name);
+    }
+  });
+  it.each(["selfhost", "onetimepass"] as const)("%s: a Permissions-Policy that allows the camera or drops clipboard-write fails", (profile) => {
+    for (const [from, to] of [["camera=()", "camera=*"], ["clipboard-write=(self)", "clipboard-write=()"]]) {
+      const dir = fixture(tmp.path, profile);
+      writeFileSync(join(dir, "_headers"), readFileSync(join(dir, "_headers"), "utf8").replace(from!, to!));
+      expect(check(dir).code).toBe(1);
+    }
+  });
   it("selfhost: a leftover marker fails", () => {
     const dir = fixture(tmp.path, "selfhost");
     writeFileSync(join(dir, "privacy.html"), page("<!-- site:selfhost -->"));

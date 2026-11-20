@@ -174,6 +174,8 @@ describe("headersForSelfhost", () => {
     expect(out.indexOf("Content-Security-Policy:", first + 1)).toBe(-1);
     expect(out).not.toContain("! Content-Security-Policy");
     expect(out).toContain("Strict-Transport-Security");
+    expect(out).toContain("Permissions-Policy:");
+    expect(out).toContain("Cross-Origin-Resource-Policy: same-origin");
     expect(out).toContain("/assets/*\n  Cache-Control: public, max-age=31536000, immutable");
     expect(out).toContain("/how-it-works\n  Cache-Control: no-store\n");
   });

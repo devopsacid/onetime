@@ -118,6 +118,21 @@ describe("the real public/_headers", () => {
     }
   });
 
+  it.each(["/", "/index.html", "/404", "/privacy", "/how-it-works.html", "/assets/main-abc.js", "/cli/onetime.mjs", "/robots.txt", "/og-image.png"])(
+    "turns powerful features off and sets CORP same-origin on %s",
+    (path) => {
+      const list = headersFor(rules, path);
+      expect(get(list, "Cross-Origin-Resource-Policy")).toBe("same-origin");
+      const policy = get(list, "Permissions-Policy")!;
+      for (const feature of ["accelerometer", "camera", "geolocation", "gyroscope", "magnetometer", "microphone", "payment", "usb", "browsing-topics"]) {
+        expect(policy).toContain(`${feature}=()`);
+      }
+      // The copy button needs clipboard-write for the page itself.
+      expect(policy).toContain("clipboard-write=(self)");
+      expect(policy).not.toMatch(/clipboard-write=\(\)/);
+    },
+  );
+
   it("marks /cli/* noindex and keeps the other security headers everywhere", () => {
     expect(get(headersFor(rules, "/cli/onetime.mjs"), "X-Robots-Tag")).toBe("noindex");
     expect(get(headersFor(rules, "/"), "X-Robots-Tag")).toBeUndefined();

@@ -135,11 +135,13 @@ describe("API bridge", () => {
     expect(r.status).toBe(201);
   });
 
-  it("carries the API headers and no CSP on API responses, success or error", async () => {
+  it("carries the API headers, with the API's own CSP, on API responses, success or error", async () => {
     for (const r of [await create(blobOf(64)), await fetch(`${base}/api/secrets`), await fetch(`${base}/api/nope`), await fetch(`${base}/api`)]) {
       expect(r.headers.get("cache-control")).toBe("no-store");
       expect(r.headers.get("x-robots-tag")).toBe("noindex");
-      expect(r.headers.get("content-security-policy")).toBeNull();
+      expect(r.headers.get("content-security-policy")).toBe("default-src 'none'; frame-ancestors 'none'");
+      expect(r.headers.get("strict-transport-security")).toBe("max-age=31536000; includeSubDomains");
+      expect(r.headers.get("cross-origin-resource-policy")).toBe("same-origin");
       await r.arrayBuffer();
     }
     expect((await fetch(`${base}/api`)).status).toBe(404);

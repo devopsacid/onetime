@@ -214,6 +214,24 @@ export function defineApiContract(h: ApiHarness): void {
       if (response.status === 201) expect(await rowCount()).toBeGreaterThan(0);
     });
 
+    it("sends the API security headers on success and error responses", async () => {
+      const id = await createOk();
+      for (const response of [
+        await create(blobOf(64)),
+        await create(blobOf(64), { ttl: "x" }),
+        await call("/api/secrets"),
+        await call(`/api/secrets/${id}`),
+        await call(`/api/secrets/${id}/reveal`),
+        await reveal(id),
+        await reveal(id),
+      ]) {
+        expect(response.headers.get("Content-Security-Policy")).toBe("default-src 'none'; frame-ancestors 'none'");
+        expect(response.headers.get("Strict-Transport-Security")).toBe("max-age=31536000; includeSubDomains");
+        expect(response.headers.get("Cross-Origin-Resource-Policy")).toBe("same-origin");
+        await response.arrayBuffer();
+      }
+    });
+
     it("sends no-store on error responses", async () => {
       for (const response of [
         await create(blobOf(64), { ttl: "x" }),
