@@ -45,7 +45,7 @@ You need:
 
 The public address (origin) is fixed when you build. That is why there is no ready-made image: you always build your own. Set it with `ONETIME_ORIGIN`, for example `https://onetime.example`. Use the exact origin people will type: no path, no trailing slash.
 
-If you offer the service to other people, also set `ONETIME_OPERATOR_NAME` and `ONETIME_OPERATOR_CONTACT`, so the privacy page names you. All build settings are in [Settings reference](#settings-reference).
+If you offer the service to other people, also set `ONETIME_OPERATOR_NAME` and `ONETIME_OPERATOR_CONTACT`, so the privacy page and the terms page (`/terms`) name you. All build settings are in [Settings reference](#settings-reference).
 
 The self-host build contains no analytics and no Google code.
 
@@ -335,11 +335,11 @@ Set these when you build (Docker build args, Compose environment, or the environ
 | Variable | Needed | Meaning |
 |---|---|---|
 | `ONETIME_ORIGIN` | yes | The exact origin people type, e.g. `https://onetime.example`. No path, no trailing slash. `http` is accepted only as `http://localhost:<port>`. Links, canonical tags and the CLI default use it. |
-| `ONETIME_OPERATOR_NAME` | no | Your name or organisation, shown on the privacy page. |
+| `ONETIME_OPERATOR_NAME` | no | Your name or organisation, shown on the privacy and terms pages. |
 | `ONETIME_OPERATOR_CONTACT` | no | An email address or an https URL, shown on the privacy page and published as `/.well-known/security.txt` (RFC 9116; the build sets `Expires` 11 months ahead, so rebuild at least yearly). Without it, no `security.txt` is served. |
 | `ONETIME_INDEXABLE` | no | `1` writes a `robots.txt` that allows crawling, plus a sitemap. Default: `robots.txt` with `Disallow: /`, no sitemap, and `X-Robots-Tag: noindex` on every response the static site sends. |
 
-Without the operator settings, the privacy page says "the operator of this instance" and names no one.
+Without the operator settings, the privacy and terms pages say "the operator of this instance" and name no one. The terms page (`/terms`) ships with default rules (forbidden content, deletion by id, limits); check that they fit how you run your instance.
 
 ### Run-time settings
 
