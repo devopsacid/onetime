@@ -41,7 +41,7 @@ function filesOn(options: Pick<Options, "maxLargeBytes" | "maxFileBytes">): bool
 /** The largest blob a router with these options reads: text only when files are off, else the file blob of `maxFileBytes`. */
 export function blobLimit(options: Pick<Options, "maxLargeBytes" | "maxFileBytes" | "maxBlobBytes"> = {}): number {
   if (options.maxBlobBytes !== undefined) return options.maxBlobBytes;
-  return filesOn(options) ? fileBlobBytes(options.maxFileBytes ?? MAX_FILE_BYTES) : MAX_TEXT_BLOB_BYTES;
+  return filesOn(options) ? Math.max(MAX_TEXT_BLOB_BYTES, fileBlobBytes(options.maxFileBytes ?? MAX_FILE_BYTES)) : MAX_TEXT_BLOB_BYTES;
 }
 
 export const API_HEADERS = {

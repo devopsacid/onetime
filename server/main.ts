@@ -1,6 +1,6 @@
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ConfigError, parseConfig } from "./config";
+import { ConfigError, configWarnings, parseConfig } from "./config";
 import { permissionWarning } from "./permissions";
 import { SiteError } from "./static";
 import { startServer } from "./start";
@@ -24,6 +24,7 @@ async function main(): Promise<void> {
   let maxStored = 0;
   try {
     const config = parseConfig(process.env, dirname(fileURLToPath(import.meta.url)), process.cwd());
+    for (const warning of configWarnings(config)) process.stderr.write(`${warning}\n`);
     dbPath = config.dbPath;
     maxStored = config.maxStored;
     running = await startServer(config);

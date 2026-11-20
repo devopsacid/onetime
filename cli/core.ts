@@ -14,6 +14,7 @@ import {
   DEFAULT_TTL_SECONDS,
   ID_PATTERN,
   FORMAT_MAX_BLOB_BYTES,
+  FORMAT_MAX_FILE_BYTES,
   HOSTED_LIMITS,
   parseLimits,
   type ServerLimits,
@@ -731,7 +732,7 @@ async function createFileLink(io: Io, file: { name: string; bytes: Uint8Array },
     encrypted = await codecFor(io).encryptFile({ name: file.name, type: "", bytes: file.bytes }, passphrase);
   } catch (error) {
     if (error instanceof SecretTooLargeError) {
-      throw new UsageError("The file is too large for the blob format (limit 5.0 MB).");
+      throw new UsageError(`The file is too large for the blob format (limit ${formatBytes(FORMAT_MAX_FILE_BYTES)}).`);
     }
     throw error;
   }

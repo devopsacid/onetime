@@ -2,7 +2,7 @@ import { isAbsolute, join, resolve } from "node:path";
 import {
   FORMAT_MAX_FILE_BYTES,
   LARGE_MAX_TTL_SECONDS,
-    MAX_FILE_BYTES,
+  MAX_FILE_BYTES,
   MAX_LARGE_STORED_BYTES,
   MAX_STORED_BYTES,
   MAX_STORED_SECRETS,
@@ -33,6 +33,20 @@ export interface Config {
   maxFileTtl: number;
   /** POST /api/secrets requests handled at once; more get 503 with Retry-After. */
   maxUploads: number;
+}
+
+/** Upload memory (uploads at once x 3 copies x blob) above which the server warns at start: 128 MiB. */
+const UPLOAD_MEMORY_WARN_BYTES = 128 * 1024 * 1024;
+
+/** Warnings to print once at start (the settings are valid but risky). Currently: big files with many uploads at once. */
+export function configWarnings(config: Config): string[] {
+  if (config.maxFileBytes <= 1024 * 1024) return [];
+  const blob = fileBlobBytes(config.maxFileBytes);
+  const memory = config.maxUploads * 3 * blob;
+  if (memory <= UPLOAD_MEMORY_WARN_BYTES) return [];
+  return [
+    `onetime: warning: up to ${config.maxUploads} uploads of ${blob} bytes at once can hold about ${Math.round(memory / (1024 * 1024))} MiB in memory; lower ONETIME_MAX_UPLOADS if the host is small`,
+  ];
 }
 
 export class ConfigError extends Error {
@@ -81,8 +95,11 @@ export function parseConfig(env: Env, bundleDir: string, cwd: string): Config {
     maxLargeBytes = 0;
     maxFileBytes = 0;
   } else if (maxLargeBytes < fileBlobBytes(maxFileBytes)) {
+    const blob = fileBlobBytes(maxFileBytes);
     problems.push(
-      `ONETIME_MAX_LARGE_BYTES (${maxLargeBytes}) must hold at least one file blob of ONETIME_MAX_FILE_BYTES (${fileBlobBytes(maxFileBytes)} bytes)`,
+      value("ONETIME_MAX_LARGE_BYTES") === undefined
+        ? `ONETIME_MAX_STORED_BYTES (${maxStoredBytes}) is too small for ONETIME_MAX_FILE_BYTES (one file blob is ${blob} bytes): the large budget follows it when ONETIME_MAX_LARGE_BYTES is not set, so raise ONETIME_MAX_STORED_BYTES or lower ONETIME_MAX_FILE_BYTES`
+        : `ONETIME_MAX_LARGE_BYTES (${maxLargeBytes}) must hold at least one file blob of ONETIME_MAX_FILE_BYTES (${blob} bytes)`,
     );
   }
 
