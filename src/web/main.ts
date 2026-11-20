@@ -562,16 +562,20 @@ async function route(): Promise<void> {
 
 syncGenerator();
 
-// Keep plaintext and the key-bearing link out of the back/forward cache.
-window.addEventListener("pagehide", () => {
+// Keep plaintext and the key-bearing link out of the back/forward cache and out of form-state restore. Some engines
+// (WebKit) put field values back after Back even when pagehide cleared them, so pageshow clears again every time.
+function clearSensitive(): void {
   releaseFile();
   resetFileInput();
   el<HTMLTextAreaElement>("revealed").value = "";
   el<HTMLInputElement>("link").value = "";
   secretInput.value = "";
+  openPass.value = "";
   clearPassphraseFields();
-});
+}
+window.addEventListener("pagehide", clearSensitive);
 window.addEventListener("pageshow", (event) => {
+  clearSensitive();
   if (event.persisted) {
     updateSize();
     void route();

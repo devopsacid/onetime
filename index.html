@@ -109,7 +109,7 @@
 
           <div id="file-field" class="field" hidden>
             <label for="file-input">File</label>
-            <input id="file-input" type="file" aria-describedby="file-note" />
+            <input id="file-input" type="file" autocomplete="off" aria-describedby="file-note" />
             <!-- site:onetimepass -->
             <p id="file-note" class="hint">One file, up to 128 KB. A file link lasts 1 hour or 1 day. You can also drop a file on this form. The name and contents are encrypted in your browser.</p>
             <!-- /site:onetimepass -->
@@ -174,11 +174,11 @@
               <div class="row">
                 <div class="field">
                   <label for="pp-first">Passphrase</label>
-                  <input id="pp-first" type="password" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" aria-describedby="pp-note" />
+                  <input id="pp-first" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-describedby="pp-note" />
                 </div>
                 <div class="field">
                   <label for="pp-second">Repeat passphrase</label>
-                  <input id="pp-second" type="password" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" aria-describedby="pp-note" />
+                  <input id="pp-second" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-describedby="pp-note" />
                 </div>
               </div>
               <p id="pp-note" class="notice notice-info">
@@ -213,7 +213,7 @@
           <div class="field">
             <label for="link">Link</label>
             <div class="copy-row">
-              <input id="link" type="text" readonly />
+              <input id="link" type="text" readonly autocomplete="off" />
               <button type="button" class="button" data-copy="link">Copy</button>
             </div>
           </div>
@@ -253,7 +253,7 @@
         <div class="card">
           <div class="field">
             <label for="revealed">Secret</label>
-            <textarea id="revealed" rows="5" readonly spellcheck="false"></textarea>
+            <textarea id="revealed" rows="5" readonly autocomplete="off" spellcheck="false"></textarea>
           </div>
           <div class="row row-end">
             <p class="hint">It has been deleted from the server. This link no longer works.</p>
