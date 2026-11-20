@@ -12,10 +12,11 @@ import {
 import { buildLink, parseFragment, type SecretLink } from "../src/web/link";
 import {
   DEFAULT_TTL_SECONDS,
-  FILE_MAX_TTL_SECONDS,
   ID_PATTERN,
   FORMAT_MAX_BLOB_BYTES,
-  MAX_FILE_BYTES,
+  HOSTED_LIMITS,
+  parseLimits,
+  type ServerLimits,
   MAX_SECRET_BYTES,
   MAX_TTL_SECONDS,
   MIN_TTL_SECONDS,
@@ -169,7 +170,7 @@ interface PassphraseSource {
 export type Command =
   | { kind: "help"; topic?: string }
   | { kind: "version" }
-  | ({ kind: "send"; ttl: number; server?: string; file?: string; name?: string } & PassphraseSource)
+  | ({ kind: "send"; ttl: number; ttlExplicit?: true; server?: string; file?: string; name?: string } & PassphraseSource)
   | ({
       kind: "gen";
       type: GenType;
@@ -303,6 +304,7 @@ export function parseArgs(argv: string[]): Command {
         withServer({
           kind: "send" as const,
           ttl,
+          ...(values.has("ttl") ? { ttlExplicit: true as const } : {}),
           ...(values.has("file") ? { file: values.get("file")! } : {}),
           ...(values.has("name") ? { name: values.get("name")! } : {}),
         }),
@@ -447,7 +449,8 @@ a wrong passphrase destroys the secret.
 Opening a link uses it up: a second attempt reports it is gone.
 Prints exactly the secret on stdout (a trailing newline only when stdout is a terminal).
 
-Files (links that look like https://<host>/#2f.<id>.<key>) need version 0.3.0 or newer:
+Files (links that look like https://<host>/#2f.<id>.<key>) need version 0.3.0 or newer, and
+version 0.4.0 or newer above 1 MiB (self-hosted servers can allow up to 5 MiB):
   -o PATH   a folder: the file is saved there under its (sanitised) name, never overwriting;
             another path: the file is saved as that name, which must not exist yet.
   Without -o the raw bytes go to stdout when it is redirected; on a terminal nothing is opened.
@@ -471,8 +474,10 @@ const FILE_SEND_HELP = `
 Files:
   onetime send --file PATH [--name NAME] [--ttl 1h|1d]
   cat photo.jpg | onetime send --file - --name photo.jpg
-Sends a file of at most ${formatBytes(MAX_FILE_BYTES)} (name and content are encrypted). It lasts at most 1 day and can be
-downloaded once. --file - reads raw bytes from a pipe. The service cannot scan files for viruses.
+Sends a file (name and content are encrypted); it can be downloaded once. --file - reads raw bytes from a pipe.
+The size limit and the longest life come from the server (GET /api/limits); on the hosted service they are
+${formatBytes(HOSTED_LIMITS.maxFileBytes)} and 1 hour. Without --ttl a file lasts as long as the server allows, up to 1 day.
+A file is checked against the limit before anything is uploaded. The service cannot scan files for viruses.
 `;
 
 const PASSPHRASE_SEND_HELP = `
@@ -704,13 +709,29 @@ async function createLink(io: Io, text: string, ttl: number, server: string, pas
   return buildLink(server, { id, key: encrypted.key, format: encrypted.format, passphrase: encrypted.passphrase, file: false });
 }
 
+/**
+ * The server's file limits from GET /api/limits. Anything that is not a valid answer (404 or 405 from an older server,
+ * a redirect, an error, HTML, nonsense, a reply above 1 KiB, no connection) gives the hosted limits: the upload that
+ * follows then reports a real network problem, and a server that refuses the file says so.
+ */
+async function serverLimits(io: Io, server: string): Promise<ServerLimits> {
+  try {
+    const response = await io.fetch(`${server}/api/limits`, { method: "GET", signal: AbortSignal.timeout(10_000), redirect: "manual" });
+    if (!response.ok) return HOSTED_LIMITS;
+    const body = await readBounded(response, 1024);
+    return parseLimits(JSON.parse(new TextDecoder().decode(body))) ?? HOSTED_LIMITS;
+  } catch {
+    return HOSTED_LIMITS;
+  }
+}
+
 async function createFileLink(io: Io, file: { name: string; bytes: Uint8Array }, ttl: number, server: string, passphrase?: string): Promise<string> {
   let encrypted;
   try {
     encrypted = await codecFor(io).encryptFile({ name: file.name, type: "", bytes: file.bytes }, passphrase);
   } catch (error) {
     if (error instanceof SecretTooLargeError) {
-      throw new UsageError(`The file is too large (limit ${formatBytes(MAX_FILE_BYTES)}).`);
+      throw new UsageError("The file is too large for the blob format (limit 5.0 MB).");
     }
     throw error;
   }
@@ -719,26 +740,26 @@ async function createFileLink(io: Io, file: { name: string; bytes: Uint8Array },
 }
 
 /** The file for `send --file`: raw bytes from a path or a pipe, with a sanitised name. Refuses empty and oversized input. */
-async function readFileInput(io: Io, path: string, nameOverride: string | undefined): Promise<{ name: string; bytes: Uint8Array }> {
+async function readFileInput(io: Io, path: string, nameOverride: string | undefined, limit: number): Promise<{ name: string; bytes: Uint8Array }> {
   let bytes: Uint8Array;
   if (path === "-") {
     if (io.stdin.isTTY) throw new UsageError("Pipe the file in, or give a path.");
-    bytes = await io.stdin.readBytes(MAX_FILE_BYTES);
+    bytes = await io.stdin.readBytes(limit);
   } else {
     try {
-      bytes = await io.readFile(path, MAX_FILE_BYTES);
+      bytes = await io.readFile(path, limit);
     } catch {
       throw new UsageError("Could not read the file.");
     }
   }
   if (bytes.length === 0) throw new UsageError("The file is empty.");
-  if (bytes.length > MAX_FILE_BYTES) throw new UsageError(`The file is too large (limit ${formatBytes(MAX_FILE_BYTES)}).`);
+  if (bytes.length > limit) throw new UsageError(`The file is too large (limit ${formatBytes(limit)}).`);
   return { name: safeFileName(nameOverride ?? (path === "-" ? "" : path)), bytes };
 }
 
-function sendHints(io: Io, ttl: number, passphrase: boolean, file?: { name: string; size: number }): void {
+function sendHints(io: Io, ttl: number, passphrase: boolean, file?: { name: string; size: number; maxTtl: number }): void {
   io.stderr.write(
-    (file === undefined ? "" : `File: ${file.name} (${formatBytes(file.size)}). Files last at most 1 day.\n`) +
+    (file === undefined ? "" : `File: ${file.name} (${formatBytes(file.size)}). Files last at most ${describeTtl(file.maxTtl)}.\n`) +
       `Opens once. Expires in ${describeTtl(ttl)} if not opened.\n` +
       (file === undefined
         ? "Receive it in a browser, or with: onetime get -  (then paste the link)\n"
@@ -881,14 +902,21 @@ async function execute(command: Command, io: Io): Promise<number> {
     case "send": {
       if (command.file !== undefined) {
         if (!filesOn(io)) throw new UsageError("Sending files is not available yet.");
-        if (command.ttl > FILE_MAX_TTL_SECONDS) throw new UsageError("Files can last at most 1 day.");
         const server = resolveServer(command.server, io.env, io.defaultServer);
         checkPassphraseOptions(io, command, command.file === "-");
-        const file = await readFileInput(io, command.file, command.name);
+        if (command.file === "-" && io.stdin.isTTY) throw new UsageError("Pipe the file in, or give a path.");
+        // The server's limits decide, and they are known before the file is read or anything is uploaded.
+        const limits = await serverLimits(io, server);
+        if (limits.maxFileBytes === 0) throw new UsageError("This server does not accept files.");
+        if (command.ttlExplicit === true && command.ttl > limits.maxFileTtl) {
+          throw new UsageError(`Files can last at most ${describeTtl(limits.maxFileTtl)} on this server.`);
+        }
+        const ttl = Math.min(command.ttl, limits.maxFileTtl);
+        const file = await readFileInput(io, command.file, command.name, limits.maxFileBytes);
         const passphrase = await readNewPassphrase(io, command);
-        const link = await createFileLink(io, file, command.ttl, server, passphrase);
+        const link = await createFileLink(io, file, ttl, server, passphrase);
         io.stdout.write(`${link}\n`);
-        sendHints(io, command.ttl, passphrase !== undefined, { name: file.name, size: file.bytes.length });
+        sendHints(io, ttl, passphrase !== undefined, { name: file.name, size: file.bytes.length, maxTtl: limits.maxFileTtl });
         return EXIT.ok;
       }
       const server = resolveServer(command.server, io.env, io.defaultServer);
