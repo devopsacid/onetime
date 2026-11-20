@@ -10,12 +10,12 @@
     <script src="/theme-init.js"></script>
     <title>Privacy | onetime</title>
     <!-- site:onetimepass -->
-    <meta name="description" content="Who runs onetime, what the site stores, and how Google Analytics is used on the information pages only after you accept." />
+    <meta name="description" content="Who runs onetime, what the site stores, and how Google Analytics is used on the information site only after you accept." />
     <!-- /site:onetimepass -->
     <!-- site:selfhost
     <meta name="description" content="Who runs this instance of onetime and what it stores. It sets no cookies and runs no analytics." />
     site:selfhost -->
-    <link rel="canonical" href="https://onetimepass.pages.dev/privacy" />
+    <link rel="canonical" href="https://onetimepass-info.pages.dev/privacy" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -24,13 +24,13 @@
     <meta property="og:site_name" content="onetime" />
     <meta property="og:title" content="Privacy | onetime" />
     <!-- site:onetimepass -->
-    <meta property="og:description" content="Who runs onetime, what the site stores, and how Google Analytics is used on the information pages only after you accept." />
+    <meta property="og:description" content="Who runs onetime, what the site stores, and how Google Analytics is used on the information site only after you accept." />
     <!-- /site:onetimepass -->
     <!-- site:selfhost
     <meta property="og:description" content="Who runs this instance of onetime and what it stores. It sets no cookies and runs no analytics." />
     site:selfhost -->
-    <meta property="og:url" content="https://onetimepass.pages.dev/privacy" />
-    <meta property="og:image" content="https://onetimepass.pages.dev/og-image.png" />
+    <meta property="og:url" content="https://onetimepass-info.pages.dev/privacy" />
+    <meta property="og:image" content="https://onetimepass-info.pages.dev/og-image.png" />
     <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
@@ -38,13 +38,14 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Privacy | onetime" />
     <!-- site:onetimepass -->
-    <meta name="twitter:description" content="Who runs onetime, what the site stores, and how Google Analytics is used on the information pages only after you accept." />
+    <meta name="twitter:description" content="Who runs onetime, what the site stores, and how Google Analytics is used on the information site only after you accept." />
     <!-- /site:onetimepass -->
     <!-- site:selfhost
     <meta name="twitter:description" content="Who runs this instance of onetime and what it stores. It sets no cookies and runs no analytics." />
     site:selfhost -->
-    <meta name="twitter:image" content="https://onetimepass.pages.dev/og-image.png" />
+    <meta name="twitter:image" content="https://onetimepass-info.pages.dev/og-image.png" />
     <meta name="twitter:image:alt" content="onetime: share a secret with a link that works once" />
+    <!-- site:selfhost
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -62,13 +63,14 @@
                 "@type": "ListItem",
                 "position": 2,
                 "name": "Privacy",
-                "item": "https://onetimepass.pages.dev/privacy"
+                "item": "https://onetimepass-info.pages.dev/privacy"
               }
             ]
           }
         ]
       }
     </script>
+    site:selfhost -->
     <link rel="stylesheet" href="/src/web/style.css" />
     <script type="module" src="/src/web/info.ts"></script>
   </head>
@@ -94,7 +96,7 @@
 
     <main class="explainer">
       <h1>Privacy</h1>
-      <p class="lead">Last updated 19 November 2026.</p>
+      <p class="lead">Last updated 20 November 2026.</p>
 
       <section id="controller" aria-labelledby="controller-title">
         <h2 id="controller-title">Who is responsible</h2>
@@ -110,13 +112,27 @@
         site:selfhost -->
       </section>
 
+      <!-- site:onetimepass -->
+      <section id="sites" aria-labelledby="sites-title">
+        <h2 id="sites-title">Two sites</h2>
+        <p>
+          onetime runs as two separate websites. <strong>onetimepass.pages.dev</strong> is where secrets are created and
+          opened; it also serves the command-line page, the command-line downloads and the API. It runs no analytics, sets
+          no cookies and loads nothing from other sites, on any page. <strong>onetimepass-info.pages.dev</strong> is this
+          information site (how it works and this page); it uses Google Analytics only after you accept. Each site saves
+          your theme choice separately. Google Analytics cookies that an earlier version of the secret site set on
+          onetimepass.pages.dev are deleted there on your next visit.
+        </p>
+      </section>
+      <!-- /site:onetimepass -->
+
       <section id="secrets" aria-labelledby="secrets-title">
         <h2 id="secrets-title">Sharing a secret</h2>
         <p>
           <!-- site:onetimepass -->
-          The site’s own code stores no accounts, cookies or IP addresses. The page where secrets are created and opened
-          sets no cookies, runs no analytics and loads nothing from other sites. Cloudflare, which hosts the site, handles
-          connections (IP address, request details) as any host does. What is stored for a secret is described in
+          The code of both sites stores no accounts, cookies or IP addresses. The secret site (onetimepass.pages.dev)
+          sets no cookies, runs no analytics and loads nothing from other sites. Cloudflare, which hosts both sites,
+          handles connections (IP address, request details) as any host does. What is stored for a secret is described in
           <!-- /site:onetimepass -->
           <!-- site:selfhost
           The site’s own code stores no accounts, cookies or IP addresses and keeps no request logs. No page of this site
@@ -132,13 +148,13 @@
       <section id="analytics" aria-labelledby="analytics-title">
         <h2 id="analytics-title">Google Analytics</h2>
         <p>
-          Google Analytics runs only on the information pages (how it works, command line and this page), and only after
-          you press Accept. It never runs on the page where secrets are created or opened, and secret links
-          are never sent to it: the page address it receives has no part after <code>?</code> or <code>#</code>.
+          Google Analytics runs only on the information site (how it works and this page), and only after
+          you press Accept. It never runs on onetimepass.pages.dev, where secrets are created and opened, and secret
+          links are never sent to it: the page address it receives has no part after <code>?</code> or <code>#</code>.
         </p>
         <ul class="ticks">
           <li><strong>Provider:</strong> Google Ireland Limited.</li>
-          <li><strong>Purpose:</strong> counting visits to the information pages.</li>
+          <li><strong>Purpose:</strong> counting visits to the information site.</li>
           <li><strong>What Google receives:</strong> after you accept, Google receives your IP address, the page visited, and browser and device details, and the cookies identify your browser with a random id. This is personal data, not anonymous.</li>
           <li><strong>Cookies:</strong> <code>_ga</code> and <code>_ga_&lt;ID&gt;</code>, set by Google Analytics after you accept. They last up to 12 months.</li>
           <li><strong>Retention:</strong> analytics data is kept for 2 months (a setting in the Google Analytics account).</li>
@@ -150,10 +166,11 @@
       <section id="cookies" aria-labelledby="cookies-title">
         <h2 id="cookies-title">Cookie settings and withdrawing consent</h2>
         <p>
-          The banner on the information pages offers Accept and Reject, and Reject is the same size as Accept. Nothing
-          is sent to Google before you accept, or if you reject. To change your choice, use
-          <a href="/privacy#cookies" data-cookie-settings>Cookie settings</a>, here or in the footer of any page. Rejecting
-          deletes the Google Analytics cookies on this site. The page is reloaded only if the Google script had already been loaded on it (after an earlier Accept), because a loaded script cannot be unloaded. You are asked again after 12 months or
+          The banner on the information site offers Accept and Reject, and Reject is the same size as Accept. Nothing
+          is sent to Google before you accept, or if you reject. Your choice and the Google Analytics cookies apply to the
+          information site only. To change your choice, use
+          <a href="/privacy#cookies" data-cookie-settings>Cookie settings</a>, here or in the footer of any page of the
+          information site. Rejecting deletes the Google Analytics cookies on this site. The page is reloaded only if the Google script had already been loaded on it (after an earlier Accept), because a loaded script cannot be unloaded. You are asked again after 12 months or
           when these purposes change. Without JavaScript nothing is loaded and no banner is shown.
         </p>
       </section>
@@ -171,9 +188,9 @@
       <section id="storage" aria-labelledby="storage-title">
         <h2 id="storage-title">What is saved in your browser</h2>
         <ul class="ticks">
-          <li>Your theme choice (light or dark), in local storage.</li>
+          <li>Your theme choice (light or dark), in local storage. Each site saves it separately.</li>
           <!-- site:onetimepass -->
-          <li>Your cookie choice (accepted or rejected, the date and a version number), in local storage. It never leaves your browser.</li>
+          <li>Your cookie choice (accepted or rejected, the date and a version number), in local storage of the information site. It never leaves your browser.</li>
           <li>The Google Analytics cookies above, only if you accepted.</li>
           <!-- /site:onetimepass -->
           <!-- site:selfhost
@@ -187,7 +204,7 @@
 
     <footer class="site-footer site-footer-plain">
       <!-- site:onetimepass -->
-      <p>No accounts. Secrets are encrypted on your device. The page where secrets are created and opened has no analytics or cookies. This page uses Google Analytics only if you accept. Your theme choice and this choice are saved in your browser.</p>
+      <p>No accounts. Secrets are encrypted on your device. onetimepass.pages.dev, where secrets are created and opened, has no analytics or cookies. This information site uses Google Analytics only if you accept. Your theme choice and this choice are saved in your browser.</p>
       <p><a href="/">Share a secret</a> · <a href="/how-it-works">How it works</a> · <a href="/command-line">Command-line tool</a> · <a href="/privacy">Privacy</a> · <a href="/privacy#cookies" data-cookie-settings>Cookie settings</a></p>
       <!-- /site:onetimepass -->
       <!-- site:selfhost

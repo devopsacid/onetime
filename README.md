@@ -11,7 +11,7 @@ Share a password, token or other secret with a link that works once. Anyone can 
 
 The page can also generate passwords, random tokens (hex or base64url) and UUIDs, all in the browser.
 
-What the server holds: the encrypted blob and its expiry time, until first read, or until the first API request after expiry. No plaintext, keys, IP addresses, accounts, cookies or request logs. The page where secrets are created and opened loads nothing from other sites and has no analytics or cookies. The information pages (`/how-it-works`, `/command-line`, `/privacy`) use Google Analytics 4 only after an explicit Accept in a consent banner (see `/privacy`); a separate, path-scoped CSP in `public/_headers` allows Google hosts only on those paths. After Accept, Google’s script runs on the origin of the information pages, which is the same origin as the app, but it never runs on the secret page, and only the theme choice and the consent record are kept in local storage.
+What the server holds: the encrypted blob and its expiry time, until first read, or until the first API request after expiry. No plaintext, keys, IP addresses, accounts, cookies or request logs. The page where secrets are created and opened loads nothing from other sites and has no analytics or cookies. The information pages (how it works, privacy) live on a separate site, `https://onetimepass-info.pages.dev`, which is its own entry on the Public Suffix List and so a different origin and site from the app. Only that site uses Google Analytics 4, and only after an explicit Accept in a consent banner (see its privacy page). The app origin (`https://onetimepass.pages.dev`) serves no Google code on any path: one strict CSP in `public/_headers` covers every path, and the old `/how-it-works` and `/privacy` URLs there redirect (301) to the info site. Each site keeps only its own theme choice in local storage; the consent record exists on the info site only.
 
 The reveal is one atomic SQL statement (`DELETE ... RETURNING`), so of many simultaneous attempts exactly one gets the blob.
 
@@ -74,15 +74,16 @@ Security notes:
 | Path | What |
 |---|---|
 | `index.html`, `src/web/` | The page: encryption, generator, UI (vanilla TypeScript, built by Vite) |
-| `privacy.html` | Privacy page: controller, what is stored, Google Analytics on the info pages only after consent, cookies |
-| `command-line.html` | Install and usage of the command-line client for the site (Vite entry, script `src/web/info.ts`) |
-| `how-it-works.html` | The detailed explanation of how secrets are stored (Vite entry, script `src/web/info.ts`; `src/web/page.ts` serves only 404.html) |
+| `privacy.html` | Privacy page (built into `dist-info/`, the info site): controller, what is stored, Google Analytics on the info site only after consent, cookies |
+| `command-line.html` | Install and usage of the command-line client (app site; Vite entry, script `src/web/page.ts`, no analytics) |
+| `how-it-works.html` | The detailed explanation of how secrets are stored (built into `dist-info/`, the info site; Vite entry, script `src/web/info.ts`; `src/web/page.ts` serves 404.html and command-line.html) |
 | `public/theme-init.js` | Tiny synchronous script in `<head>` that applies a stored light/dark choice before first paint (no inline script, so the CSP holds) |
 | `functions/api/[[path]].ts` | Cloudflare Pages Function for `/api/*`; delegates to the router |
 | `src/worker/index.ts` | The API router, storing blobs in D1 |
 | `migrations/` | D1 schema (`secrets` table) |
 | `src/shared/limits.ts` | Size and expiry limits used by both sides |
-| `public/_headers`, `public/_routes.json` | CSP and other security headers for the static files; the Function runs only for `/api/*` |
+| `public/_headers`, `public/_routes.json` | CSP and other security headers for the static files (the info build derives its own `_headers` from this file); the Function runs only for `/api/*` |
+| `tools/site-profile*.mjs`, `tools/deploy-info.mjs` | The three builds (app `dist/`, info `dist-info/`, self-host `dist-selfhost/`) and the info site deploy script |
 | `cli/`, `tools/build-cli.mjs` | The `onetime` command line tool (bundled by esbuild into `dist/cli/onetime.mjs`, served at `/cli/onetime.mjs`) |
 | `server/`, `tools/build-server.mjs` | Self-hosted Node server (HTTP, static files, SQLite store), bundled into `dist-server/server.mjs` by `pnpm build:selfhost` |
 | `Dockerfile`, `compose.yaml`, `deploy/` | Self-hosting: Docker image, Compose file, systemd unit, Caddy and nginx examples |
@@ -98,8 +99,8 @@ Limits: 16 KB per secret. There is no per-IP rate limit (IPs are never stored). 
 ```sh
 pnpm install
 pnpm db:migrate:local   # once: create the local D1 database (.wrangler/state)
-pnpm dev                # build, then run Pages locally at http://localhost:8788
-pnpm check              # typecheck, tests, build, then tools/check-dist.mjs (CSP structure of dist/*.html)
+pnpm dev                # build, then run Pages locally at http://localhost:8788 (links to the info pages go to the production info site)
+pnpm check              # typecheck, tests, build (app, CLI, info), then tools/check-dist.mjs on dist/ and dist-info/ and the self-host build
 ```
 
 Deploying to the Cloudflare Pages project `onetimepass` (needs a Cloudflare login or API token):
@@ -109,6 +110,8 @@ wrangler d1 create onetime      # once; put the printed id in wrangler.jsonc (da
 pnpm db:migrate:remote          # apply migrations to the remote database
 pnpm deploy                     # build and `wrangler pages deploy`
 ```
+
+The information site is a second Pages project, `onetimepass-info` (static only: no Function, no D1), created once with `wrangler pages project create onetimepass-info --production-branch main`. Deploy it first, then the app, from the same commit: `pnpm deploy:info` (runs `tools/deploy-info.mjs`, which starts wrangler from an empty directory outside the repo so that no `functions/` or `wrangler.jsonc` is picked up). The app redirects the old info URLs to it, so it must answer before the app is deployed.
 
 ## Self-hosting
 
