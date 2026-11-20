@@ -3,7 +3,7 @@ import { request as httpRequest, type Server } from "node:http";
 import { connect, type AddressInfo } from "node:net";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { createApp } from "../../server/http";
+import { createApp, requestTimeoutMs } from "../../server/http";
 import { loadSite } from "../../server/static";
 import { openSqliteStore, type SqliteStore } from "../../server/store-sqlite";
 import { MAX_BLOB_BYTES } from "../../src/shared/limits";
@@ -130,7 +130,7 @@ describe("API bridge", () => {
     expect(new Uint8Array(await r.arrayBuffer())).toEqual(blob);
   });
 
-  it("accepts a streamed upload of exactly 131,490 bytes (ttl one hour) and answers 413 for one byte more", async () => {
+  it("accepts a streamed upload of exactly 262,562 bytes (ttl one hour) and answers 413 for one byte more", async () => {
     const streamed = (total: number) => {
       let sent = 0;
       const stream = new ReadableStream<Uint8Array>({
@@ -479,7 +479,7 @@ describe("server settings and silence", () => {
 
 describe("files through the Node server", () => {
   /** A server of its own with the given settings; returns its base URL and a stop function. */
-  async function own(deps: { maxLargeBytes?: number; maxUploads?: number; maxStoredBytes?: number }) {
+  async function own(deps: { maxLargeBytes?: number; maxUploads?: number; maxStoredBytes?: number; maxFileBytes?: number; maxFileTtl?: number }) {
     const dir = tempDir();
     const db = openSqliteStore(join(dir.path, "f.db"), migrations());
     const app = createApp({ store: db, site: loadSite(makeDist(dir.path)), maxStored: 100, ...deps });
@@ -501,7 +501,7 @@ describe("files through the Node server", () => {
       },
     };
   }
-  const post = (base: string, body: Uint8Array, ttl = 86400) =>
+  const post = (base: string, body: Uint8Array, ttl = 3600) =>
     fetch(`${base}/api/secrets?ttl=${ttl}`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body });
   const big = (n: number) => {
     const out = new Uint8Array(n);
@@ -509,19 +509,21 @@ describe("files through the Node server", () => {
     return out;
   };
 
-  it("round trips a blob of 131,490 bytes and refuses 131,491", async () => {
+  it("round trips a blob of 262,562 bytes and refuses 262,563", async () => {
     const s = await own({});
     try {
-      const blob = big(131_490);
+      const blob = big(262_562);
       const created = await post(s.base, blob);
       expect(created.status).toBe(201);
       const { id } = (await created.json()) as { id: string };
       const revealed = await fetch(`${s.base}/api/secrets/${id}/reveal`, { method: "POST" });
       expect(revealed.status).toBe(200);
-      expect(revealed.headers.get("content-length")).toBe("131490");
+      expect(revealed.headers.get("content-length")).toBe("262562");
       expect(Buffer.from(await revealed.arrayBuffer()).equals(blob)).toBe(true);
-      expect((await post(s.base, big(131_491))).status).toBe(413);
-      expect((await post(s.base, big(20_000), 604800)).status).toBe(409);
+      expect((await post(s.base, big(262_563))).status).toBe(413);
+      const long = await post(s.base, big(20_000), 86400);
+      expect(long.status).toBe(409);
+      expect(((await long.json()) as { maxTtl: number }).maxTtl).toBe(3600);
     } finally {
       await s.stop();
     }
@@ -568,12 +570,56 @@ describe("files through the Node server", () => {
     }
   });
 
-  it("uses a 60 second request timeout so a 1 MiB upload works on a slow line", async () => {
-    const s = await own({});
+  it("round trips a 5 MiB file blob with ONETIME_MAX_FILE_BYTES at the ceiling, refuses one byte more, and reports the limits", async () => {
+    const s = await own({ maxFileBytes: 5_242_880, maxFileTtl: 86_400 });
     try {
-      expect(s.app.server.requestTimeout).toBe(60_000);
+      const limits = await fetch(`${s.base}/api/limits`);
+      expect(limits.status).toBe(200);
+      expect(limits.headers.get("cache-control")).toBe("no-store");
+      expect(await limits.json()).toEqual({ maxFileBytes: 5_242_880, maxFileTtl: 86_400, maxTextBytes: 16_384 });
+      const blob = big(5_243_298);
+      const created = await post(s.base, blob, 86400);
+      expect(created.status).toBe(201);
+      const { id } = (await created.json()) as { id: string };
+      const revealed = await fetch(`${s.base}/api/secrets/${id}/reveal`, { method: "POST" });
+      expect(Buffer.from(await revealed.arrayBuffer()).equals(blob)).toBe(true);
+      expect((await post(s.base, big(5_243_299))).status).toBe(413);
     } finally {
       await s.stop();
+    }
+  }, 60_000);
+
+  it("takes the blob limit from maxFileBytes: 1 MiB files give 1,048,994 bytes", async () => {
+    const s = await own({ maxFileBytes: 1_048_576 });
+    try {
+      expect((await post(s.base, big(1_048_994))).status).toBe(201);
+      expect((await post(s.base, big(1_048_995))).status).toBe(413);
+    } finally {
+      await s.stop();
+    }
+  }, 60_000);
+
+  it("answers /api/limits with maxFileBytes 0 when files are off", async () => {
+    const s = await own({ maxFileBytes: 0 });
+    try {
+      expect(await (await fetch(`${s.base}/api/limits`)).json()).toEqual({ maxFileBytes: 0, maxFileTtl: 3600, maxTextBytes: 16_384 });
+      expect((await post(s.base, big(16_419))).status).toBe(413);
+    } finally {
+      await s.stop();
+    }
+  });
+
+  it("scales the request timeout with the blob limit: 60 s without files, 69 s for 256 KiB, 221 s for 5 MiB", async () => {
+    expect(requestTimeoutMs(16_418)).toBe(60_000);
+    expect(requestTimeoutMs(262_562)).toBe(69_000);
+    expect(requestTimeoutMs(5_243_298)).toBe(221_000);
+    for (const [deps, ms] of [[{ maxFileBytes: 0 }, 60_000], [{}, 69_000], [{ maxFileBytes: 5_242_880 }, 221_000]] as const) {
+      const s = await own(deps);
+      try {
+        expect(s.app.server.requestTimeout).toBe(ms);
+      } finally {
+        await s.stop();
+      }
     }
   });
 

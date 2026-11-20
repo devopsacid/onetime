@@ -18,8 +18,46 @@ describe("parseConfig", () => {
       maxConnections: 1000,
       maxStoredBytes: 400_000_000,
       maxLargeBytes: 200_000_000,
+      maxFileBytes: 262_144,
+      maxFileTtl: 86_400,
       maxUploads: 16,
     });
+  });
+
+  it("reads ONETIME_MAX_FILE_BYTES up to the 5 MiB ceiling and ONETIME_MAX_FILE_TTL", () => {
+    expect(parseConfig({ ONETIME_MAX_FILE_BYTES: "1048576" }, BASE, "/w").maxFileBytes).toBe(1_048_576);
+    expect(parseConfig({ ONETIME_MAX_FILE_BYTES: "5242880" }, BASE, "/w").maxFileBytes).toBe(5_242_880);
+    expect(parseConfig({ ONETIME_MAX_FILE_BYTES: "1" }, BASE, "/w").maxFileBytes).toBe(1);
+    expect(parseConfig({ ONETIME_MAX_FILE_TTL: "3600" }, BASE, "/w").maxFileTtl).toBe(3600);
+    expect(parseConfig({ ONETIME_MAX_FILE_TTL: "604800" }, BASE, "/w").maxFileTtl).toBe(604_800);
+  });
+
+  it.each([
+    ["ONETIME_MAX_FILE_BYTES", "5242881"],
+    ["ONETIME_MAX_FILE_BYTES", "-1"],
+    ["ONETIME_MAX_FILE_BYTES", "5 MiB"],
+    ["ONETIME_MAX_FILE_BYTES", "1.5"],
+    ["ONETIME_MAX_FILE_TTL", "59"],
+    ["ONETIME_MAX_FILE_TTL", "604801"],
+    ["ONETIME_MAX_FILE_TTL", "1h"],
+  ])("rejects %s=%j", (name, value) => {
+    expect(() => parseConfig({ [name]: value }, BASE, "/w")).toThrow(ConfigError);
+    expect(() => parseConfig({ [name]: value }, BASE, "/w")).toThrow(new RegExp(name));
+  });
+
+  it("turns files off with ONETIME_MAX_FILE_BYTES=0 and also zeroes the large budget", () => {
+    expect(parseConfig({ ONETIME_MAX_FILE_BYTES: "0" }, BASE, "/w")).toMatchObject({ maxFileBytes: 0, maxLargeBytes: 0 });
+  });
+
+  it("turns files off with ONETIME_MAX_LARGE_BYTES=0 and also zeroes the file size, so the two settings never disagree", () => {
+    expect(parseConfig({ ONETIME_MAX_LARGE_BYTES: "0" }, BASE, "/w")).toMatchObject({ maxFileBytes: 0, maxLargeBytes: 0 });
+    expect(parseConfig({ ONETIME_MAX_LARGE_BYTES: "0", ONETIME_MAX_FILE_BYTES: "1048576" }, BASE, "/w")).toMatchObject({ maxFileBytes: 0, maxLargeBytes: 0 });
+  });
+
+  it("rejects a large budget too small for one file of the configured size (every upload would answer 503)", () => {
+    const env = { ONETIME_MAX_FILE_BYTES: "5242880", ONETIME_MAX_LARGE_BYTES: "5000000" };
+    expect(() => parseConfig(env, BASE, "/w")).toThrow(/ONETIME_MAX_LARGE_BYTES/);
+    expect(parseConfig({ ONETIME_MAX_FILE_BYTES: "5242880", ONETIME_MAX_LARGE_BYTES: "5243298" }, BASE, "/w").maxLargeBytes).toBe(5_243_298);
   });
 
   it("reads the three file settings", () => {
@@ -28,9 +66,10 @@ describe("parseConfig", () => {
   });
 
   it("accepts the bounds of the file settings, including ONETIME_MAX_LARGE_BYTES=0 (files off)", () => {
-    expect(parseConfig({ ONETIME_MAX_STORED_BYTES: "1000000", ONETIME_MAX_LARGE_BYTES: "0" }, BASE, "/w")).toMatchObject({ maxStoredBytes: 1_000_000, maxLargeBytes: 0 });
+    expect(parseConfig({ ONETIME_MAX_STORED_BYTES: "1000000", ONETIME_MAX_LARGE_BYTES: "0" }, BASE, "/w")).toMatchObject({ maxStoredBytes: 1_000_000, maxLargeBytes: 0, maxFileBytes: 0 });
     expect(parseConfig({ ONETIME_MAX_STORED_BYTES: "1000000000000" }, BASE, "/w").maxStoredBytes).toBe(1_000_000_000_000);
     expect(parseConfig({ ONETIME_MAX_STORED_BYTES: "5000000", ONETIME_MAX_LARGE_BYTES: "5000000" }, BASE, "/w").maxLargeBytes).toBe(5_000_000);
+    expect(parseConfig({ ONETIME_MAX_STORED_BYTES: "1000000" }, BASE, "/w")).toMatchObject({ maxLargeBytes: 1_000_000, maxFileBytes: 262_144 });
     expect(parseConfig({ ONETIME_MAX_UPLOADS: "1" }, BASE, "/w").maxUploads).toBe(1);
     expect(parseConfig({ ONETIME_MAX_UPLOADS: "1000" }, BASE, "/w").maxUploads).toBe(1000);
   });
