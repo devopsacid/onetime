@@ -44,7 +44,7 @@ export function decodeFilePayload(payload: Uint8Array): FileParts {
   }
   let type = "";
   try {
-    type = new TextDecoder("utf-8", { fatal: true }).decode(payload.subarray(2 + nameLength, contentStart));
+    type = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(payload.subarray(2 + nameLength, contentStart));
   } catch {
     // A type that is not text is simply not shown.
   }
