@@ -23,7 +23,7 @@
 
 - name: Check /healthz on the app
   ansible.builtin.uri:
-    url: "http://{{ onetime_listen_host }}:{{ onetime_port }}/healthz"
+    url: "http://{{ '[' ~ onetime_listen_host ~ ']' if ':' in onetime_listen_host else onetime_listen_host }}:{{ onetime_port }}/healthz"
     return_content: true
   register: onetime_health
   until: onetime_health.status == 200

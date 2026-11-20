@@ -11,7 +11,7 @@ argument_specs:
       onetime_listen_host:
         type: str
         default: 127.0.0.1
-        description: Address the app listens on. Keep 127.0.0.1; the proxy on the same host connects there.
+        description: Address the app listens on (an IP address). Keep 127.0.0.1; the proxy on the same host connects there.
       onetime_port:
         type: int
         default: 8080

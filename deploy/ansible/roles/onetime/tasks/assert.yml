@@ -44,6 +44,6 @@
 
 - name: Check the listen address
   ansible.builtin.assert:
-    that: onetime_listen_host in ["127.0.0.1", "::1", "localhost"] or onetime_proxy == "none"
+    that: onetime_listen_host in ["127.0.0.1", "::1"] or onetime_proxy == "none"
     fail_msg: "With a proxy on the host, keep onetime_listen_host on loopback: the app speaks plain HTTP."
     quiet: true

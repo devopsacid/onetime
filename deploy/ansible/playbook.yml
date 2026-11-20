@@ -10,7 +10,7 @@
   pre_tasks:
     - name: Refuse more than one host per play (one instance only)
       ansible.builtin.assert:
-        that: ansible_play_hosts_all | length == 1 or onetime_allow_multiple_independent_instances | default(false)
+        that: ansible_play_hosts_all | length == 1 or onetime_allow_multiple_independent_instances | default(false) | bool
         fail_msg: >-
           The play targets {{ ansible_play_hosts_all | length }} hosts. Each host would run its own independent instance with
           its own database and links. If that is what you want (for example staging and production in one inventory),

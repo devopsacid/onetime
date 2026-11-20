@@ -12,7 +12,7 @@ ExecStartPre=-/usr/bin/docker rm --force onetime
 ExecStart=/usr/bin/docker run --rm --name onetime \
   --read-only --cap-drop ALL --security-opt no-new-privileges \
   --user {{ onetime_uid }}:{{ onetime_gid }} \
-  --publish {{ onetime_listen_host }}:{{ onetime_port }}:8080 \
+  --publish {{ '[' ~ onetime_listen_host ~ ']' if ':' in onetime_listen_host else onetime_listen_host }}:{{ onetime_port }}:8080 \
   --volume {{ onetime_data_dir }}:/data{{ ':Z' if (ansible_facts['selinux']['status'] | default('disabled')) == 'enabled' else '' }} \
   --env-file /etc/onetime/env \
   --log-driver local --log-opt max-size=1m --log-opt max-file=2 \
