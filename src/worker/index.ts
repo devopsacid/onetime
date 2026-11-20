@@ -19,6 +19,10 @@ export const API_HEADERS = {
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "no-referrer",
   "X-Robots-Tag": "noindex",
+  // Responses are bytes or JSON, never documents: nothing may load, frame or run from them.
+  "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+  "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+  "Cross-Origin-Resource-Policy": "same-origin",
 };
 
 function json(status: number, body: unknown, extra: Record<string, string> = {}): Response {

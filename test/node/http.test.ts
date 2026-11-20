@@ -256,7 +256,7 @@ describe("API bridge", () => {
     expect(r.status).toBe(500);
     expect(r.headers.get("cache-control")).toBe("no-store");
     expect(r.headers.get("x-robots-tag")).toBe("noindex");
-    expect(r.headers.get("content-security-policy")).toBeNull();
+    expect(r.headers.get("content-security-policy")).toBe("default-src 'none'; frame-ancestors 'none'");
     app.server.closeAllConnections();
     await new Promise((resolve) => app.server.close(resolve));
     const lines = write.mock.calls.map((c) => String(c[0]));

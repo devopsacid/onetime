@@ -5,6 +5,8 @@
   X-Frame-Options: DENY
   Cross-Origin-Opener-Policy: same-origin
   Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Cross-Origin-Resource-Policy: same-origin
+  Permissions-Policy: accelerometer=(), browsing-topics=(), camera=(), clipboard-write=(self), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()
 
 # Cache-Control is set only on the HTML paths and on /assets/*, never on /*:
 # Pages merges every matching rule, so a /* value would be joined with the asset one.

@@ -226,6 +226,17 @@ for (const name of ["index.html", "404.html"]) {
     const csp = (lines) => lines.filter((l) => /^content-security-policy:/i.test(l));
     const star = csp(rules.get("/*") ?? []);
     if (star.length !== 1 || star[0].replace(/^[^:]+:\s*/, "") !== STRICT) problems.push("_headers: the /* CSP is not the strict policy");
+    // The /* rule carries the feature lockdown and CORP in both profiles; the copy button needs clipboard-write for itself.
+    const header = (name) => (rules.get("/*") ?? []).filter((l) => l.toLowerCase().startsWith(`${name.toLowerCase()}:`)).map((l) => l.replace(/^[^:]+:\s*/, ""));
+    if (header("Cross-Origin-Resource-Policy").join() !== "same-origin") problems.push("_headers: /* must set Cross-Origin-Resource-Policy: same-origin");
+    const permissions = header("Permissions-Policy");
+    if (permissions.length !== 1) problems.push("_headers: /* must set exactly one Permissions-Policy");
+    else {
+      for (const feature of ["accelerometer", "browsing-topics", "camera", "geolocation", "gyroscope", "magnetometer", "microphone", "payment", "usb"]) {
+        if (!permissions[0].split(",").some((p) => p.trim() === `${feature}=()`)) problems.push(`_headers: Permissions-Policy must turn off ${feature} with ${feature}=()`);
+      }
+      if (!permissions[0].split(",").some((p) => p.trim() === "clipboard-write=(self)")) problems.push("_headers: Permissions-Policy must keep clipboard-write=(self)");
+    }
     for (const [path, lines] of rules) {
       const google = /googletagmanager|google-analytics|analytics\.google/i.test(lines.join("\n"));
       if (google && !INFO_PATHS.includes(path)) problems.push(`_headers: Google host in the rule for ${path}`);
