@@ -1,0 +1,44 @@
+# k3s (or any cluster) with Traefik. Traefik writes access logs only when accessLog is configured: do not enable it
+# (k3s: no "--accesslog" in the HelmChartConfig of traefik). See docs/deploy-helm.md.
+
+image:
+  repository: registry.example.com/onetime
+  digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+ingress:
+  enabled: true
+  className: traefik
+  host: onetime.example.com
+  tlsSecretName: onetime-tls
+  certManager:
+    enabled: true
+    issuerName: letsencrypt
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    # The middleware below; the name is <namespace>-<middleware>@kubernetescrd.
+    traefik.ingress.kubernetes.io/router.middlewares: onetime-onetime-body-limit@kubernetescrd
+
+persistence:
+  # The local-path provisioner that ships with k3s: a folder on one node; the pod stays on that node.
+  storageClass: local-path
+
+networkPolicy:
+  enabled: true
+  ingressFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: traefik
+
+extraObjects:
+  # Refuse bodies over 64 KB at the proxy (the app also refuses anything over 16 KB + 28 bytes with 413).
+  - apiVersion: traefik.io/v1alpha1
+    kind: Middleware
+    metadata:
+      name: onetime-body-limit
+      namespace: "{{ .Release.Namespace }}"
+    spec:
+      buffering:
+        maxRequestBodyBytes: 65536

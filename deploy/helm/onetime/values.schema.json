@@ -1,0 +1,168 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "onetime chart values",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["replicaCount", "image", "persistence"],
+  "properties": {
+    "global": { "type": "object" },
+    "replicaCount": {
+      "description": "Must be 1: one SQLite file with an exclusive lock. Replicas and autoscaling are not supported.",
+      "type": "integer",
+      "enum": [1]
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository"],
+      "properties": {
+        "repository": { "type": "string", "description": "Your own image (there is no published one). Required." },
+        "tag": { "type": ["string", "number"] },
+        "digest": { "type": "string", "pattern": "^(sha256:[a-f0-9]{64})?$" },
+        "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "imagePullSecrets": {
+      "type": "array",
+      "items": { "type": "object", "required": ["name"], "properties": { "name": { "type": "string" } } }
+    },
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": { "type": "string" },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxStored": {
+          "description": "ONETIME_MAX_STORED, 1..10000000. Empty = server default.",
+          "oneOf": [
+            { "type": "string", "pattern": "^([1-9][0-9]{0,7})?$" },
+            { "type": "integer", "minimum": 1, "maximum": 10000000 }
+          ]
+        },
+        "dbPath": { "type": "string", "pattern": "^/data/.+" }
+      }
+    },
+    "extraEnv": {
+      "description": "Extra environment variables (name: value). HOST, PORT and ONETIME_DB are reserved.",
+      "type": "object",
+      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$", "not": { "enum": ["HOST", "PORT", "ONETIME_DB"] } },
+      "additionalProperties": { "type": ["string", "number", "boolean"] }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "create": { "type": "boolean" },
+        "name": { "type": "string" },
+        "annotations": { "type": "object" },
+        "automountServiceAccountToken": { "type": "boolean" }
+      }
+    },
+    "podAnnotations": { "type": "object" },
+    "podLabels": { "type": "object" },
+    "podSecurityContext": { "type": "object" },
+    "securityContext": { "type": "object" },
+    "terminationGracePeriodSeconds": {
+      "description": "At least 10: the server needs up to 8 s to finish requests in flight.",
+      "type": "integer",
+      "minimum": 10
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "annotations": { "type": "object" }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "className": { "type": "string" },
+        "host": { "type": "string", "pattern": "^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*)?$" },
+        "path": { "type": "string" },
+        "pathType": { "type": "string", "enum": ["Prefix", "ImplementationSpecific", "Exact"] },
+        "tlsSecretName": { "type": "string" },
+        "certManager": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "issuerName": { "type": "string" },
+            "issuerKind": { "type": "string", "enum": ["ClusterIssuer", "Issuer"] }
+          }
+        },
+        "annotations": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    },
+    "persistence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "existingClaim": { "type": "string" },
+        "storageClass": { "type": "string" },
+        "accessModes": {
+          "description": "Block or local storage only. ReadWriteMany (shared filesystems) is refused.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "enum": ["ReadWriteOnce", "ReadWriteOncePod"] }
+        },
+        "size": { "type": "string" },
+        "annotations": { "type": "object" }
+      }
+    },
+    "resources": { "type": "object" },
+    "probes": {
+      "type": "object",
+      "properties": {
+        "startup": { "$ref": "#/definitions/probe" },
+        "liveness": { "$ref": "#/definitions/probe" },
+        "readiness": { "$ref": "#/definitions/probe" }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "ingressFrom": { "type": "array", "items": { "type": "object" } },
+        "denyEgress": { "type": "boolean" }
+      }
+    },
+    "nodeSelector": { "type": "object" },
+    "tolerations": { "type": "array" },
+    "affinity": { "type": "object" },
+    "priorityClassName": { "type": "string" },
+    "gke": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "backendConfig": { "$ref": "#/definitions/toggle" },
+        "managedCertificate": { "$ref": "#/definitions/toggle" },
+        "frontendConfig": { "$ref": "#/definitions/toggle" }
+      }
+    },
+    "tests": { "$ref": "#/definitions/toggle" },
+    "extraObjects": { "type": "array", "items": { "type": ["object", "string"] } }
+  },
+  "definitions": {
+    "probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "periodSeconds": { "type": "integer", "minimum": 1 },
+        "failureThreshold": { "type": "integer", "minimum": 1 },
+        "timeoutSeconds": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "toggle": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "enabled": { "type": "boolean" } }
+    }
+  }
+}

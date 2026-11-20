@@ -1,0 +1,49 @@
+{{- if .Values.ingress.enabled -}}
+{{- $fullname := include "onetime.fullname" . -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "onetime.labels" . | nindent 4 }}
+  {{- if or .Values.ingress.annotations .Values.ingress.certManager.enabled .Values.gke.managedCertificate.enabled .Values.gke.frontendConfig.enabled }}
+  annotations:
+    {{- with .Values.ingress.annotations }}
+    {{- include "onetime.stringMap" . | nindent 4 }}
+    {{- end }}
+    {{- if .Values.ingress.certManager.enabled }}
+    {{- if eq .Values.ingress.certManager.issuerKind "Issuer" }}
+    cert-manager.io/issuer: {{ .Values.ingress.certManager.issuerName | quote }}
+    {{- else }}
+    cert-manager.io/cluster-issuer: {{ .Values.ingress.certManager.issuerName | quote }}
+    {{- end }}
+    {{- end }}
+    {{- if .Values.gke.managedCertificate.enabled }}
+    networking.gke.io/managed-certificates: {{ $fullname | quote }}
+    {{- end }}
+    {{- if .Values.gke.frontendConfig.enabled }}
+    networking.gke.io/v1beta1.FrontendConfig: {{ $fullname | quote }}
+    {{- end }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . | quote }}
+  {{- end }}
+  {{- if .Values.ingress.tlsSecretName }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: {{ .Values.ingress.tlsSecretName | quote }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.path }}
+            pathType: {{ .Values.ingress.pathType }}
+            backend:
+              service:
+                name: {{ $fullname }}
+                port:
+                  name: http
+{{- end }}

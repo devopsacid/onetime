@@ -1,0 +1,25 @@
+onetime is installed as {{ include "onetime.fullname" . }} in namespace {{ .Release.Namespace }} (image {{ include "onetime.image" . }}).
+{{ if .Values.ingress.enabled }}
+Public address: https://{{ .Values.ingress.host }}
+  It must equal the ONETIME_ORIGIN the image was built with, or links point to the wrong place.
+{{- else }}
+No Ingress is enabled. To try it locally:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "onetime.fullname" . }} 8080:{{ .Values.service.port }}
+  then open http://localhost:8080 (works only if the image was built with ONETIME_ORIGIN=http://localhost:8080).
+{{- end }}
+
+Check it:
+  kubectl -n {{ .Release.Namespace }} rollout status statefulset/{{ include "onetime.fullname" . }}
+  kubectl -n {{ .Release.Namespace }} logs statefulset/{{ include "onetime.fullname" . }}   (one start-up line, never request lines)
+{{- if .Values.tests.enabled }}
+  helm test {{ .Release.Name }} -n {{ .Release.Namespace }}
+{{- end }}
+
+Rules:
+  - One replica only. Never scale the StatefulSet; a second pod on the same volume exits with code 3.
+  - Every upgrade or node drain is a short outage: the old pod stops before the new one starts.
+  - The volume must be block or local storage, never NFS/EFS/Azure Files/RWX.
+  - Request paths contain secret ids: keep access logs OFF in the ingress controller and the load balancer.
+{{ if not .Values.persistence.enabled }}
+WARNING: persistence.enabled=false. The database is in an emptyDir and every restart deletes all stored secrets.
+{{- end }}

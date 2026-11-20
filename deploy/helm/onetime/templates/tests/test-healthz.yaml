@@ -1,0 +1,37 @@
+{{- if .Values.tests.enabled -}}
+# Runs busybox wget from the app image itself, so no extra image is pulled.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "onetime.fullname" . }}-test-healthz
+  labels:
+    app.kubernetes.io/name: {{ include "onetime.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: test
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  enableServiceLinks: false
+  {{- with .Values.imagePullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  securityContext:
+    {{- toYaml .Values.podSecurityContext | nindent 4 }}
+  containers:
+    - name: wget
+      image: {{ include "onetime.image" . | quote }}
+      imagePullPolicy: {{ .Values.image.pullPolicy }}
+      command: ["wget", "-q", "-O", "-", "http://{{ include "onetime.fullname" . }}:{{ .Values.service.port }}/healthz"]
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          memory: 32Mi
+{{- end }}

@@ -1,0 +1,46 @@
+# Generic / on-prem Kubernetes with ingress-nginx and cert-manager. See docs/deploy-helm.md.
+#   helm install onetime deploy/helm/onetime -n onetime --create-namespace -f deploy/helm/examples/values-onprem-ingress-nginx.yaml
+#
+# REQUIRED in the ingress-nginx controller ConfigMap (Helm chart: controller.config), not only the annotation below:
+#   disable-access-log: "true"   # every server, also other Ingresses and the default server
+#   error-log-level: "crit"      # at the default "notice", every restart writes lines like
+#                                #   connect() failed ... client: <IP> ... request: "POST /api/secrets/<id>/reveal ..."
+#                                # (seen in the project's kind test, docs/deploy-helm.md)
+#   hsts: "false"                # optional: otherwise the controller sets its own HSTS header instead of the app's
+# The annotation below only turns off the access log for this Ingress.
+#
+# Upstream ingress-nginx was retired by Kubernetes SIG Network (announced November 2025, maintenance ended March 2026).
+# It still works; for new clusters consider Traefik (values-k3s-traefik.yaml) or another controller.
+
+image:
+  repository: registry.example.com/onetime
+  # Prefer a digest: docker buildx imagetools inspect registry.example.com/onetime:2026-11-20
+  digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+ingress:
+  enabled: true
+  className: nginx
+  # Must equal the host in the ONETIME_ORIGIN the image was built with.
+  host: onetime.example.com
+  tlsSecretName: onetime-tls
+  certManager:
+    enabled: true
+    issuerName: letsencrypt
+  annotations:
+    nginx.ingress.kubernetes.io/enable-access-log: "false"
+    nginx.ingress.kubernetes.io/proxy-body-size: "64k"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "15"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "15"
+
+persistence:
+  # Block or local storage only: local-path, OpenEBS LocalPV, Longhorn (RWO), Ceph RBD. Never NFS or CephFS.
+  storageClass: longhorn
+  size: 1Gi
+
+networkPolicy:
+  enabled: true
+  ingressFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx

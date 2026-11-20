@@ -1,0 +1,38 @@
+# EKS on EC2 nodes with the AWS Load Balancer Controller (ALB, TLS with an ACM certificate) and the EBS CSI driver.
+# Not for EKS Fargate: Fargate pods can mount EFS only, which the storage rule forbids. See docs/deploy-helm.md.
+
+image:
+  # ECR in the same account: node roles with AmazonEC2ContainerRegistryReadOnly can pull it.
+  repository: 123456789012.dkr.ecr.eu-central-1.amazonaws.com/onetime
+  digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+ingress:
+  enabled: true
+  className: alb
+  host: onetime.example.com
+  # TLS is done by the ALB with the ACM certificate below; no secret.
+  tlsSecretName: ""
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:eu-central-1:123456789012:certificate/00000000-0000-0000-0000-000000000000
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    alb.ingress.kubernetes.io/success-codes: "200"
+    # Access and connection logs off (the defaults, set explicitly so an IngressGroup or a later edit cannot slip).
+    alb.ingress.kubernetes.io/load-balancer-attributes: access_logs.s3.enabled=false,connection_logs.s3.enabled=false,routing.http.drop_invalid_header_fields.enabled=true
+
+persistence:
+  # A gp3 StorageClass for the EBS CSI driver (provisioner ebs.csi.aws.com, or ebs.csi.eks.amazonaws.com in Auto Mode).
+  storageClass: gp3
+  size: 4Gi
+
+networkPolicy:
+  # Needs the VPC CNI network policy agent (enableNetworkPolicy) or another engine.
+  enabled: true
+  ingressFrom:
+    # target-type ip: the ALB connects from its own addresses in the VPC.
+    - ipBlock:
+        cidr: 10.0.0.0/16

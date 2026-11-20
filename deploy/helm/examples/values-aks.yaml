@@ -1,0 +1,45 @@
+# AKS with Application Gateway for Containers (ALB Controller, Ingress class azure-alb-external) and Azure Disk.
+# See docs/deploy-helm.md, "AKS".
+#
+# Logging: Application Gateway for Containers writes access logs only through an Azure diagnostic setting.
+# Do not enable the access-log category for it (check Azure Policy assignments that add diagnostic settings).
+#
+# Why not the application routing add-on (managed ingress-nginx): the project's kind test showed that ingress-nginx
+# writes the request line, with the secret id and the client IP, to its error log whenever the pod restarts, unless the
+# controller runs with error-log-level crit and disable-access-log. The add-on manages that configuration itself.
+# Your own ingress-nginx or Traefik with the settings in values-onprem-ingress-nginx.yaml / values-k3s-traefik.yaml works too.
+
+image:
+  # ACR attached to the cluster: az aks update -g <rg> -n <cluster> --attach-acr <registry>
+  repository: myregistry.azurecr.io/onetime
+  digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+ingress:
+  enabled: true
+  className: azure-alb-external
+  host: onetime.example.com
+  # A TLS secret in the release namespace (cert-manager, or the Key Vault CSI driver syncing a secret).
+  tlsSecretName: onetime-tls
+  certManager:
+    enabled: true
+    issuerName: letsencrypt
+  annotations:
+    # ALB managed by the ALB Controller (an ApplicationLoadBalancer resource named onetime-alb in namespace alb-infra).
+    alb.networking.azure.io/alb-name: onetime-alb
+    alb.networking.azure.io/alb-namespace: alb-infra
+
+persistence:
+  # Azure Disk through the CSI driver (zone-redundant: managed-csi-premium-zrs or a custom ZRS class).
+  # Never azurefile-* classes (SMB/NFS).
+  storageClass: managed-csi
+  # Azure Disk supports ReadWriteOncePod through CSI.
+  accessModes: [ReadWriteOncePod]
+  size: 4Gi
+
+networkPolicy:
+  # Needs a network policy engine (Azure NPM, Calico or Cilium). Application Gateway for Containers connects from the
+  # subnet delegated to it: allow that range (example value).
+  enabled: true
+  ingressFrom:
+    - ipBlock:
+        cidr: 10.225.0.0/24

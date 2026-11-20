@@ -1,0 +1,47 @@
+# GKE (Standard or Autopilot) with the GKE Ingress (external Application Load Balancer), a Google-managed certificate
+# and Persistent Disk. GKE logs every Ingress request by default: gke.backendConfig turns that off. See docs/deploy-helm.md.
+
+image:
+  # Artifact Registry; the node service account needs roles/artifactregistry.reader.
+  repository: europe-west3-docker.pkg.dev/my-project/onetime/onetime
+  digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+service:
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+
+ingress:
+  enabled: true
+  # GKE Ingress is selected by the annotation, not by ingressClassName.
+  className: ""
+  host: onetime.example.com
+  # TLS is done by the load balancer with the managed certificate below.
+  tlsSecretName: ""
+  annotations:
+    kubernetes.io/ingress.class: gce
+    # Reserve it first: gcloud compute addresses create onetime-ip --global
+    kubernetes.io/ingress.global-static-ip-name: onetime-ip
+
+gke:
+  backendConfig:
+    enabled: true
+  managedCertificate:
+    enabled: true
+  frontendConfig:
+    enabled: true
+
+persistence:
+  # pd-balanced through the Compute Engine PD CSI driver. Never Filestore (NFS).
+  storageClass: standard-rwo
+  accessModes: [ReadWriteOncePod]
+  size: 4Gi
+
+networkPolicy:
+  # Needs Dataplane V2 or network policy enforcement enabled.
+  enabled: true
+  ingressFrom:
+    # Google front ends and health checks.
+    - ipBlock:
+        cidr: 130.211.0.0/22
+    - ipBlock:
+        cidr: 35.191.0.0/16

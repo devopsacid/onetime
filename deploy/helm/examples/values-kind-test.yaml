@@ -1,0 +1,30 @@
+# Local try-out in a throwaway kind cluster with ingress-nginx (the project's own test, docs/deploy-helm.md "Local test").
+# The image is built locally and loaded with "kind load docker-image"; the TLS secret is self-signed.
+#   docker build --build-arg ONETIME_ORIGIN=https://onetime.test -t onetime-local:test .
+#   kind load docker-image onetime-local:test --name <cluster>
+
+image:
+  repository: onetime-local
+  tag: test
+  pullPolicy: Never
+
+ingress:
+  enabled: true
+  className: nginx
+  host: onetime.test
+  tlsSecretName: onetime-tls
+  annotations:
+    nginx.ingress.kubernetes.io/enable-access-log: "false"
+    nginx.ingress.kubernetes.io/proxy-body-size: "64k"
+
+persistence:
+  # kind's default class (rancher.io/local-path): a folder on the node.
+  storageClass: standard
+  size: 100Mi
+
+networkPolicy:
+  enabled: true
+  ingressFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx

@@ -1,0 +1,42 @@
+{{- $fullname := include "onetime.fullname" . -}}
+{{- if .Values.gke.backendConfig.enabled }}
+# GKE logs every request through an Ingress-created load balancer by default. Request paths contain secret ids,
+# so logging is turned off here. Attached to the Service with the cloud.google.com/backend-config annotation.
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "onetime.labels" . | nindent 4 }}
+spec:
+  logging:
+    enable: false
+  healthCheck:
+    type: HTTP
+    requestPath: /healthz
+    port: 8080
+{{- end }}
+{{- if .Values.gke.managedCertificate.enabled }}
+---
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "onetime.labels" . | nindent 4 }}
+spec:
+  domains:
+    - {{ .Values.ingress.host | quote }}
+{{- end }}
+{{- if .Values.gke.frontendConfig.enabled }}
+---
+apiVersion: networking.gke.io/v1beta1
+kind: FrontendConfig
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "onetime.labels" . | nindent 4 }}
+spec:
+  redirectToHttps:
+    enabled: true
+{{- end }}

@@ -1,0 +1,16 @@
+apiVersion: v2
+name: onetime
+description: >-
+  onetime, one-time secret links, self-hosted. One instance only (SQLite on a block or local volume).
+  There is no published image: build your own with your ONETIME_ORIGIN and set image.repository and image.tag or image.digest.
+type: application
+version: 0.1.0
+# The app version is whatever image you built; this is the source version the chart was written for.
+appVersion: "0.1.0"
+kubeVersion: ">=1.27.0-0"
+keywords:
+  - secrets
+  - one-time
+home: https://onetimepass.pages.dev
+sources:
+  - https://onetimepass.pages.dev

@@ -1,0 +1,154 @@
+# Values for the onetime chart. See docs/deploy-helm.md.
+#
+# Rules that this chart enforces or relies on:
+# - One replica only. The database is one SQLite file with an exclusive lock. Rendering fails for any other value.
+# - The volume must be block or local storage (Azure Disk, EBS, GCE PD, Longhorn RWO, Ceph RBD, local-path).
+#   Never NFS, EFS, Azure Files, CephFS or any ReadWriteMany class.
+# - Nothing in front of the app may log request paths (they contain secret ids). See ingress.annotations below.
+
+# Must stay 1. Any other value fails rendering (values.schema.json and the StatefulSet template).
+replicaCount: 1
+
+image:
+  # Required. There is no published image: build it with your ONETIME_ORIGIN and push it to your registry.
+  repository: ""
+  # One of tag or digest is required. Prefer the digest ("sha256:..."); if both are set, both are used (repo:tag@digest).
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Run-time settings of the server (docs/self-hosting.md, "Run-time settings"). HOST, PORT and ONETIME_DB are set by the chart.
+config:
+  # Most unexpired secrets stored at once (ONETIME_MAX_STORED). Empty = server default (20000).
+  maxStored: ""
+  # Database file inside the volume. A subfolder, so the server creates it with mode 0700 itself (a volume root
+  # often has group bits from fsGroup, or mode 0777 from local-path).
+  dbPath: /data/db/onetime.db
+
+# More environment variables as a map, for settings added later (for example ONETIME_MAX_CONNECTIONS: "200").
+# HOST, PORT and ONETIME_DB are reserved and rejected here.
+extraEnv: {}
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  # The app never talks to the Kubernetes API. The token is not mounted (also on the pod).
+  automountServiceAccountToken: false
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+# Matches the Dockerfile and compose.yaml: uid 1000, read-only root, no capabilities, no privilege escalation.
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  capabilities:
+    drop: [ALL]
+  seccompProfile:
+    type: RuntimeDefault
+
+# The server finishes requests in flight for up to 8 s after SIGTERM.
+terminationGracePeriodSeconds: 15
+
+service:
+  type: ClusterIP
+  port: 80
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  host: ""
+  path: /
+  pathType: Prefix
+  # Name of the TLS secret for host. Leave empty when TLS is done by the load balancer (EKS with ACM, GKE managed certificates).
+  tlsSecretName: ""
+  certManager:
+    # Adds cert-manager.io/cluster-issuer (or issuer) so cert-manager fills tlsSecretName.
+    enabled: false
+    issuerName: ""
+    issuerKind: ClusterIssuer
+  # Controller-specific annotations. Access logs must stay off; see the files in deploy/helm/examples/.
+  annotations: {}
+
+persistence:
+  # false = emptyDir: every restart deletes all stored secrets. For tests only.
+  enabled: true
+  # Use an existing PVC instead of the StatefulSet's volumeClaimTemplate. It must be RWO block or local storage.
+  existingClaim: ""
+  # Empty = the cluster's default class. Must be block or local storage, never NFS/EFS/Azure Files/RWX.
+  storageClass: ""
+  # ReadWriteOncePod is stricter (one pod, not one node) but needs a CSI driver; local-path does not support it.
+  accessModes: [ReadWriteOnce]
+  size: 1Gi
+  annotations: {}
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+probes:
+  startup:
+    periodSeconds: 2
+    failureThreshold: 30
+    timeoutSeconds: 3
+  liveness:
+    periodSeconds: 20
+    failureThreshold: 3
+    timeoutSeconds: 3
+  readiness:
+    periodSeconds: 10
+    failureThreshold: 2
+    timeoutSeconds: 3
+
+networkPolicy:
+  enabled: false
+  # Who may connect to port 8080. Each entry is a NetworkPolicy "from" peer. Typical: the ingress controller namespace.
+  # With AWS ALB target-type ip, the source is the load balancer's address in the VPC: use an ipBlock with the VPC CIDR.
+  ingressFrom: []
+  # The app makes no outbound connections. true = deny all egress (DNS included).
+  denyEgress: true
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+priorityClassName: ""
+
+# GKE only: Ingress-created load balancers log every request by default. This BackendConfig turns that off and sets the
+# health check to /healthz. Needs the cloud.google.com/v1 BackendConfig CRD (GKE).
+gke:
+  backendConfig:
+    enabled: false
+  # Google-managed certificate for ingress.host and an HTTP-to-HTTPS redirect (networking.gke.io CRDs, GKE only).
+  managedCertificate:
+    enabled: false
+  frontendConfig:
+    enabled: false
+
+# helm test: a pod running the app image's busybox wget against /healthz (no extra image).
+tests:
+  enabled: true
+
+# Extra manifests rendered as they are (strings are passed through tpl). For controller CRDs such as a Traefik Middleware.
+extraObjects: []
