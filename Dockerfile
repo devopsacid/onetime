@@ -4,7 +4,7 @@
 # Base images are pinned by digest (index digests, so they work on amd64 and arm64). Update them on purpose.
 
 # Stage 1: build. Debian (glibc) because pnpm installs the workerd binary for the test tooling.
-FROM node:24-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS build
+FROM node:26-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc AS build
 ARG ONETIME_ORIGIN
 ARG ONETIME_OPERATOR_NAME
 ARG ONETIME_OPERATOR_CONTACT
@@ -19,7 +19,7 @@ COPY . .
 RUN pnpm build:selfhost
 
 # Stage 2: runtime. Only the three folders the server needs.
-FROM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5
+FROM node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=8080 ONETIME_DB=/data/onetime.db
 WORKDIR /app
 COPY --from=build /src/dist-selfhost ./dist-selfhost
