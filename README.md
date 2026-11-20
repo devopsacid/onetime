@@ -90,7 +90,7 @@ Security notes:
 | `docs/self-hosting.md` | Self-hosting guide for operators |
 | `test/` | Vitest tests: the Cloudflare side runs inside the Workers runtime, `test/node/` runs in Node |
 
-API: `POST /api/secrets?ttl=<seconds>` (body: blob) → `{ id }`; `GET /api/secrets/<id>` → exists or 404; `POST /api/secrets/<id>/reveal` → blob, then deleted.
+API: `POST /api/secrets?ttl=<seconds>` (body: blob, at most 16,418 bytes) → `{ id }`; `GET /api/secrets/<id>` → exists or 404; `POST /api/secrets/<id>/reveal` → blob, then deleted.
 
 Limits: 16 KB per secret. There is no per-IP rate limit (IPs are never stored). Instead, creating returns 503 while 20,000 secrets are stored, counting every secret not yet revealed (expired ones not yet purged count, but every create purges them first). While more than 80 % of that is in use (16,000), creating a link that lasts longer than 1 day is refused with `409` and `{"error": ..., "maxTtl": 86400}`; the web page and the CLI tell the sender and ask for a shorter expiry. The same rule applies against the operator's `ONETIME_MAX_STORED` when self-hosting.
 

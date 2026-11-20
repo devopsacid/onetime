@@ -230,6 +230,8 @@ The archive `onetime-data.tgz` in the current folder holds the database, and it 
 
 Database changes are applied automatically at start.
 
+Update the server before you let anyone use a newer CLI or a newer copy of the page against it. A new blob format (version 2, padded to fixed sizes, with an optional passphrase) is up to 16,418 bytes; this version of the server accepts that, while an older server refuses blobs above 16,412 bytes with 413, which a new client produces for every secret above 4,092 bytes (the largest of the four padded sizes). An older instance's page also shows links of the new format as incomplete (nothing is used up). Links of the old format keep opening everywhere.
+
 With Compose, the same `docker compose up -d --build` command as in the quick start does steps 2 to 4. With plain Docker, stop and remove the old container (`docker stop onetime`, `docker rm onetime`), then run the build and run commands again. This update order **(not tested)** as a whole; the single commands are the ones from the sections above.
 
 With systemd, do not copy over the old folders: `cp -r` merges, so assets of the old build (`dist-selfhost/assets/main-<old hash>.js`) stay behind. Replace the folders instead, from the folder with the new build:
