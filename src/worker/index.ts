@@ -3,6 +3,7 @@ import {
   ID_PATTERN,
   LARGE_MAX_TTL_SECONDS,
   MAX_FILE_BYTES,
+  MAX_SECRET_BYTES,
   MAX_LARGE_STORED_BYTES,
   MAX_STORED_BYTES,
   MAX_STORED_SECRETS,
@@ -17,21 +18,30 @@ import { CounterMissingError, type SecretStore, type WaitUntil } from "./store";
 
 /**
  * Test hooks (fixed clock in ms since epoch, smaller caps) that the Node server also sets from its configuration.
- * `maxLargeBytes: 0` turns large blobs (above MAX_TEXT_BLOB_BYTES) off. `maxBlobBytes` is the largest body read;
- * it defaults to what the hosted limits allow (see `blobLimit`).
+ * `maxLargeBytes: 0` or `maxFileBytes: 0` turns large blobs (above MAX_TEXT_BLOB_BYTES) off. `maxFileBytes` is the
+ * largest file (default MAX_FILE_BYTES) and `maxFileTtl` the longest life of a large blob in seconds (default
+ * LARGE_MAX_TTL_SECONDS); GET /api/limits reports both. `maxBlobBytes` is the largest body read; it defaults to what
+ * `maxFileBytes` allows (see `blobLimit`).
  */
 export interface Options {
   now?: number;
   maxStored?: number;
   maxStoredBytes?: number;
   maxLargeBytes?: number;
+  maxFileBytes?: number;
+  maxFileTtl?: number;
   maxBlobBytes?: number;
 }
 
-/** The largest blob a router with these options reads: text only when large blobs are off, else the hosted file limit. */
-export function blobLimit(options: Pick<Options, "maxLargeBytes" | "maxBlobBytes"> = {}): number {
+/** Whether a router with these options accepts files: both the file size and the large-blob budget must be above 0. */
+function filesOn(options: Pick<Options, "maxLargeBytes" | "maxFileBytes">): boolean {
+  return (options.maxLargeBytes ?? MAX_LARGE_STORED_BYTES) > 0 && (options.maxFileBytes ?? MAX_FILE_BYTES) > 0;
+}
+
+/** The largest blob a router with these options reads: text only when files are off, else the file blob of `maxFileBytes`. */
+export function blobLimit(options: Pick<Options, "maxLargeBytes" | "maxFileBytes" | "maxBlobBytes"> = {}): number {
   if (options.maxBlobBytes !== undefined) return options.maxBlobBytes;
-  return (options.maxLargeBytes ?? MAX_LARGE_STORED_BYTES) === 0 ? MAX_TEXT_BLOB_BYTES : fileBlobBytes(MAX_FILE_BYTES);
+  return filesOn(options) ? fileBlobBytes(options.maxFileBytes ?? MAX_FILE_BYTES) : MAX_TEXT_BLOB_BYTES;
 }
 
 export const API_HEADERS = {
@@ -95,7 +105,15 @@ interface Caps {
   maxStored: number;
   maxStoredBytes: number;
   maxLargeBytes: number;
+  maxFileTtl: number;
   maxBlob: number;
+}
+
+/** "1 hour", "1 day" or "N seconds" for the 409 message. */
+function describeSeconds(seconds: number): string {
+  if (seconds % 86400 === 0) return seconds === 86400 ? "1 day" : `${seconds / 86400} days`;
+  if (seconds % 3600 === 0) return seconds === 3600 ? "1 hour" : `${seconds / 3600} hours`;
+  return `${seconds} seconds`;
 }
 
 async function createSecret(request: Request, store: SecretStore, url: URL, now: number, caps: Caps): Promise<Response> {
@@ -121,8 +139,8 @@ async function createSecret(request: Request, store: SecretStore, url: URL, now:
 
   // The server cannot tell files from texts, so the rules go by size: only blobs above the largest text blob are large.
   const large = blob.byteLength > MAX_TEXT_BLOB_BYTES;
-  if (large && ttl > LARGE_MAX_TTL_SECONDS) {
-    return json(409, { error: "Secrets larger than 16 KB can last at most 1 day.", maxTtl: LARGE_MAX_TTL_SECONDS });
+  if (large && ttl > caps.maxFileTtl) {
+    return json(409, { error: `Secrets larger than 16 KB can last at most ${describeSeconds(caps.maxFileTtl)}.`, maxTtl: caps.maxFileTtl });
   }
 
   await store.purgeExpired(now);
@@ -160,12 +178,22 @@ export async function handle(
   const now = options.now ?? Date.now();
   const url = new URL(request.url);
 
+  if (url.pathname === "/api/limits") {
+    if (request.method !== "GET") return error(405, "Method not allowed", { Allow: "GET" });
+    return json(200, {
+      maxFileBytes: filesOn(options) ? (options.maxFileBytes ?? MAX_FILE_BYTES) : 0,
+      maxFileTtl: options.maxFileTtl ?? LARGE_MAX_TTL_SECONDS,
+      maxTextBytes: MAX_SECRET_BYTES,
+    });
+  }
+
   if (url.pathname === "/api/secrets") {
     if (request.method !== "POST") return error(405, "Method not allowed", { Allow: "POST" });
     return createSecret(request, store, url, now, {
       maxStored: options.maxStored ?? MAX_STORED_SECRETS,
       maxStoredBytes: options.maxStoredBytes ?? MAX_STORED_BYTES,
       maxLargeBytes: options.maxLargeBytes ?? MAX_LARGE_STORED_BYTES,
+      maxFileTtl: options.maxFileTtl ?? LARGE_MAX_TTL_SECONDS,
       maxBlob: blobLimit(options),
     });
   }

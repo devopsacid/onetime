@@ -16,15 +16,15 @@ describe("checkFileSize", () => {
     expect(checkFileSize(1)).toBeNull();
     expect(checkFileSize(MAX_FILE_BYTES)).toBeNull();
     expect(checkFileSize(0)).toBe("The file is empty.");
-    expect(checkFileSize(MAX_FILE_BYTES + 1)).toBe("Files can be at most 128.0 KB.");
+    expect(checkFileSize(MAX_FILE_BYTES + 1)).toBe("Files can be at most 256.0 KB.");
   });
 });
 
 describe("ttlOptionsFor", () => {
-  it("offers only 1 hour and 1 day for files, keeps everything for text", () => {
-    expect(FILE_TTL_VALUES).toEqual([3600, 86400]);
+  it("offers only 1 hour for files (the hosted rule), keeps everything for text", () => {
+    expect(FILE_TTL_VALUES).toEqual([3600]);
     const all = [3600, 86400, 604800];
-    expect(ttlOptionsFor("file", all)).toEqual([3600, 86400]);
+    expect(ttlOptionsFor("file", all)).toEqual([3600]);
     expect(ttlOptionsFor("text", all)).toEqual(all);
   });
 });
@@ -47,7 +47,7 @@ describe("progress and labels", () => {
     expect(progressPercent(5, null)).toBeNull();
   });
   it("labels the upload with the size", () => {
-    expect(uploadLabel(MAX_FILE_BYTES)).toBe("Uploading 128.0 KB…");
+    expect(uploadLabel(MAX_FILE_BYTES)).toBe("Uploading 256.0 KB…");
   });
 });
 
