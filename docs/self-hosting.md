@@ -190,6 +190,16 @@ Lightsail container service, ECS Fargate, Azure Container Apps and Azure App Ser
 
 These platforms need a different database (such as Postgres). That is not built.
 
+### Deploy code: Ansible, Helm, Terraform
+
+The repository also has deployment code for the same single-instance setup. Start with [deploy-architecture.md](deploy-architecture.md) (rules and platform support matrix), then:
+
+- [deploy-ansible.md](deploy-ansible.md): `deploy/ansible/`, one Linux host in Docker or systemd mode, with Caddy or nginx.
+- [deploy-helm.md](deploy-helm.md): `deploy/helm/`, a one-replica Kubernetes chart with Ingress, and values for on-prem, AKS, EKS and GKE.
+- [deploy-terraform.md](deploy-terraform.md): `deploy/terraform/`, one VM on AWS, Azure or Google Cloud, and the Helm release on an existing cluster.
+
+Each guide says what the project tested and what it did not.
+
 ## Backups
 
 You do not need backups. A lost database only loses links that nobody has opened yet.
