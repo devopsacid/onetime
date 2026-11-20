@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import type { AddressInfo } from "node:net";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../../server/http";
@@ -103,6 +104,25 @@ describe("tools/burn-id.mjs", () => {
     expect(JSON.stringify(seen)).not.toContain(KEY);
     expect(revealCalls()).toEqual([{ method: "POST", url: `/api/secrets/${id}/reveal` }]);
     expect(rows()).toBe(0);
+  });
+
+  describe("the link example on the privacy page", () => {
+    const privacy = readFileSync(join(ROOT, "privacy.html"), "utf8");
+    const exampleId = /<span class="u-id">([^<]+)<\/span>/.exec(privacy)?.[1] ?? "";
+    const exampleKey = /<span class="u-key">([^<]+)<\/span>/.exec(privacy)?.[1] ?? "";
+    it("has a well-formed made-up id and key", () => {
+      expect(exampleId).toMatch(ID_PATTERN);
+      expect(exampleKey).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    });
+    it("names every link form below the example", () => {
+      for (const form of ["#&lt;id&gt;.&lt;key&gt;", "#2.&lt;id&gt;", "#2p.&lt;id&gt;", "#2f.&lt;id&gt;", "#2fp.&lt;id&gt;"]) expect(privacy).toContain(form);
+    });
+    it.each(["", "2.", "2p.", "2f.", "2fp."])("link form #%s<id>.<key>: burn-id sends the example id, never the key", async (prefix) => {
+      const r = await run([origin, `https://onetimepass.pages.dev/#${prefix}${exampleId}.${exampleKey}`]);
+      expect(r).toEqual({ code: 0, out: "not stored\n", err: "" });
+      expect(JSON.stringify(seen)).not.toContain(exampleKey);
+      expect(revealCalls()).toEqual([{ method: "POST", url: `/api/secrets/${exampleId}/reveal` }]);
+    });
   });
 
   it("uses the origin argument, not the one inside a link", async () => {
