@@ -145,37 +145,72 @@
         <p>
           Files are stored the same way, as encrypted data that cannot be read without the key in the link. Their name,
           type and contents are encrypted in your browser. The stored data shows whether it is a file or a text, and
-          its size class (for a file: up to 1 KB, 4 KB, 16 KB, 64 KB or 128 KB), but not the name, type or contents.
+          its size class (for a file: up to 1 KB, 4 KB, 16 KB, 64 KB, 128 KB or 256 KB), but not the name, type or contents.
         </p>
       </section>
 
       <section id="abuse" aria-labelledby="abuse-title">
         <h2 id="abuse-title">Reporting abuse</h2>
         <!-- site:onetimepass -->
+        <h3>Single point of contact for authorities and users (Articles 11 and 12 DSA)</h3>
         <p>
-          If a onetime link is used to send malware or illegal content, write to
-          <a href="mailto:michal@maxian.sk">michal@maxian.sk</a>.
+          Email: <a href="mailto:michal@maxian.sk">michal@maxian.sk</a>. Languages: Slovak and English. Use it to report
+          a onetime link that is used for illegal content, malware or other abuse, and for orders and requests from
+          authorities.
         </p>
         <!-- /site:onetimepass -->
         <!-- site:selfhost
+        <h3>Contact for authorities and users</h3>
         <p>
-          If a link of this instance is used to send malware or illegal content, write to its operator. Contact:
-          {{OPERATOR_CONTACT}}.
+          To report a link of this instance that is used for illegal content, malware or other abuse, write to its
+          operator. Contact: {{OPERATOR_CONTACT}}.
         </p>
         site:selfhost -->
+
+        <h3>What a notice must contain</h3>
+        <ol class="plain-list">
+          <li>
+            <strong>The id of the item.</strong> It is the part of the link between the first and the second dot (see the example below). Never
+            send the part after the second dot: it is the key that opens the item, and the id alone is enough to delete
+            it. Older links have only one dot; for those, send the part between <code>#</code> and the dot.
+          </li>
+          <li><strong>Why the content is illegal</strong>, as exactly as you can.</li>
+          <li>
+            <strong>Your name and email address.</strong> They are not needed for a report of child sexual abuse
+            material.
+          </li>
+          <li><strong>A statement that you make the notice in good faith.</strong></li>
+        </ol>
+        <figure class="anatomy">
+          <p class="anatomy-url">
+            <span class="u-origin">https://onetimepass.pages.dev/#</span><span class="u-format">2f</span><span class="u-dot">.</span><span class="u-id">q3Vb8sKx2LmN0pRtYw7uEa</span><span class="u-dot">.</span><span class="u-key">Zr4nT9vXc2bQ8hLk1mW5sJy0aDfG3pE7uN6iKoH2tRw</span>
+          </p>
+          <figcaption class="visually-hidden">An example link: send only its id, never its key.</figcaption>
+          <dl class="anatomy-parts">
+            <div class="part part-id">
+              <dt>Send this: the id</dt>
+              <dd>Between the first and the second dot. Here: <code>q3Vb8sKx2LmN0pRtYw7uEa</code>.</dd>
+            </div>
+            <div class="part part-key">
+              <dt>Never send this: the key</dt>
+              <dd>Everything after the second dot. It opens the item, and it is not needed to delete it.</dd>
+            </div>
+          </dl>
+        </figure>
+        <p class="hint">The example link is made up.</p>
+
+        <h3>What happens next</h3>
         <ul class="plain-list">
+          <li>You get a confirmation that the notice was received.</li>
           <li>
-            <strong>Do not send the key.</strong> The key is the last part of the link, after the last dot. Remove it
-            before you send the link. The rest of the link holds the id, which is enough to delete it.
+            If the item is still stored, it is deleted by its id, without opening it. A link that was already opened or
+            has expired is no longer stored and cannot be deleted again.
           </li>
+          <li>You get a reply about the decision.</li>
           <li>
-            <strong>What is done with a report:</strong> a reported link that is still stored is deleted by its id,
-            without opening it.
-          </li>
-          <li>
-            <strong>What cannot be done:</strong> contents are encrypted end to end, so they cannot be read or scanned
-            without the key. This site’s code keeps no IP addresses or request logs, so it cannot identify the sender. A link that
-            was already opened or has expired is no longer stored and cannot be deleted again.
+            Contents are encrypted end to end, so they cannot be read or scanned without the key. This site’s code keeps
+            no IP addresses or request logs, so it cannot identify the sender, and the sender is not told about the
+            deletion (see <a href="/terms#moderation">terms of use</a>).
           </li>
           <!-- site:onetimepass -->
           <li>
@@ -184,6 +219,16 @@
           </li>
           <!-- /site:onetimepass -->
         </ul>
+
+        <h3>Orders from authorities</h3>
+        <p>
+          Orders to remove content and orders to provide information are handled without undue delay. A removal order
+          is carried out by deleting the item by its id. This site’s code keeps no IP addresses or request logs, and keys
+          and readable contents never reach the server, so there are no such data to hand over.
+          <!-- site:selfhost
+          Whether the host or proxy of this instance keeps connection logs is up to its operator.
+          site:selfhost -->
+        </p>
       </section>
 
       <!-- site:onetimepass -->
@@ -247,11 +292,11 @@
     <footer class="site-footer site-footer-plain">
       <!-- site:onetimepass -->
       <p>No accounts. Secrets are encrypted on your device. onetimepass.pages.dev, where secrets are created and opened, has no analytics or cookies. This information site uses Google Analytics only if you accept. Your theme choice and this choice are saved in your browser.</p>
-      <p><a href="/">Share a secret</a> · <a href="/how-it-works">How it works</a> · <a href="/command-line">Command-line tool</a> · <a href="/privacy">Privacy</a> · <a href="/privacy#cookies" data-cookie-settings>Cookie settings</a></p>
+      <p><a href="/">Share a secret</a> · <a href="/how-it-works">How it works</a> · <a href="/command-line">Command-line tool</a> · <a href="/privacy" aria-current="page">Privacy</a> · <a href="/terms">Terms</a> · <a href="/privacy#abuse">Report abuse</a> · <a href="/privacy#cookies" data-cookie-settings>Cookie settings</a></p>
       <!-- /site:onetimepass -->
       <!-- site:selfhost
       <p>No accounts. Secrets are encrypted on your device. No page of this site uses analytics or cookies. Your theme choice is saved in your browser.</p>
-      <p><a href="/">Share a secret</a> · <a href="/how-it-works">How it works</a> · <a href="/command-line">Command-line tool</a> · <a href="/privacy">Privacy</a></p>
+      <p><a href="/">Share a secret</a> · <a href="/how-it-works">How it works</a> · <a href="/command-line">Command-line tool</a> · <a href="/privacy" aria-current="page">Privacy</a> · <a href="/terms">Terms</a> · <a href="/privacy#abuse">Report abuse</a></p>
       site:selfhost -->
     </footer>
   </body>
