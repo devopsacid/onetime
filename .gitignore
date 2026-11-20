@@ -4,3 +4,4 @@ dist/
 .dev.vars
 dist-selfhost/
 dist-server/
+dist-info/
