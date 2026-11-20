@@ -1,7 +1,6 @@
-// Google Analytics 4 for the info pages only (imported by info.ts, never by main.ts or page.ts).
+// Google Analytics 4 for the info site only (imported by info.ts, never by main.ts or page.ts).
 // Nothing is requested before the visitor accepts: the gtag.js loader is added to the page after Accept.
 import { GA_MEASUREMENT_ID } from "./analytics-config";
-import { cliDownloadKind } from "./analytics-events";
 import { analyticsAllowedHere } from "./analytics-origin";
 import { CONSENT_STORAGE_KEY, analyticsEnabled, sanitizePageLocation, serializeConsent, type Decision } from "./consent";
 import { deleteAnalyticsCookies, readConsentDecision } from "./ga-cookies";
@@ -43,17 +42,6 @@ function loadAnalytics(): void {
   script.async = true;
   script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(GA_MEASUREMENT_ID)}`;
   document.head.appendChild(script);
-
-  document.addEventListener("click", (event) => {
-    const link = (event.target as Element | null)?.closest?.("a[href]");
-    if (!link) return;
-    try {
-      const kind = cliDownloadKind(new URL((link as HTMLAnchorElement).href, location.href).pathname);
-      if (kind) gtag("event", "cli_download", { file: kind });
-    } catch {
-      // Not a parseable link: nothing to count.
-    }
-  });
 }
 
 function store(decision: Decision): void {

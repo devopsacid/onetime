@@ -1,7 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { GA_MEASUREMENT_ID } from "../src/web/analytics-config";
 import { analyticsAllowedHere } from "../src/web/analytics-origin";
-import { purgeLegacyAnalyticsState } from "../src/web/ga-cookies";
 import {
   CONSENT_MAX_AGE_MS,
   CONSENT_STORAGE_KEY,
@@ -10,6 +9,7 @@ import {
   analyticsEnabled,
   cookieDeletionStrings,
   isAnalyticsCookieName,
+  legacyPurgeActions,
   parseConsent,
   sanitizePageLocation,
   serializeConsent,
@@ -80,54 +80,18 @@ describe("sanitizePageLocation", () => {
   });
 });
 
-describe("purgeLegacyAnalyticsState", () => {
-  afterEach(() => vi.unstubAllGlobals());
-  function stub(cookie: string, hostname = "onetimepass.pages.dev", storage: Record<string, string> = {}) {
-    const written: string[] = [];
-    const removed: string[] = [];
-    vi.stubGlobal("document", {
-      get cookie() {
-        return cookie;
-      },
-      set cookie(value: string) {
-        written.push(value);
-      },
-    });
-    vi.stubGlobal("location", { hostname });
-    vi.stubGlobal("localStorage", {
-      getItem: (k: string) => storage[k] ?? null,
-      removeItem: (k: string) => {
-        removed.push(k);
-        delete storage[k];
-      },
-    });
-    return { written, removed, storage };
-  }
-  it("deletes every _ga cookie (host and parent-domain variants) whatever the consent record says, and the consent record", () => {
-    const accepted = serializeConsent("accepted", Date.now());
-    const { written, removed, storage } = stub("a=1; _ga=GA1.1.2; _ga_ABC123=GS1; theme=dark", "onetimepass.pages.dev", { [CONSENT_STORAGE_KEY]: accepted });
-    purgeLegacyAnalyticsState();
+describe("legacyPurgeActions", () => {
+  it("deletes every _ga cookie (host and parent-domain variants), the consent record, and nothing else", () => {
+    const { cookieWrites, storageKeys } = legacyPurgeActions("a=1; _ga=GA1.1.2; _ga_ABC123=GS1; theme=dark", "onetimepass.pages.dev");
     for (const name of ["_ga", "_ga_ABC123"]) {
-      for (const expected of cookieDeletionStrings(name, "onetimepass.pages.dev")) expect(written).toContain(expected);
+      for (const expected of cookieDeletionStrings(name, "onetimepass.pages.dev")) expect(cookieWrites).toContain(expected);
     }
-    expect(written.some((w) => w.startsWith("a=") || w.startsWith("theme="))).toBe(false);
-    expect(removed).toEqual([CONSENT_STORAGE_KEY]);
-    expect(storage[CONSENT_STORAGE_KEY]).toBeUndefined();
+    expect(cookieWrites).toHaveLength(2 * cookieDeletionStrings("_ga", "onetimepass.pages.dev").length);
+    expect(cookieWrites.some((w) => w.startsWith("a=") || w.startsWith("theme="))).toBe(false);
+    expect(storageKeys).toEqual([CONSENT_STORAGE_KEY]);
   });
-  it("removes the consent record even with no cookies, and leaves the theme alone", () => {
-    const { written, removed } = stub("", "onetimepass.pages.dev", { theme: "dark" });
-    purgeLegacyAnalyticsState();
-    expect(written).toEqual([]);
-    expect(removed).toEqual([CONSENT_STORAGE_KEY]);
-  });
-  it("survives blocked storage", () => {
-    stub("_ga=1");
-    vi.stubGlobal("localStorage", {
-      removeItem: () => {
-        throw new Error("blocked");
-      },
-    });
-    expect(() => purgeLegacyAnalyticsState()).not.toThrow();
+  it("removes the consent record even with no cookies", () => {
+    expect(legacyPurgeActions("", "onetimepass.pages.dev")).toEqual({ cookieWrites: [], storageKeys: [CONSENT_STORAGE_KEY] });
   });
 });
 

@@ -79,3 +79,14 @@ export function sanitizePageLocation(href: string): string {
     return "";
   }
 }
+
+/**
+ * What the app and self-host origins delete on every visit (analytics never runs there): the `_ga*` cookies in
+ * `cookieString` and the stored consent record, which now lives on the info site only.
+ */
+export function legacyPurgeActions(cookieString: string, hostname: string): { cookieWrites: string[]; storageKeys: string[] } {
+  return {
+    cookieWrites: analyticsCookieNames(cookieString).flatMap((name) => cookieDeletionStrings(name, hostname)),
+    storageKeys: [CONSENT_STORAGE_KEY],
+  };
+}
