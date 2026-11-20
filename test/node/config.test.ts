@@ -16,7 +16,48 @@ describe("parseConfig", () => {
       migrationsDir: "/opt/onetime/migrations",
       maxStored: 20_000,
       maxConnections: 1000,
+      maxStoredBytes: 400_000_000,
+      maxLargeBytes: 200_000_000,
+      maxUploads: 16,
     });
+  });
+
+  it("reads the three file settings", () => {
+    const c = parseConfig({ ONETIME_MAX_STORED_BYTES: "50000000", ONETIME_MAX_LARGE_BYTES: "10000000", ONETIME_MAX_UPLOADS: "4" }, BASE, "/w");
+    expect(c).toMatchObject({ maxStoredBytes: 50_000_000, maxLargeBytes: 10_000_000, maxUploads: 4 });
+  });
+
+  it("accepts the bounds of the file settings, including ONETIME_MAX_LARGE_BYTES=0 (files off)", () => {
+    expect(parseConfig({ ONETIME_MAX_STORED_BYTES: "1000000", ONETIME_MAX_LARGE_BYTES: "0" }, BASE, "/w")).toMatchObject({ maxStoredBytes: 1_000_000, maxLargeBytes: 0 });
+    expect(parseConfig({ ONETIME_MAX_STORED_BYTES: "1000000000000" }, BASE, "/w").maxStoredBytes).toBe(1_000_000_000_000);
+    expect(parseConfig({ ONETIME_MAX_STORED_BYTES: "5000000", ONETIME_MAX_LARGE_BYTES: "5000000" }, BASE, "/w").maxLargeBytes).toBe(5_000_000);
+    expect(parseConfig({ ONETIME_MAX_UPLOADS: "1" }, BASE, "/w").maxUploads).toBe(1);
+    expect(parseConfig({ ONETIME_MAX_UPLOADS: "1000" }, BASE, "/w").maxUploads).toBe(1000);
+  });
+
+  it("lowers the default large budget to the stored-bytes value when only that is set", () => {
+    expect(parseConfig({ ONETIME_MAX_STORED_BYTES: "100000000" }, BASE, "/w")).toMatchObject({ maxStoredBytes: 100_000_000, maxLargeBytes: 100_000_000 });
+  });
+
+  it.each([
+    ["ONETIME_MAX_STORED_BYTES", "999999"],
+    ["ONETIME_MAX_STORED_BYTES", "1000000000001"],
+    ["ONETIME_MAX_STORED_BYTES", "abc"],
+    ["ONETIME_MAX_STORED_BYTES", "1e9"],
+    ["ONETIME_MAX_LARGE_BYTES", "-1"],
+    ["ONETIME_MAX_LARGE_BYTES", "1.5"],
+    ["ONETIME_MAX_UPLOADS", "0"],
+    ["ONETIME_MAX_UPLOADS", "1001"],
+    ["ONETIME_MAX_UPLOADS", "many"],
+  ])("rejects %s=%j", (name, value) => {
+    expect(() => parseConfig({ [name]: value }, BASE, "/w")).toThrow(ConfigError);
+    expect(() => parseConfig({ [name]: value }, BASE, "/w")).toThrow(new RegExp(name));
+  });
+
+  it("rejects a large budget above the stored-bytes value", () => {
+    const env = { ONETIME_MAX_STORED_BYTES: "5000000", ONETIME_MAX_LARGE_BYTES: "5000001" };
+    expect(() => parseConfig(env, BASE, "/w")).toThrow(/ONETIME_MAX_LARGE_BYTES/);
+    expect(() => parseConfig({ ONETIME_MAX_LARGE_BYTES: "400000001" }, BASE, "/w")).toThrow(/ONETIME_MAX_LARGE_BYTES/);
   });
 
   it("reads every variable and resolves relative paths against the working directory", () => {

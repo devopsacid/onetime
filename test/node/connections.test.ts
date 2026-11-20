@@ -25,6 +25,9 @@ describe("connection limit", () => {
     migrationsDir: MIGRATIONS_DIR,
     maxStored: 10,
     maxConnections,
+    maxStoredBytes: 400_000_000,
+    maxLargeBytes: 200_000_000,
+    maxUploads: 16,
   });
 
   const open = (port: number): Promise<Socket> =>

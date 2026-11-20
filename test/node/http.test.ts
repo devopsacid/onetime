@@ -177,7 +177,7 @@ describe("API bridge", () => {
     const r = await sendChunked("/api/secrets?ttl=3600", MAX_BLOB_BYTES * 1000, true);
     expect(statusAtFinish).toEqual([413]);
     expect(r.serverBytesRead).toBeGreaterThan(0);
-    expect(r.serverBytesRead).toBeLessThan(3 * 1024 * 1024);
+    expect(r.serverBytesRead).toBeLessThan(MAX_BLOB_BYTES + 2 * 1024 * 1024 + 256 * 1024);
     if (r.status !== 0) {
       expect(r.status).toBe(413);
       expect(r.headers["connection"]).toBe("close");
@@ -474,3 +474,204 @@ describe("server settings and silence", () => {
     expect(err).not.toHaveBeenCalled();
   });
 });
+
+
+describe("files through the Node server", () => {
+  /** A server of its own with the given settings; returns its base URL and a stop function. */
+  async function own(deps: { maxLargeBytes?: number; maxUploads?: number; maxStoredBytes?: number }) {
+    const dir = tempDir();
+    const db = openSqliteStore(join(dir.path, "f.db"), migrations());
+    const app = createApp({ store: db, site: loadSite(makeDist(dir.path)), maxStored: 100, ...deps });
+    const bytesRead: number[] = [];
+    app.server.on("request", (req, res) => void res.on("close", () => bytesRead.push(req.socket.bytesRead)));
+    await new Promise<void>((resolve) => app.server.listen(0, "127.0.0.1", resolve));
+    const p = (app.server.address() as AddressInfo).port;
+    return {
+      app,
+      port: p,
+      base: `http://127.0.0.1:${p}`,
+      bytesRead,
+      async stop() {
+        app.server.closeAllConnections();
+        await new Promise((resolve) => app.server.close(resolve));
+        await app.drain();
+        await db.close();
+        dir.remove();
+      },
+    };
+  }
+  const post = (base: string, body: Uint8Array, ttl = 86400) =>
+    fetch(`${base}/api/secrets?ttl=${ttl}`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body });
+  const big = (n: number) => {
+    const out = new Uint8Array(n);
+    for (let i = 0; i < n; i += 65_536) crypto.getRandomValues(out.subarray(i, Math.min(i + 65_536, n)));
+    return out;
+  };
+
+  it("round trips a blob of 1,048,994 bytes and refuses 1,048,995", async () => {
+    const s = await own({});
+    try {
+      const blob = big(1_048_994);
+      const created = await post(s.base, blob);
+      expect(created.status).toBe(201);
+      const { id } = (await created.json()) as { id: string };
+      const revealed = await fetch(`${s.base}/api/secrets/${id}/reveal`, { method: "POST" });
+      expect(revealed.status).toBe(200);
+      expect(revealed.headers.get("content-length")).toBe("1048994");
+      expect(Buffer.from(await revealed.arrayBuffer()).equals(blob)).toBe(true);
+      expect((await post(s.base, big(1_048_995))).status).toBe(413);
+      expect((await post(s.base, big(20_000), 604800)).status).toBe(409);
+    } finally {
+      await s.stop();
+    }
+  }, 60_000);
+
+  it("answers 413 at the configured limit (16,418 with large blobs off) and drains a bounded amount", async () => {
+    const s = await own({ maxLargeBytes: 0 });
+    try {
+      expect((await post(s.base, big(16_418))).status).toBe(201);
+      s.bytesRead.length = 0;
+      const response = await post(s.base, big(600 * 1024));
+      expect(response.status).toBe(413);
+      expect(response.headers.get("connection")).toBe("close");
+      await response.arrayBuffer();
+      await waitForValue(() => s.bytesRead.length > 0);
+      // Read up to the limit, then at most the bounded drain: nowhere near the whole body is kept or needed.
+      expect(s.bytesRead[0]!).toBeLessThan(16_419 + 2 * 1024 * 1024 + 64 * 1024);
+    } finally {
+      await s.stop();
+    }
+  }, 60_000);
+
+  it("refuses an honest Content-Length above the configured limit without reading the body", async () => {
+    const s = await own({ maxLargeBytes: 0 });
+    try {
+      const status = await new Promise<number>((resolve, reject) => {
+        const req = httpRequest({
+          host: "127.0.0.1",
+          port: s.port,
+          method: "POST",
+          path: "/api/secrets?ttl=3600",
+          headers: { "Content-Type": "application/octet-stream", "Content-Length": "16419" },
+        });
+        req.on("response", (res) => {
+          res.resume();
+          res.on("end", () => (req.destroy(), resolve(res.statusCode!)));
+        });
+        req.on("error", reject);
+        req.write(Buffer.alloc(100, 1));
+      });
+      expect(status).toBe(413);
+    } finally {
+      await s.stop();
+    }
+  });
+
+  it("uses a 60 second request timeout so a 1 MiB upload works on a slow line", async () => {
+    const s = await own({});
+    try {
+      expect(s.app.server.requestTimeout).toBe(60_000);
+    } finally {
+      await s.stop();
+    }
+  });
+
+  /** Starts a POST that declares `total` bytes, sends `first` of them and keeps the request open. */
+  function stalled(port: number, total: number, first: number) {
+    const req = httpRequest({
+      host: "127.0.0.1",
+      port,
+      method: "POST",
+      path: "/api/secrets?ttl=3600",
+      headers: { "Content-Type": "application/octet-stream", "Content-Length": String(total) },
+    });
+    const done = new Promise<number>((resolve) => {
+      req.on("response", (res) => {
+        res.resume();
+        res.on("end", () => resolve(res.statusCode!));
+      });
+      req.on("error", () => resolve(0));
+    });
+    req.write(Buffer.alloc(first, 9));
+    return { req, done, finish: (rest: number) => req.end(Buffer.alloc(rest, 9)) };
+  }
+
+  it("answers 503 with Retry-After 5 to an upload beyond ONETIME_MAX_UPLOADS, and frees the slot when one ends", async () => {
+    const s = await own({ maxUploads: 2 });
+    try {
+      let arrived = 0;
+      s.app.server.on("request", () => arrived++);
+      const a = stalled(s.port, 1000, 100);
+      const b = stalled(s.port, 1000, 100);
+      await waitForValue(() => arrived >= 2);
+      await new Promise((r) => setTimeout(r, 100)); // let both reach the router's body read
+
+      const refused = await post(s.base, big(64), 3600);
+      expect(refused.status).toBe(503);
+      expect(refused.headers.get("retry-after")).toBe("5");
+      expect(refused.headers.get("cache-control")).toBe("no-store");
+      expect(((await refused.json()) as { error: string }).error).toMatch(/busy|try again/i);
+      expect(store.db.prepare("SELECT 1").get()).toBeDefined(); // the shared test store is untouched
+
+      a.finish(900);
+      expect(await a.done).toBe(201);
+      expect((await post(s.base, big(64), 3600)).status).toBe(201); // one slot is free again
+      b.finish(900);
+      expect(await b.done).toBe(201);
+    } finally {
+      await s.stop();
+    }
+  }, 30_000);
+
+  it("frees the slot when a client disconnects mid-upload and when an upload is refused with 413", async () => {
+    const s = await own({ maxUploads: 1, maxLargeBytes: 0 });
+    try {
+      let arrived = 0;
+      s.app.server.on("request", () => arrived++);
+      const a = stalled(s.port, 1000, 100);
+      await waitForValue(() => arrived >= 1);
+      await new Promise((r) => setTimeout(r, 100));
+      expect((await post(s.base, big(64), 3600)).status).toBe(503);
+      a.req.destroy();
+      await a.done;
+      await waitForValue(() => true);
+      let status = 0;
+      for (let i = 0; i < 100 && status !== 201; i++) {
+        status = (await post(s.base, big(64), 3600)).status;
+        if (status !== 201) await new Promise((r) => setTimeout(r, 50));
+      }
+      expect(status).toBe(201);
+      expect((await post(s.base, big(40_000), 3600)).status).toBe(413);
+      expect((await post(s.base, big(64), 3600)).status).toBe(201);
+    } finally {
+      await s.stop();
+    }
+  }, 30_000);
+
+  it("does not count status checks and reveals against the upload limit", async () => {
+    const s = await own({ maxUploads: 1 });
+    try {
+      let arrived = 0;
+      s.app.server.on("request", () => arrived++);
+      const created = await post(s.base, big(64), 3600);
+      const { id } = (await created.json()) as { id: string };
+      const a = stalled(s.port, 1000, 100);
+      await waitForValue(() => arrived >= 2);
+      await new Promise((r) => setTimeout(r, 100));
+      expect((await fetch(`${s.base}/api/secrets/${id}`)).status).toBe(200);
+      expect((await fetch(`${s.base}/api/secrets/${id}/reveal`, { method: "POST" })).status).toBe(200);
+      a.req.destroy();
+      await a.done;
+    } finally {
+      await s.stop();
+    }
+  }, 30_000);
+});
+
+async function waitForValue(check: () => boolean, ms = 5000): Promise<void> {
+  const end = Date.now() + ms;
+  while (!check()) {
+    if (Date.now() > end) throw new Error("timed out");
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}
