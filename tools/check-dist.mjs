@@ -253,6 +253,14 @@ for (const name of profile === "info" ? ["404.html"] : ["index.html", "404.html"
       } else if (current !== null) rules.get(current).push(raw.trim());
     }
     if (/unsafe-inline/i.test(headersText)) problems.push("_headers: 'unsafe-inline' appears");
+    // Files are saved through <a download> on a blob: URL, which needs no CSP source: the policy must never name blob: or data:.
+    for (const [path, lines] of rules) {
+      for (const line of lines) {
+        const scheme = /(?:^|[\s;])(blob|data):/i.exec(line);
+        if (scheme && /content-security-policy/i.test(line)) problems.push(`_headers: the CSP for ${path} names ${scheme[1].toLowerCase()}: (files are saved with <a download>, which needs no CSP source)`);
+        else if (scheme) problems.push(`_headers: ${scheme[1].toLowerCase()}: appears in a header of ${path}`);
+      }
+    }
     if (/^\s*!/m.test(headersText)) problems.push("_headers: a detach line (! Name) appears; one CSP applies to every path");
     const allCsp = [...rules].flatMap(([path, lines]) => lines.filter((l) => /content-security-policy/i.test(l)).map(() => path));
     if (allCsp.length !== 1 || allCsp[0] !== "/*") problems.push(`_headers: exactly one Content-Security-Policy line, in /*, is required (found ${allCsp.length}: ${allCsp.join(", ")})`);
