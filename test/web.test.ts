@@ -5,7 +5,7 @@ import { SecretTooLargeError, WRITE_FORMAT, createCodec, decryptSecret, encryptS
 import { CHARSETS, generatePassword, generateToken, generateUuid, randomInt } from "../src/web/generate";
 import { buildLink, parseFragment } from "../src/web/link";
 import { ApiError, createSecret } from "../src/web/api";
-import { pickTtlOption } from "../src/web/ttl";
+import { lowerTtlSelection, pickTtlOption } from "../src/web/ttl";
 
 describe("base64url", () => {
   it("round-trips every byte value without padding or URL-unsafe characters", () => {
@@ -203,6 +203,25 @@ describe("pickTtlOption", () => {
   });
   it("returns null when nothing fits", () => {
     expect(pickTtlOption(60, values)).toBeNull();
+  });
+});
+
+describe("lowerTtlSelection", () => {
+  const values = [3600, 86400, 604800];
+  it("lowers a longer selection to the largest option that fits", () => {
+    expect(lowerTtlSelection(604800, 86400, values)).toBe(86400);
+    expect(lowerTtlSelection(604800, 90000, values)).toBe(86400);
+    expect(lowerTtlSelection(86400, 3600, values)).toBe(3600);
+  });
+  it("never raises the selection: a shorter pick keeps the sender's choice", () => {
+    expect(lowerTtlSelection(3600, 86400, values)).toBeNull();
+    expect(lowerTtlSelection(3600, 604800, values)).toBeNull();
+  });
+  it("leaves an equal selection alone", () => {
+    expect(lowerTtlSelection(86400, 86400, values)).toBeNull();
+  });
+  it("returns null when no option fits", () => {
+    expect(lowerTtlSelection(3600, 60, values)).toBeNull();
   });
 });
 
