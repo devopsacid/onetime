@@ -1,6 +1,6 @@
 // Browser e2e (docs/plans/file-transfer.md A12, docs/plans/blob-v2.md section 7): text, passphrase and file links in
 // Chromium, Firefox and WebKit against the self-host server started by run.mjs. Readers are tested with fixture links made
-// by the real codec (the committed build still writes v1 text), so the create view is only exercised for v1 text.
+// by the real codec; the create view is exercised for text (#2.), passphrase text, files and passphrase files.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { after, before, describe, it } from "node:test";
@@ -29,7 +29,7 @@ function assertKeyGone(page) {
 
 for (const { name, browser } of browsers) {
   describe(name, () => {
-    it("v1 text: create in the UI, reveal in a second context, second open is gone, key leaves the address bar", async () => {
+    it("text: create in the UI, reveal in a second context, second open is gone, key leaves the address bar", async () => {
       const a = await session(browser);
       const b = await session(browser);
       const c = await session(browser);
@@ -41,8 +41,8 @@ for (const { name, browser } of browsers) {
         await page.locator("#create-submit").click();
         await visible(page, "view-created");
         const link = await page.locator("#link").inputValue();
-        assert.match(link, /^http:\/\/127\.0\.0\.1:\d+\/#[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, "v1 link shape");
-        const [id, key] = link.split("#")[1].split(".");
+        assert.match(link, /^http:\/\/127\.0\.0\.1:\d+\/#2\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, "text created through the UI gives a #2. link");
+        const [, id, key] = link.split("#")[1].split(".");
         a.watch(key);
         b.watch(key);
 
@@ -266,6 +266,180 @@ for (const { name, browser } of browsers) {
         await t.verify();
       } finally {
         await t.close();
+      }
+    });
+
+    // ---- Create through the UI (WRITE_FILES is on in this build) ----
+
+    const chooseFile = async (page, name, bytes, mimeType = "application/octet-stream") => {
+      await page.locator('input[name="mode"][value="file"]').check();
+      await page.locator("#file-input").setInputFiles({ name, mimeType, buffer: Buffer.from(bytes) });
+    };
+
+    it("create a file in the UI: mode switch, 1 hour / 1 day only, #2f. link, a second context downloads identical bytes", async () => {
+      const bytes = bytesOf(70_000, 3);
+      const a = await session(browser);
+      const b = await session(browser);
+      try {
+        const page = await a.context.newPage();
+        await page.goto("/");
+        await visible(page, "view-create");
+        assert.equal(await page.locator("#file-field").isHidden(), true, "text mode first");
+        await chooseFile(page, "report ü.bin", bytes);
+        assert.equal(await page.locator("#text-field").isHidden(), true);
+        await visible(page, "file-field");
+        assert.match((await page.locator("#file-summary").textContent()) ?? "", /report ü\.bin/);
+        const offered = await page.locator("#ttl option").evaluateAll((os) => os.filter((o) => !o.hidden && !o.disabled).map((o) => o.value));
+        assert.deepEqual(offered, ["3600", "86400"], "files: 1 hour and 1 day only");
+        await page.locator("#create-submit").click();
+        await visible(page, "view-created");
+        const link = await page.locator("#link").inputValue();
+        assert.match(link, /^http:\/\/127\.0\.0\.1:\d+\/#2f\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, "file link prefix 2f");
+        const [, id, key] = link.split("#")[1].split(".");
+        a.watch(key);
+        b.watch(key);
+        assert.equal(await page.locator("#created-file").isVisible(), true);
+        assert.equal(await page.locator("#created-file-name").textContent(), "report ü.bin");
+
+        const other = await b.context.newPage();
+        await other.goto(link);
+        await visible(other, "view-open");
+        assert.equal(await statusOf(id), 200);
+        await reveal(other);
+        await visible(other, "view-file");
+        const [download] = await Promise.all([other.waitForEvent("download"), other.locator("#file-save").click()]);
+        assert.deepEqual(new Uint8Array(readFileSync(await download.path())), bytes, "downloaded bytes equal the uploaded file");
+        assert.equal(await statusOf(id), 404);
+        await a.verify();
+        await b.verify();
+      } finally {
+        await Promise.all([a.close(), b.close()]);
+      }
+    });
+
+    it("create a passphrase-protected file in the UI: #2fp. link, right passphrase downloads, none of it is sent", async () => {
+      const bytes = bytesOf(2048, 11);
+      const FILE_PASS = "file pass phrase 123";
+      const a = await session(browser, { secrets: [FILE_PASS] });
+      const b = await session(browser, { secrets: [FILE_PASS] });
+      try {
+        const page = await a.context.newPage();
+        await page.goto("/");
+        await visible(page, "view-create");
+        await chooseFile(page, "locked.dat", bytes);
+        await page.locator("#pp-use").check();
+        await page.locator("#pp-first").fill(FILE_PASS);
+        await page.locator("#pp-second").fill(FILE_PASS);
+        await page.locator("#create-submit").click();
+        await visible(page, "view-created");
+        const link = await page.locator("#link").inputValue();
+        assert.match(link, /#2fp\./, "protected file link prefix 2fp");
+        assert.equal(await page.locator("#created-pp-hint").isVisible(), true);
+        const key = link.split(".").pop();
+        a.watch(key);
+        b.watch(key);
+        assert.equal(await page.locator("#pp-first").inputValue(), "", "passphrase fields cleared after create");
+
+        const other = await b.context.newPage();
+        await other.goto(link);
+        await visible(other, "view-open");
+        assert.equal(await other.locator("#open-passphrase").isVisible(), true);
+        await other.locator("#open-pass").fill(FILE_PASS);
+        await reveal(other);
+        await visible(other, "view-file");
+        const [download] = await Promise.all([other.waitForEvent("download"), other.locator("#file-save").click()]);
+        assert.deepEqual(new Uint8Array(readFileSync(await download.path())), bytes);
+        await a.verify();
+        await b.verify();
+      } finally {
+        await Promise.all([a.close(), b.close()]);
+      }
+    });
+
+    it("cancel during upload: nothing is stored, the form stays usable", async () => {
+      const a = await session(browser);
+      try {
+        const page = await a.context.newPage();
+        let held;
+        let reached;
+        const arrived = new Promise((resolve) => (reached = resolve));
+        // The create request is held in the browser (never forwarded) until the test cancelled, so the timing is deterministic.
+        await page.route("**/api/secrets?*", async (route) => {
+          if (route.request().method() !== "POST") return route.continue();
+          held = route;
+          reached();
+        });
+        await page.goto("/");
+        await visible(page, "view-create");
+        await chooseFile(page, "slow.bin", bytesOf(40_000, 5));
+        await page.locator("#create-submit").click();
+        await arrived;
+        await visible(page, "create-cancel");
+        assert.match((await page.locator("#create-submit").textContent()) ?? "", /Uploading/);
+        await page.locator("#create-cancel").click();
+        await page.locator("#create-error").filter({ hasText: "Upload cancelled. Nothing was shared." }).waitFor();
+        assert.equal(await page.locator("#view-created").isHidden(), true);
+        assert.equal(await page.locator("#create-cancel").isHidden(), true);
+        assert.equal(await page.locator("#create-submit").isEnabled(), true);
+        await held.abort();
+        assert.equal(a.requests.filter((r) => r.method === "POST" && r.url.includes("/api/secrets")).length, 1, "one create attempt, never answered");
+        await a.verify({ allowConsole: [/Failed to load resource|aborted|cancel/i] });
+      } finally {
+        await a.close();
+      }
+    });
+
+    it("a file of 128 KiB + 1 is refused in the browser before any upload; exactly 128 KiB is accepted", async () => {
+      const a = await session(browser);
+      try {
+        const page = await a.context.newPage();
+        await page.goto("/");
+        await visible(page, "view-create");
+        await chooseFile(page, "toobig.bin", bytesOf(128 * 1024 + 1));
+        await page.locator("#create-error").filter({ hasText: "Files can be at most 128.0 KB." }).waitFor();
+        await page.locator("#create-submit").click();
+        assert.match((await page.locator("#create-error").textContent()) ?? "", /Files can be at most 128\.0 KB\./);
+        assert.equal(await page.locator("#view-created").isHidden(), true);
+        assert.deepEqual(a.requests.filter((r) => r.method === "POST"), [], "no upload was attempted");
+        await chooseFile(page, "max.bin", bytesOf(128 * 1024));
+        assert.equal(await page.locator("#create-error").isHidden(), true);
+        await page.locator("#create-submit").click();
+        await visible(page, "view-created");
+        assert.match(await page.locator("#link").inputValue(), /#2f\./);
+        await a.verify();
+      } finally {
+        await a.close();
+      }
+    });
+
+    it("text created in the UI with a passphrase gives #2p. and reveals with it", async () => {
+      const a = await session(browser, { secrets: ["ui text pass 987"] });
+      const b = await session(browser, { secrets: ["ui text pass 987"] });
+      try {
+        const page = await a.context.newPage();
+        await page.goto("/");
+        await visible(page, "view-create");
+        await page.locator("#secret").fill("protected by UI");
+        await page.locator("#pp-use").check();
+        await page.locator("#pp-first").fill("ui text pass 987");
+        await page.locator("#pp-second").fill("ui text pass 987");
+        await page.locator("#create-submit").click();
+        await visible(page, "view-created");
+        const link = await page.locator("#link").inputValue();
+        assert.match(link, /#2p\./);
+        a.watch(link.split(".").pop());
+        b.watch(link.split(".").pop());
+        const other = await b.context.newPage();
+        await other.goto(link);
+        await visible(other, "view-open");
+        await other.locator("#open-pass").fill("ui text pass 987");
+        await reveal(other);
+        await visible(other, "view-revealed");
+        assert.equal(await other.locator("#revealed").inputValue(), "protected by UI");
+        await a.verify();
+        await b.verify();
+      } finally {
+        await Promise.all([a.close(), b.close()]);
       }
     });
 
