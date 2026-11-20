@@ -28,3 +28,6 @@ export function longTtlCap(maxStored: number): number {
 export const ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 /** Keys are 32 random bytes in base64url. */
 export const KEY_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+
+/** Length of the padded block (4-byte length prefix, secret, zero bytes) in a v2 blob; see docs/plans/blob-v2.md. */
+export const V2_BUCKETS = [256, 1024, 4096, MAX_SECRET_BYTES + 4] as const;
