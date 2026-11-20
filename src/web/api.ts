@@ -1,4 +1,4 @@
-import { MAX_TTL_SECONDS, MIN_TTL_SECONDS } from "../shared/limits";
+import { MAX_TTL_SECONDS, MIN_TTL_SECONDS, parseLimits, type ServerLimits } from "../shared/limits";
 
 export class ApiError extends Error {
   constructor(
@@ -93,4 +93,40 @@ export async function revealSecret(id: string, options: RevealOptions = {}): Pro
     chunk.fill(0);
   }
   return out;
+}
+
+/** The reply of GET /api/limits is a few dozen bytes; anything above this is not one. */
+const LIMITS_MAX_BYTES = 1024;
+
+/**
+ * Asks the server for its file and text limits. Returns null for anything that is not a valid answer (an older server
+ * without the endpoint, an error, HTML, a reply above 1 KiB, a network failure), so the caller falls back to HOSTED_LIMITS.
+ */
+export async function fetchLimits(signal?: AbortSignal): Promise<ServerLimits | null> {
+  try {
+    const response = await fetch("/api/limits", signal ? { signal } : {});
+    if (!response.ok || !response.body) return null;
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > LIMITS_MAX_BYTES) {
+        await reader.cancel().catch(() => {});
+        return null;
+      }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(total);
+    let at = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, at);
+      at += chunk.byteLength;
+    }
+    return parseLimits(JSON.parse(new TextDecoder().decode(bytes)));
+  } catch {
+    return null;
+  }
 }

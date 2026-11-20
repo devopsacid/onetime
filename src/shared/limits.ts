@@ -78,3 +78,28 @@ export const V2_BUCKETS = [256, 1024, 4096, MAX_SECRET_BYTES + 4] as const;
 
 /** Link format prefix of v2 links: "2", "2p" (passphrase), "2f" (file) or "2fp" (file with passphrase). */
 export const FORMAT_PATTERN = /^2f?p?$/;
+
+/** What GET /api/limits answers: the file size and file lifetime this server accepts, and the text size. */
+export interface ServerLimits {
+  /** Largest file in bytes; 0 = files are off on this server. */
+  maxFileBytes: number;
+  /** Longest life of a blob above MAX_TEXT_BLOB_BYTES (a file), in seconds. */
+  maxFileTtl: number;
+  maxTextBytes: number;
+}
+
+/** The hosted service's limits: what a client assumes when a server has no /api/limits (an older server). */
+export const HOSTED_LIMITS: ServerLimits = { maxFileBytes: MAX_FILE_BYTES, maxFileTtl: FILE_MAX_TTL_SECONDS, maxTextBytes: MAX_SECRET_BYTES };
+
+const intIn = (value: unknown, min: number, max: number): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= min && value <= max;
+
+/** Validates a /api/limits reply from an untrusted server; null when anything is missing or out of range. Extra fields are ignored. */
+export function parseLimits(value: unknown): ServerLimits | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const { maxFileBytes, maxFileTtl, maxTextBytes } = value as Record<string, unknown>;
+  if (!intIn(maxFileBytes, 0, FORMAT_MAX_FILE_BYTES)) return null;
+  if (!intIn(maxFileTtl, MIN_TTL_SECONDS, MAX_TTL_SECONDS)) return null;
+  if (!intIn(maxTextBytes, 1, MAX_SECRET_BYTES)) return null;
+  return { maxFileBytes, maxFileTtl, maxTextBytes };
+}
