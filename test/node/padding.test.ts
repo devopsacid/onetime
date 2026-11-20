@@ -1,10 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { MAX_SECRET_BYTES, V2_BUCKETS } from "../../src/shared/limits";
+import { BLOB_OVERHEAD_BYTES, MAX_BLOB_BYTES, MAX_SECRET_BYTES, V2_BUCKETS } from "../../src/shared/limits";
 import { pad, unpad } from "../../src/web/padding";
 
 describe("buckets", () => {
   it("are 256 B, 1 KiB, 4 KiB and the largest secret plus the length prefix", () => {
     expect([...V2_BUCKETS]).toEqual([256, 1024, 4096, MAX_SECRET_BYTES + 4]);
+  });
+});
+
+describe("MAX_BLOB_BYTES", () => {
+  it("is the largest v2 blob, 14 header bytes + the biggest bucket + 16 tag bytes", () => {
+    expect(MAX_BLOB_BYTES).toBe(14 + V2_BUCKETS[V2_BUCKETS.length - 1]! + 16);
+    expect(MAX_BLOB_BYTES).toBe(16_418);
+  });
+  it("also covers the largest v1 blob (secret + 28)", () => {
+    expect(MAX_BLOB_BYTES).toBeGreaterThanOrEqual(MAX_SECRET_BYTES + BLOB_OVERHEAD_BYTES);
+    expect(BLOB_OVERHEAD_BYTES).toBe(28);
   });
 });
 
