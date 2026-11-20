@@ -112,7 +112,7 @@ describe("file blobs against an independent node:crypto implementation", () => {
     }
   });
 
-  it("uses the eight blob sizes, with hard-coded boundaries (meta: 5-byte name, no type)", async () => {
+  it("uses the blob sizes up to the hosted limit, with hard-coded boundaries (meta: 5-byte name, no type)", async () => {
     // payload = 1 + 5 + 1 + 0 + content = content + 7; the block needs payload + 4.
     const cases: Array<[number, number]> = [
       [1, 1054],
@@ -124,7 +124,6 @@ describe("file blobs against an independent node:crypto implementation", () => {
       [16_378, 65_954],
       [65_913, 65_954],
       [65_914, 131_490],
-      [131_449, 131_490],
       [131_072, 131_490], // the hosted writer limit (128 KiB)
     ];
     for (const [size, blobSize] of cases) {

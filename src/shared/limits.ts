@@ -9,8 +9,15 @@ export const BLOB_OVERHEAD_BYTES = 12 + 16;
 /** Largest text blob: the largest v2 text blob (2 + 12 + padded block + 16); also covers v1 (16,412). Blobs above this are "large". */
 export const MAX_TEXT_BLOB_BYTES = MAX_SECRET_BYTES + 4 + 14 + 16;
 
-/** Hosted writer limit for files (bytes of content). The spike (docs/plans/file-transfer.md A0) may lower it with this one line; the format allows up to FILE_BUCKETS' last block. */
-export const MAX_FILE_BYTES = 1024 * 1024;
+/**
+ * Largest file (bytes of content) any writer sends and any router stores: 128 KiB. The A0 spike (docs/plans/file-transfer.md,
+ * Deviations) showed that blobs of 256 KiB and more can kill a reveal on the free plan after the row is deleted. Self-hosted
+ * servers use the same limit: the web page and the CLI refuse more, so a bigger body limit would only be dead weight.
+ */
+export const MAX_FILE_BYTES = 128 * 1024;
+
+/** Largest file the blob format can hold (FILE_BUCKETS' last block). Readers accept up to this, so a link is never unopenable. */
+export const FORMAT_MAX_FILE_BYTES = 1024 * 1024;
 
 /** Largest file meta in the payload: 4-byte length prefix + 1 + 255 (name) + 1 + 127 (type). */
 export const FILE_META_MAX = 4 + 1 + 255 + 1 + 127;
@@ -18,8 +25,11 @@ export const FILE_META_MAX = 4 + 1 + 255 + 1 + 127;
 /** Padded block sizes of file blobs. The first three equal v2 text buckets; above 16 KiB they double, meta on top. */
 export const FILE_BUCKETS = [1024, 4096, MAX_SECRET_BYTES + 4, ...[64, 128, 256, 512, 1024].map((k) => k * 1024 + FILE_META_MAX)] as const;
 
-/** Largest blob the router reads: the largest file blob the format allows (hosted limits may be lower, see fileBlobBytes). */
-export const MAX_BLOB_BYTES = FILE_BUCKETS[FILE_BUCKETS.length - 1]! + 14 + 16;
+/** Largest blob the format allows (1,048,994): what readers accept from a reveal. */
+export const FORMAT_MAX_BLOB_BYTES = FILE_BUCKETS[FILE_BUCKETS.length - 1]! + 14 + 16;
+
+/** Largest blob a router reads and stores (131,490): the file blob of MAX_FILE_BYTES; equals fileBlobBytes(MAX_FILE_BYTES). */
+export const MAX_BLOB_BYTES = FILE_BUCKETS[4]! + 14 + 16;
 
 /** Smallest blob size whose block holds a file of `maxFile` bytes with maximal meta. Throws RangeError outside 1..format maximum. */
 export function fileBlobBytes(maxFile: number): number {

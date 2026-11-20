@@ -163,20 +163,20 @@ describe("pad and unpad with file buckets", () => {
       const padded = pad(payload, FILE_BUCKETS);
       expect(padded.length).toBe(block);
       // Buffer.equals: vitest's toEqual on a megabyte of typed array is very slow.
-      expect(Buffer.from(unpad(padded, FILE_BUCKETS, MAX_FILE_BYTES + META)).equals(payload)).toBe(true);
+      expect(Buffer.from(unpad(padded, FILE_BUCKETS, FORMAT_MAX_FILE_BYTES + META)).equals(payload)).toBe(true);
     });
   }
 
   it("refuses a payload above the largest file block", () => {
-    expect(() => pad(new Uint8Array(MAX_FILE_BYTES + META + 1), FILE_BUCKETS)).toThrow();
+    expect(() => pad(new Uint8Array(FORMAT_MAX_FILE_BYTES + META + 1), FILE_BUCKETS)).toThrow();
   });
 
   it("unpad refuses nonzero padding, a block size that is not a file bucket and a length above maxPayload", () => {
     const padded = pad(new Uint8Array(10).fill(1), FILE_BUCKETS);
     const dirty = padded.slice();
     dirty[dirty.length - 1] = 1;
-    expect(() => unpad(dirty, FILE_BUCKETS, MAX_FILE_BYTES + META)).toThrow();
-    expect(() => unpad(new Uint8Array(256), FILE_BUCKETS, MAX_FILE_BYTES + META)).toThrow();
+    expect(() => unpad(dirty, FILE_BUCKETS, FORMAT_MAX_FILE_BYTES + META)).toThrow();
+    expect(() => unpad(new Uint8Array(256), FILE_BUCKETS, FORMAT_MAX_FILE_BYTES + META)).toThrow();
     expect(() => unpad(padded, FILE_BUCKETS, 5)).toThrow();
   });
 

@@ -1,4 +1,4 @@
-import { FILE_BUCKETS, FILE_META_MAX, KEY_PATTERN, MAX_FILE_BYTES, MAX_SECRET_BYTES, V2_BUCKETS } from "../shared/limits";
+import { FILE_BUCKETS, FILE_META_MAX, FORMAT_MAX_FILE_BYTES, KEY_PATTERN, MAX_FILE_BYTES, MAX_SECRET_BYTES, V2_BUCKETS } from "../shared/limits";
 import { fromBase64Url, toBase64Url } from "./base64url";
 import { decodeFilePayload, encodeFilePayload, type FileParts } from "./file-payload";
 import { pad, unpad } from "./padding";
@@ -39,8 +39,8 @@ const V2_HEADER_BYTES = 2;
 const V2_FIXED_BYTES = V2_HEADER_BYTES + IV_BYTES + TAG_BYTES;
 const V2_BLOB_SIZES: readonly number[] = V2_BUCKETS.map((bucket) => bucket + V2_FIXED_BYTES);
 const FILE_BLOB_SIZES: readonly number[] = FILE_BUCKETS.map((bucket) => bucket + V2_FIXED_BYTES);
-/** Largest payload a file block may declare: the largest file plus the largest meta without its 4-byte prefix. */
-const MAX_FILE_PAYLOAD = MAX_FILE_BYTES + FILE_META_MAX - 4;
+/** Largest payload a file block may declare: the largest file of the format (readers are lenient) plus the largest meta without its 4-byte prefix. */
+const MAX_FILE_PAYLOAD = FORMAT_MAX_FILE_BYTES + FILE_META_MAX - 4;
 export const PBKDF2_ITERATIONS = 600_000;
 
 const ascii = (text: string): Uint8Array<ArrayBuffer> => new Uint8Array(new TextEncoder().encode(text));

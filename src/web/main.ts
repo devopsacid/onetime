@@ -1,4 +1,4 @@
-import { MAX_BLOB_BYTES, MAX_FILE_BYTES, MAX_SECRET_BYTES } from "../shared/limits";
+import { FORMAT_MAX_BLOB_BYTES, MAX_FILE_BYTES, MAX_SECRET_BYTES } from "../shared/limits";
 import { lowerTtlSelection } from "./ttl";
 import { ApiError, createSecret, revealSecret, secretExists } from "./api";
 import { SecretTooLargeError, WRITE_FILES, WRITE_FORMAT, deriveKey, encryptFile, encryptSecret, openPayload } from "./crypto";
@@ -380,7 +380,7 @@ el<HTMLFormElement>("open-form").addEventListener("submit", async (event) => {
     deriveKey,
     revealSecret: (id) =>
       revealSecret(id, {
-        maxBytes: MAX_BLOB_BYTES,
+        maxBytes: FORMAT_MAX_BLOB_BYTES,
         onProgress: (loaded, total) => {
           if (!routeGuard.isCurrent(ticket)) return;
           const percent = progressPercent(loaded, total);

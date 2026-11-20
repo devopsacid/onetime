@@ -14,7 +14,7 @@ import {
   DEFAULT_TTL_SECONDS,
   FILE_MAX_TTL_SECONDS,
   ID_PATTERN,
-  MAX_BLOB_BYTES,
+  FORMAT_MAX_BLOB_BYTES,
   MAX_FILE_BYTES,
   MAX_SECRET_BYTES,
   MAX_TTL_SECONDS,
@@ -960,7 +960,7 @@ async function execute(command: Command, io: Io): Promise<number> {
       const response = await request(io, `${parsed.origin}/api/secrets/${parsed.id}/reveal`, { method: "POST" });
       if (response.status === 404) throw new ExitError(EXIT.gone, GONE_MESSAGE);
       if (!response.ok) throw await serverError(response);
-      const blob = await readBounded(response, MAX_BLOB_BYTES);
+      const blob = await readBounded(response, FORMAT_MAX_BLOB_BYTES);
       let opened;
       try {
         opened = await codec.openPayload(blob as Uint8Array<ArrayBuffer>, aesKey, parsed);

@@ -137,7 +137,7 @@ describe("send --file", () => {
     expect(empty.err).toContain("The file is empty.");
     const big = makeIo(opts);
     expect(await run(["send", "--file", "big"], big)).toBe(EXIT.usage);
-    expect(big.err).toContain("The file is too large (limit 1.0 MB).");
+    expect(big.err).toContain("The file is too large (limit 128.0 KB).");
     expect(rec.methods).toEqual([]);
   });
 
@@ -145,7 +145,7 @@ describe("send --file", () => {
     const { opts } = setup({ writeFiles: true, files: { max: new Uint8Array(MAX_FILE_BYTES).fill(1) } });
     const io = makeIo(opts);
     expect(await run(["send", "--file", "max"], io), io.err).toBe(EXIT.ok);
-    expect(io.err).toContain("(1.0 MB)");
+    expect(io.err).toContain("(128.0 KB)");
   });
 
   it("refuses a file that cannot be read", async () => {

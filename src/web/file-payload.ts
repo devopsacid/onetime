@@ -1,4 +1,4 @@
-import { MAX_FILE_BYTES } from "../shared/limits";
+import { FORMAT_MAX_FILE_BYTES, MAX_FILE_BYTES } from "../shared/limits";
 import { cleanMime, safeFileName } from "./filename";
 
 /** What the sender gives and the receiver gets. The reader's name and type are already sanitised. */
@@ -35,7 +35,7 @@ export function decodeFilePayload(payload: Uint8Array): FileParts {
   if (typeLength > 127) throw bad();
   const contentStart = 2 + nameLength + typeLength;
   if (contentStart >= payload.length) throw bad(); // overrun, or empty content
-  if (payload.length - contentStart > MAX_FILE_BYTES) throw bad();
+  if (payload.length - contentStart > FORMAT_MAX_FILE_BYTES) throw bad();
   let name: string;
   try {
     name = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(payload.subarray(1, 1 + nameLength));
