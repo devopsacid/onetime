@@ -1,13 +1,13 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import type { SecretStore } from "../src/worker/store";
+import { CounterMissingError, type SecretStore } from "../src/worker/store";
 import { applyMigrations, type Migration } from "./migrate";
 
 export type { Migration };
 
 export interface ManagedStore extends SecretStore {
-  /** SELECT 1, for /healthz. */
+  /** For /healthz: the database answers and the stats counter row exists (throws CounterMissingError otherwise). */
   ping(): Promise<void>;
   /** Checkpoint (TRUNCATE) and close; idempotent. */
   close(): Promise<void>;
@@ -86,13 +86,16 @@ export function openSqliteStore(path: string, migrations: Migration[]): SqliteSt
   const take = lazy("DELETE FROM secrets WHERE id = ? AND expires_at > ? RETURNING blob");
   const exists = lazy("SELECT 1 AS found FROM secrets WHERE id = ? AND expires_at > ?");
   const purge = lazy("DELETE FROM secrets WHERE expires_at <= ?");
-  const ping = lazy("SELECT 1");
+  const counter = lazy("SELECT 1 AS found FROM stats WHERE id = 1");
   let closed = false;
 
   return {
     db,
     async insertIfBelowCap(id, blob, expiresAt, maxStored) {
-      return Number(insert().run(id, blob, expiresAt, maxStored).changes) !== 0;
+      if (Number(insert().run(id, blob, expiresAt, maxStored).changes) !== 0) return true;
+      // Refused: full, or the counter row is missing (the subquery is then NULL). One cheap read tells them apart.
+      if (counter().get() === undefined) throw new CounterMissingError();
+      return false;
     },
     async take(id, now) {
       const row = take().get(id, now) as { blob: unknown } | undefined;
@@ -108,7 +111,8 @@ export function openSqliteStore(path: string, migrations: Migration[]): SqliteSt
       purge().run(now);
     },
     async ping() {
-      ping().get();
+      // The counter row is part of health: without it every create would fail.
+      if (counter().get() === undefined) throw new CounterMissingError();
     },
     async close() {
       if (closed) return;

@@ -1,4 +1,4 @@
-import type { SecretStore } from "./store";
+import { CounterMissingError, type SecretStore } from "./store";
 
 /** D1 hands BLOB columns to JavaScript as an array of numbers. */
 function toBytes(value: unknown): Uint8Array<ArrayBuffer> {
@@ -17,7 +17,10 @@ export function d1Store(db: D1Database): SecretStore {
         )
         .bind(id, blob.buffer, expiresAt, maxStored)
         .run();
-      return result.meta.changes !== 0;
+      if (result.meta.changes !== 0) return true;
+      // Refused: full, or the counter row is missing (the subquery is then NULL). One cheap read tells them apart.
+      if ((await db.prepare("SELECT 1 AS found FROM stats WHERE id = 1").first()) === null) throw new CounterMissingError();
+      return false;
     },
     async take(id, now) {
       // One statement reads and deletes, so only one caller can get the row.

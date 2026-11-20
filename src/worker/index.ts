@@ -6,7 +6,7 @@ import {
   MAX_TTL_SECONDS,
   MIN_TTL_SECONDS,
 } from "../shared/limits";
-import type { SecretStore, WaitUntil } from "./store";
+import { CounterMissingError, type SecretStore, type WaitUntil } from "./store";
 
 /** Test hooks: a fixed clock (ms since epoch) and a smaller cap. The Node server also sets maxStored. */
 export interface Options {
@@ -90,7 +90,14 @@ async function createSecret(request: Request, store: SecretStore, url: URL, now:
   await store.purgeExpired(now);
 
   const id = newId();
-  const stored = await store.insertIfBelowCap(id, blob, now + ttl * 1000, maxStored);
+  let stored: boolean;
+  try {
+    stored = await store.insertIfBelowCap(id, blob, now + ttl * 1000, maxStored);
+  } catch (e) {
+    if (!(e instanceof CounterMissingError)) throw e;
+    console.error(e.name); // the name only: nothing about the request
+    return error(500, "Internal error");
+  }
   if (!stored) return error(503, "The service is full right now, try again later", { "Retry-After": "300" });
   return json(201, { id });
 }
