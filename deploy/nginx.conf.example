@@ -33,10 +33,17 @@ server {
     error_log /var/log/nginx/onetime-error.log crit;
     server_tokens off;
 
-    # The largest body is a 128 KiB file: its blob is 131,490 bytes. 140k leaves headroom; never go below 131,490 bytes.
-    # The app refuses anything above 131,490 bytes with 413 itself and gives an upload 60 seconds, so the proxy must not
-    # be stricter than that: 30 s between two reads of the body is enough for 128 KiB on a slow line.
-    client_max_body_size 140k;
+    # Body limit and proxy timeouts follow ONETIME_MAX_FILE_BYTES. The largest body is the blob of the largest file
+    # (262,562 bytes for the default 262144); take the blob plus 3 % rounded up to the next 100 KiB, and as proxy
+    # timeout the app's upload timeout plus 10 s, rounded up to 10 s (the values the Ansible, Helm and Terraform code
+    # derives; docs/self-hosting.md has the blob table):
+    #   ONETIME_MAX_FILE_BYTES 262144 (default): client_max_body_size 300k;  proxy_read/send_timeout 80s
+    #   1048576:                                 client_max_body_size 1100k; proxy_read/send_timeout 110s
+    #   5242880 (ceiling):                       client_max_body_size 5300k; proxy_read/send_timeout 230s
+    #   0 (files off):                           client_max_body_size 100k;  proxy_read/send_timeout 70s
+    # Never below the largest blob, or the largest allowed file is refused. 30 s between two reads of the body is enough
+    # on a slow line at any size; the app itself allows 68 s per upload at the default and 220 s at 5 MiB.
+    client_max_body_size 300k;
     client_header_timeout 10s;
     client_body_timeout 30s;
     send_timeout 15s;
@@ -54,8 +61,9 @@ server {
         # The app never reads client IPs or forwarding headers, so none are sent.
         proxy_set_header X-Forwarded-For "";
         proxy_connect_timeout 3s;
-        proxy_read_timeout 15s;
-        proxy_send_timeout 15s;
+        # See the body limit above: 80s for the default file limit, 230s at 5 MiB.
+        proxy_read_timeout 80s;
+        proxy_send_timeout 80s;
         # Responses from the app carry their own Cache-Control and security headers; do not cache or rewrite them.
         proxy_buffering on;
         proxy_cache off;

@@ -20,11 +20,16 @@ onetime.example.com {
 	# If Caddy runs in a container on a shared Docker network, use the service name instead: onetime:8080
 	reverse_proxy 127.0.0.1:8080
 
-	# The largest body is a 128 KiB file: its blob is 131,490 bytes. 140KiB (143,360) leaves headroom; never go below
-	# 131,490 bytes. Caddy reads and writes without a short default timeout, and the app gives an upload 60 seconds, so no
-	# timeout is needed here for 128 KiB. (Do not write 140KB: Caddy reads KB as 1,000 bytes, KiB as 1,024.)
+	# Body limit: follow ONETIME_MAX_FILE_BYTES. The largest body is the blob of the largest file (262,562 bytes for the
+	# default 262144); take the blob plus 3 % rounded up to the next 100 KiB, the value the Ansible, Helm and Terraform
+	# code derives (docs/self-hosting.md has the blob table):
+	#   ONETIME_MAX_FILE_BYTES 262144 (default) -> 300KiB    1048576 -> 1100KiB    5242880 (ceiling) -> 5300KiB
+	#   0 (files off) -> 100KiB
+	# Never below the largest blob, or the largest allowed file is refused. Caddy has no read or upstream timeout by
+	# default, so the app's own upload timeout applies (68 s at the default, 220 s at 5 MiB). (Write KiB, not KB:
+	# Caddy reads KB as 1,000 bytes.)
 	request_body {
-		max_size 140KiB
+		max_size 300KiB
 	}
 
 	encode zstd gzip

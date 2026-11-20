@@ -20,6 +20,10 @@ Environment=PORT=8080
 Environment=ONETIME_DB=/var/lib/onetime/onetime.db
 Environment=NODE_ENV=production
 # Optional: Environment=ONETIME_MAX_STORED=20000
+# Largest file in bytes (0 = files off, at most 5242880) and longest file life in seconds (60 to 604800). The proxy body
+# limit must match: 300 KiB for 262144, 5300 KiB at 5242880 (deploy/Caddyfile.example, deploy/nginx.conf.example).
+Environment=ONETIME_MAX_FILE_BYTES=262144
+Environment=ONETIME_MAX_FILE_TTL=3600
 
 # Stop: SIGTERM, the server finishes requests in flight for up to 8 s, then closes the database.
 KillSignal=SIGTERM

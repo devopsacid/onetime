@@ -13,6 +13,13 @@ services:
         ONETIME_OPERATOR_CONTACT: ${ONETIME_OPERATOR_CONTACT:-}
         ONETIME_INDEXABLE: ${ONETIME_INDEXABLE:-}
     restart: unless-stopped
+    environment:
+      # Largest file in bytes (0 = files off, at most 5242880) and longest file life in seconds (60 to 604800), read at
+      # start, so "docker compose up -d" applies a change without a rebuild. The proxy body limit must match the file
+      # limit: 300 KiB for the default, 5300 KiB at 5 MiB (deploy/Caddyfile.example, deploy/nginx.conf.example).
+      # Above 1 MiB each upload takes about 16 MB of memory at 5 MiB; consider ONETIME_MAX_UPLOADS (docs/self-hosting.md).
+      ONETIME_MAX_FILE_BYTES: ${ONETIME_MAX_FILE_BYTES:-262144}
+      ONETIME_MAX_FILE_TTL: ${ONETIME_MAX_FILE_TTL:-3600}
     read_only: true
     cap_drop: [ALL]
     security_opt:
