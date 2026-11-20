@@ -3,6 +3,10 @@
 // See docs/plans/self-host.md section 3.5.
 
 export const OWNER_ORIGIN = "https://onetimepass.pages.dev";
+export const INFO_ORIGIN = "https://onetimepass-info.pages.dev";
+/** CSP of the info site (the only one that may load Google Analytics). The app origin never carries it. */
+export const INFO_CSP =
+  "default-src 'none'; script-src 'self' https://www.googletagmanager.com; style-src 'self'; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; img-src 'self' https://*.google-analytics.com https://*.googletagmanager.com; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 export const GENERIC_OPERATOR_NAME = "the operator of this instance";
 export const GENERIC_OPERATOR_CONTACT = "not published on this site";
 
@@ -18,10 +22,11 @@ const escapeHtml = (text) =>
 /**
  * Keeps one profile's text of an HTML source. Marker lines are removed with their newline. Throws on nested,
  * unclosed or stray markers, on a marker that shares its line with other text, and on `<!--` or `-->` inside a
- * self-host block. `profile` is "onetimepass" or "selfhost".
+ * self-host block. `profile` is "onetimepass", "info" (both keep the `site:onetimepass` blocks) or "selfhost".
  */
 export function applyBlocks(html, profile) {
-  if (profile !== "onetimepass" && profile !== "selfhost") throw new Error(`unknown profile ${profile}`);
+  if (profile !== "onetimepass" && profile !== "info" && profile !== "selfhost") throw new Error(`unknown profile ${profile}`);
+  const pages = profile !== "selfhost";
   const lines = html.match(/[^\n]*\n|[^\n]+$/g) ?? [];
   const out = [];
   let state = null; // null | "owner" | "self"
@@ -46,7 +51,7 @@ export function applyBlocks(html, profile) {
       if (line.includes("<!--") || line.includes("-->")) throw new Error(`comment syntax inside a self-host block at ${at}`);
       if (profile === "selfhost") out.push(line);
     } else if (state === "owner") {
-      if (profile === "onetimepass") out.push(line);
+      if (pages) out.push(line);
     } else {
       out.push(line);
     }
@@ -103,12 +108,37 @@ export function parseOrigin(raw) {
   throw new Error("ONETIME_ORIGIN must be https://<host> (http is allowed only for http://localhost:<port>)");
 }
 
+const APP_PATH = /^\/(?:command-line)?$|^\/cli(?:\/|$)/;
+const INFO_PATH = /^\/(?:how-it-works|privacy)$/;
+const ANCHOR_HREF = /(<a\b[^>]*?\bhref\s*=\s*)(["'])(\/(?!\/)[^"']*)\2/gi;
+
+/**
+ * Makes the links between the two Pages sites absolute. Only `<a href>` values that start with one `/` are looked at.
+ * Table: `/`, `/command-line`, `/cli/...` live on the app; `/how-it-works` and `/privacy` on the info site. A link
+ * to the other site's page gets that site's origin; fragment and query are kept. `profile`: "onetimepass" or "info".
+ */
+export function rewriteLinks(html, profile) {
+  if (profile !== "onetimepass" && profile !== "info") throw new Error(`rewriteLinks: no link rewriting for profile ${profile}`);
+  return html.replace(ANCHOR_HREF, (whole, head, quote, value) => {
+    const path = value.split(/[?#]/)[0];
+    if (profile === "onetimepass" && INFO_PATH.test(path)) return `${head}${quote}${INFO_ORIGIN}${value}${quote}`;
+    if (profile === "info" && APP_PATH.test(path)) return `${head}${quote}${OWNER_ORIGIN}${value}${quote}`;
+    return whole;
+  });
+}
+
+/** The info site has no web manifest: its `<link rel="manifest">` line goes. */
+export function dropManifestLink(html) {
+  return html.replace(/^[ \t]*<link rel="manifest"[^>\n]*>[ \t]*\r?\n/m, "");
+}
+
 /** The whole HTML transform of one page. `opts`: { profile, origin, operatorName, operatorContact }. */
 export function transformHtml(html, opts) {
   const kept = applyBlocks(html, opts.profile);
-  if (opts.profile === "onetimepass") {
+  if (opts.profile === "onetimepass" || opts.profile === "info") {
     if (/\{\{[A-Z_]*\}\}/.test(kept)) throw new Error("a {{PLACEHOLDER}} is left in the Pages profile (placeholders belong in self-host blocks)");
-    return kept;
+    const linked = rewriteLinks(kept, opts.profile);
+    return opts.profile === "info" ? dropManifestLink(linked) : linked;
   }
   // Placeholders are filled in self-host blocks only, in one pass, so a value is never scanned again.
   const selfOnly = applyBlocks(html, "selfhost");
@@ -122,7 +152,7 @@ export function transformHtml(html, opts) {
     if (key === "OPERATOR_CONTACT") return contact;
     throw new Error(`unknown placeholder {{${key}}}`);
   });
-  return filled.replaceAll(OWNER_ORIGIN, opts.origin);
+  return filled.replaceAll(OWNER_ORIGIN, opts.origin).replaceAll(INFO_ORIGIN, opts.origin);
 }
 
 const GOOGLE = /google|gtag/i;
@@ -164,7 +194,69 @@ export function robotsForSelfhost(text, { origin, indexable }) {
 }
 
 export function sitemapForSelfhost(text, origin) {
-  return text.replaceAll(OWNER_ORIGIN, origin);
+  return text.replaceAll(OWNER_ORIGIN, origin).replaceAll(INFO_ORIGIN, origin);
+}
+
+/** Keeps the `<url>` entries whose `<loc>` starts with `origin + "/"`. */
+export function sitemapForSite(text, origin) {
+  return text.replace(/[ \t]*<url>[\s\S]*?<\/url>[ \t]*\r?\n/g, (entry) => {
+    const loc = /<loc>([^<]*)<\/loc>/.exec(entry);
+    return loc !== null && loc[1].startsWith(`${origin}/`) ? entry : "";
+  });
+}
+
+/** `_redirects` of the app: the old info URLs go to the info site. Never `/` or `/index.html` (a secret's fragment must not follow a redirect). */
+export function redirectsForApp() {
+  const rules = [];
+  for (const page of ["how-it-works", "privacy"]) {
+    for (const source of [`/${page}`, `/${page}.html`, `/${page}/`]) rules.push(`${source} ${INFO_ORIGIN}/${page} 301`);
+  }
+  return `${rules.join("\n")}\n`;
+}
+
+/** `_redirects` of the info site: stray links and old bookmarks reach the app. */
+export function redirectsForInfo() {
+  return [
+    `/ ${OWNER_ORIGIN}/ 301`,
+    `/index.html ${OWNER_ORIGIN}/ 301`,
+    `/command-line ${OWNER_ORIGIN}/command-line 301`,
+    `/command-line.html ${OWNER_ORIGIN}/command-line 301`,
+    `/cli/* ${OWNER_ORIGIN}/cli/:splat 301`,
+    "",
+  ].join("\n");
+}
+
+export function robotsForInfo() {
+  return `User-agent: *\nAllow: /\n\nSitemap: ${INFO_ORIGIN}/sitemap.xml\n`;
+}
+
+const INFO_DROPPED_RULES = new Set(["/", "/index.html", "/command-line", "/command-line.html", "/cli/*"]);
+
+/**
+ * `_headers` of the info site: the `/*` CSP becomes INFO_CSP and the rules for the app-only paths are removed
+ * (with the comment lines directly above them). Other `/*` headers carry over unchanged.
+ */
+export function headersForInfo(text) {
+  const blocks = text.split("\n\n").filter((block) => {
+    const rules = block.split("\n").filter((line) => line.trim() !== "" && !/^\s/.test(line) && !line.trim().startsWith("#"));
+    return !rules.some((rule) => INFO_DROPPED_RULES.has(rule.trim()));
+  });
+  let replaced = 0;
+  const result = blocks
+    .join("\n\n")
+    .split("\n")
+    .map((line, i, all) => {
+      if (!/^\s+Content-Security-Policy:/i.test(line)) return line;
+      // Only the CSP line of the /* rule is replaced.
+      let j = i;
+      while (j >= 0 && (all[j].trim() === "" || /^\s/.test(all[j]) || all[j].trim().startsWith("#"))) j--;
+      if (j < 0 || all[j].trim() !== "/*") return line;
+      replaced++;
+      return `  Content-Security-Policy: ${INFO_CSP}`;
+    })
+    .join("\n");
+  if (replaced !== 1) throw new Error("_headers must have exactly one Content-Security-Policy line in the /* rule");
+  return result.endsWith("\n") ? result : `${result}\n`;
 }
 
 const OWNER_ADVISORY_URL = "https://github.com/devopsacid/onetime/security/advisories/new";
@@ -178,14 +270,14 @@ export function securityTxtExpires(now) {
 }
 
 /** security.txt of the Pages profile. `privacyHtml` is the source of privacy.html: the published address is read from its mailto link. */
-export function securityTxtForPages({ privacyHtml, now }) {
+export function securityTxtForPages({ privacyHtml, now, origin = OWNER_ORIGIN }) {
   const mail = /href="mailto:([^"\s]+)"/.exec(privacyHtml);
   if (mail === null) throw new Error("privacy.html has no mailto: link to use as the security contact");
   return [
     `Contact: ${OWNER_ADVISORY_URL}`,
     `Contact: mailto:${mail[1]}`,
     `Expires: ${securityTxtExpires(now)}`,
-    `Canonical: ${OWNER_ORIGIN}/.well-known/security.txt`,
+    `Canonical: ${origin}/.well-known/security.txt`,
     `Policy: ${OWNER_POLICY_URL}`,
     "Preferred-Languages: en, sk",
     "",
