@@ -82,9 +82,15 @@ jobs:
           out=$(node dist/cli/onetime.mjs gen --print-only)
           echo "length: ${#out}"
           test "${#out}" -ge 16
+      # pwsh instead of cmd: a .cmd called from cmd without `call` never returns, and pwsh
+      # lets the exit codes and the output length be checked explicitly.
       - name: Windows cmd shim
         if: runner.os == 'Windows'
-        shell: cmd
+        shell: pwsh
         run: |
-          dist\cli\onetime.cmd --version
-          dist\cli\onetime.cmd gen --print-only --type uuid
+          $v = & dist\cli\onetime.cmd --version
+          if ($LASTEXITCODE -ne 0) { throw "shim --version exit $LASTEXITCODE" }
+          Write-Output "version: $v"
+          $u = (& dist\cli\onetime.cmd gen --print-only --type uuid | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0) { throw "shim gen exit $LASTEXITCODE" }
+          if ($u.Length -ne 36) { throw "uuid length $($u.Length), expected 36" }

@@ -5,9 +5,9 @@
 Please report privately, not in a public issue.
 
 1. Primary: GitHub private vulnerability reporting. Open the repository's Security tab and choose "Report a vulnerability" (https://github.com/devopsacid/onetime/security/advisories/new).
-2. E-mail: Contact: <to be filled by the main session>
+2. E-mail: michal@maxian.sk (the contact published on the site's privacy page)
 
-Include what you found, how to reproduce it and which commit or deployment you tested. This is a one-person project: expect a first answer within a few days, not hours. Please give a reasonable time to fix before publishing. Do not test with other people's secrets, and do not run load tests against the live site.
+Include what you found, how to reproduce it and which commit or deployment you tested. This is a one-person project: I will answer as soon as I can; there is no guaranteed response time. Please give a reasonable time to fix before publishing. Do not test with other people's secrets, and do not run load tests against the live site.
 
 ## Scope
 
@@ -17,7 +17,7 @@ In scope: this repository and its deployment at https://onetimepass.pages.dev, i
 - a link that works more than once, or a secret that survives its reveal or expiry;
 - GET requests that burn a secret;
 - weaknesses in the browser or CLI crypto, the CSP, or the self-host server (`server/`);
-- the CLI release (`dist/cli/onetime.mjs`) and its provenance attestation.
+- the CLI release (`dist/cli/onetime.mjs`) and its provenance attestation (all three released files are attested).
 
 ## Out of scope
 
