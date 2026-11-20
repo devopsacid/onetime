@@ -12,6 +12,7 @@ locals {
         var.image_tag != "" ? { tag = var.image_tag } : {},
       )
     },
+    { config = { maxFileBytes = var.max_file_bytes, maxFileTtl = var.max_file_ttl } },
     var.host == null ? {} : { ingress = { enabled = true, host = var.host } },
     var.storage_class == null ? {} : { persistence = { storageClass = var.storage_class } },
   )

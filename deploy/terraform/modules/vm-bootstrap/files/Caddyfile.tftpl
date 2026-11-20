@@ -16,7 +16,9 @@ ${domain} {
 %{ endif ~}
 	reverse_proxy 127.0.0.1:8080
 
-	# Refuse bodies over max_body_bytes before they reach the app (a secret is at most 16 KB plus 28 bytes today).
+	# Refuse bodies over the largest blob plus headroom before they reach the app: derived from max_file_bytes
+	# (${max_file_bytes}: largest blob ${blob_bytes} bytes), or max_body_bytes. Caddy sets no read or upstream timeout by
+	# default, so the app's own upload timeout applies.
 	request_body {
 		max_size ${max_body_bytes}
 	}

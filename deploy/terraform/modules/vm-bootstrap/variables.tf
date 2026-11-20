@@ -70,24 +70,44 @@ variable "max_stored" {
 }
 
 variable "env" {
-  description = "More environment variables for the server (for example ONETIME_MAX_CONNECTIONS). HOST, PORT and ONETIME_DB are reserved."
+  description = "More environment variables for the server (for example ONETIME_MAX_CONNECTIONS or ONETIME_MAX_UPLOADS). HOST, PORT, ONETIME_DB, ONETIME_MAX_FILE_BYTES and ONETIME_MAX_FILE_TTL are reserved (the last two are max_file_bytes and max_file_ttl)."
   type        = map(string)
   default     = {}
   validation {
     condition = alltrue([
-      for k, v in var.env : can(regex("^[A-Za-z_][A-Za-z0-9_]*$", k)) && !contains(["HOST", "PORT", "ONETIME_DB"], k) && !can(regex("[\r\n]", v))
+      for k, v in var.env : can(regex("^[A-Za-z_][A-Za-z0-9_]*$", k)) && !contains(["HOST", "PORT", "ONETIME_DB", "ONETIME_MAX_FILE_BYTES", "ONETIME_MAX_FILE_TTL"], k) && !can(regex("[\r\n]", v))
     ])
-    error_message = "env names must be shell-style, must not be HOST, PORT or ONETIME_DB, and values must be one line."
+    error_message = "env names must be shell-style, must not be HOST, PORT, ONETIME_DB, ONETIME_MAX_FILE_BYTES or ONETIME_MAX_FILE_TTL (use max_file_bytes and max_file_ttl), and values must be one line."
+  }
+}
+
+variable "max_file_bytes" {
+  description = "ONETIME_MAX_FILE_BYTES: largest file in bytes, 0..5242880 (5 MiB); 0 turns files off. Caddy's body limit follows from it. Each upload is held about 3 times in memory, up to ONETIME_MAX_UPLOADS (default 16) at once: with files above 1 MiB on a small VM, set ONETIME_MAX_UPLOADS lower in env."
+  type        = number
+  default     = 262144
+  validation {
+    condition     = var.max_file_bytes >= 0 && var.max_file_bytes <= 5242880 && floor(var.max_file_bytes) == var.max_file_bytes
+    error_message = "max_file_bytes must be a whole number from 0 to 5242880 (0 turns files off)."
+  }
+}
+
+variable "max_file_ttl" {
+  description = "ONETIME_MAX_FILE_TTL: longest life of a file in seconds, 60..604800. Default 1 hour, like the hosted service."
+  type        = number
+  default     = 3600
+  validation {
+    condition     = var.max_file_ttl >= 60 && var.max_file_ttl <= 604800 && floor(var.max_file_ttl) == var.max_file_ttl
+    error_message = "max_file_ttl must be a whole number of seconds from 60 to 604800."
   }
 }
 
 variable "max_body_bytes" {
-  description = "Largest request body Caddy accepts, in bytes. A secret is at most 16 KB + 28 bytes today; the app refuses anything larger with 413 by itself."
+  description = "Largest request body Caddy accepts, in bytes. null = derived from max_file_bytes: the largest blob plus 3 %, rounded up to the next 100 KiB (307200 by default, 5427200 at 5 MiB, 102400 with files off). A number overrides it and must be at least the largest blob (262562 for the default; docs/self-hosting.md)."
   type        = number
-  default     = 143360
+  default     = null
   validation {
-    condition     = var.max_body_bytes >= 1024 && floor(var.max_body_bytes) == var.max_body_bytes
-    error_message = "max_body_bytes must be a whole number of at least 1024."
+    condition     = var.max_body_bytes == null ? true : (var.max_body_bytes >= 16418 && floor(var.max_body_bytes) == var.max_body_bytes)
+    error_message = "max_body_bytes must be null (derived from max_file_bytes) or a whole number of at least 16418."
   }
 }
 

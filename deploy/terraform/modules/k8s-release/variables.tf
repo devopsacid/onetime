@@ -63,14 +63,34 @@ variable "storage_class" {
   default     = null
 }
 
+variable "max_file_bytes" {
+  description = "config.maxFileBytes of the chart (ONETIME_MAX_FILE_BYTES): largest file in bytes, 0..5242880; 0 turns files off. The chart derives the ingress body limit and timeouts from it. Wins over base_values and values."
+  type        = number
+  default     = 262144
+  validation {
+    condition     = var.max_file_bytes >= 0 && var.max_file_bytes <= 5242880 && floor(var.max_file_bytes) == var.max_file_bytes
+    error_message = "max_file_bytes must be a whole number from 0 to 5242880 (0 turns files off)."
+  }
+}
+
+variable "max_file_ttl" {
+  description = "config.maxFileTtl of the chart (ONETIME_MAX_FILE_TTL): longest life of a file in seconds, 60..604800. Wins over base_values and values."
+  type        = number
+  default     = 3600
+  validation {
+    condition     = var.max_file_ttl >= 60 && var.max_file_ttl <= 604800 && floor(var.max_file_ttl) == var.max_file_ttl
+    error_message = "max_file_ttl must be a whole number of seconds from 60 to 604800."
+  }
+}
+
 variable "base_values" {
-  description = "YAML documents applied first, e.g. file(\"deploy/helm/examples/values-eks.yaml\"). The image, host and storage class inputs override them."
+  description = "YAML documents applied first, e.g. file(\"deploy/helm/examples/values-eks.yaml\"). The image, host, storage class and file inputs override them."
   type        = list(string)
   default     = []
 }
 
 variable "values" {
-  description = "Values as an object, merged after base_values and before the image/host/storage inputs."
+  description = "Values as an object, merged after base_values and before the image/host/storage/file inputs."
   type        = any
   default     = {}
 }

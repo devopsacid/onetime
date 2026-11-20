@@ -8,8 +8,19 @@ locals {
 
   env_lines = concat(
     var.max_stored == null ? [] : ["ONETIME_MAX_STORED=${var.max_stored}"],
+    ["ONETIME_MAX_FILE_BYTES=${var.max_file_bytes}", "ONETIME_MAX_FILE_TTL=${var.max_file_ttl}"],
     [for k in sort(keys(var.env)) : "${k}=${var.env[k]}"],
   )
+
+  # Largest request body of the app (fileBlobBytes() in src/shared/limits.ts): the file plus 388 bytes of name and type
+  # must fit a padded block, the blob is the block plus 30 bytes, never below a text blob (16,418 bytes; also the limit
+  # with files off). 262144 -> 262562, 5242880 -> 5243298.
+  file_blocks     = [1024, 4096, 16388, 65924, 131460, 262532, 524676, 1048964, 2097540, 4194692, 5243268]
+  file_blob_bytes = var.max_file_bytes == 0 ? 16418 : max(16418, [for b in local.file_blocks : b if b >= var.max_file_bytes + 388][0] + 30)
+  # Caddy request_body max_size: max_body_bytes, or the largest blob plus 3 % rounded up to the next 100 KiB
+  # (307200 by default, 5427200 at 5 MiB, 102400 with files off). Caddy sets no read or upstream timeout by default,
+  # so the app's own upload timeout (60 s plus 1 s per 32 KiB above a text blob, 220 s at 5 MiB) applies.
+  proxy_body_bytes = var.max_body_bytes != null ? var.max_body_bytes : ceil(local.file_blob_bytes * 103 / 10240000) * 102400
 
   data_disk_script = templatefile("${path.module}/files/onetime-data-disk.sh.tftpl", {
     devices      = join(" ", var.data_disk_devices)
@@ -60,7 +71,9 @@ locals {
       content = templatefile("${path.module}/files/Caddyfile.tftpl", {
         domain         = var.domain
         tls_internal   = var.caddy_tls_internal
-        max_body_bytes = var.max_body_bytes
+        max_body_bytes = local.proxy_body_bytes
+        max_file_bytes = var.max_file_bytes
+        blob_bytes     = local.file_blob_bytes
       })
     },
   ]
