@@ -27,7 +27,8 @@ describe("static site", () => {
       expect(get(path).status).toBe(200);
       expect(text(get(path))).toContain(`<title>${path.slice(1)}</title>`);
     }
-    expect(hdr(get("/how-it-works"), "Content-Security-Policy")).toContain(GOOGLE);
+    expect(hdr(get("/how-it-works"), "Content-Security-Policy")).toBe(hdr(get("/"), "Content-Security-Policy"));
+    expect(hdr(get("/how-it-works"), "Content-Security-Policy")).not.toContain(GOOGLE);
     expect(hdr(get("/how-it-works"), "Cache-Control")).toBe("no-store");
   });
 
