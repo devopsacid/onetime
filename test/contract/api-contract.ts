@@ -51,7 +51,9 @@ export function defineApiContract(h: ApiHarness): void {
   }
 
   function blobOf(size: number): Uint8Array<ArrayBuffer> {
-    return crypto.getRandomValues(new Uint8Array(size));
+    const out = new Uint8Array(size);
+    for (let i = 0; i < size; i += 65_536) crypto.getRandomValues(out.subarray(i, Math.min(i + 65_536, size)));
+    return out;
   }
 
   async function createOk(blob = blobOf(64), ttl = "3600", options?: Options): Promise<string> {
@@ -283,9 +285,10 @@ export function defineApiContract(h: ApiHarness): void {
       expect((await create(blobOf(MAX_BLOB_BYTES + 1))).status).toBe(413);
     });
 
-    it("takes exactly 16,418 bytes (the largest v2 blob) and refuses 16,419 with 413", async () => {
-      expect((await create(blobOf(16_418))).status).toBe(201);
-      expect((await create(blobOf(16_419))).status).toBe(413);
+    it("with large blobs off, takes exactly 16,418 bytes (the largest v2 text blob) and refuses 16,419 with 413", async () => {
+      const options = { maxLargeBytes: 0 };
+      expect((await create(blobOf(16_418), { options })).status).toBe(201);
+      expect((await create(blobOf(16_419), { options })).status).toBe(413);
     });
 
     it("takes exactly 1,048,994 bytes (the largest file blob) and refuses 1,048,995 with 413", async () => {

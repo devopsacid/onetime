@@ -1,8 +1,13 @@
 import {
   BLOB_OVERHEAD_BYTES,
   ID_PATTERN,
-  MAX_BLOB_BYTES,
+  LARGE_MAX_TTL_SECONDS,
+  MAX_FILE_BYTES,
+  MAX_LARGE_STORED_BYTES,
+  MAX_STORED_BYTES,
   MAX_STORED_SECRETS,
+  MAX_TEXT_BLOB_BYTES,
+  fileBlobBytes,
   NEAR_FULL_MAX_TTL_SECONDS,
   longTtlCap,
   MAX_TTL_SECONDS,
@@ -10,10 +15,23 @@ import {
 } from "../shared/limits";
 import { CounterMissingError, type SecretStore, type WaitUntil } from "./store";
 
-/** Test hooks: a fixed clock (ms since epoch) and a smaller cap. The Node server also sets maxStored. */
+/**
+ * Test hooks (fixed clock in ms since epoch, smaller caps) that the Node server also sets from its configuration.
+ * `maxLargeBytes: 0` turns large blobs (above MAX_TEXT_BLOB_BYTES) off. `maxBlobBytes` is the largest body read;
+ * it defaults to what the hosted limits allow (see `blobLimit`).
+ */
 export interface Options {
   now?: number;
   maxStored?: number;
+  maxStoredBytes?: number;
+  maxLargeBytes?: number;
+  maxBlobBytes?: number;
+}
+
+/** The largest blob a router with these options reads: text only when large blobs are off, else the hosted file limit. */
+export function blobLimit(options: Pick<Options, "maxLargeBytes" | "maxBlobBytes"> = {}): number {
+  if (options.maxBlobBytes !== undefined) return options.maxBlobBytes;
+  return (options.maxLargeBytes ?? MAX_LARGE_STORED_BYTES) === 0 ? MAX_TEXT_BLOB_BYTES : fileBlobBytes(MAX_FILE_BYTES);
 }
 
 export const API_HEADERS = {
@@ -68,7 +86,14 @@ async function readBounded(body: ReadableStream<Uint8Array> | null, limit: numbe
   return out;
 }
 
-async function createSecret(request: Request, store: SecretStore, url: URL, now: number, maxStored: number): Promise<Response> {
+interface Caps {
+  maxStored: number;
+  maxStoredBytes: number;
+  maxLargeBytes: number;
+  maxBlob: number;
+}
+
+async function createSecret(request: Request, store: SecretStore, url: URL, now: number, caps: Caps): Promise<Response> {
   if (request.headers.get("Content-Type") !== "application/octet-stream") {
     return error(415, "Body must be application/octet-stream");
   }
@@ -81,21 +106,29 @@ async function createSecret(request: Request, store: SecretStore, url: URL, now:
 
   // Early refusal for an honest Content-Length; the stream reader below enforces the real limit.
   const declared = request.headers.get("Content-Length");
-  if (declared !== null && /^\d+$/.test(declared) && Number(declared) > MAX_BLOB_BYTES) {
+  if (declared !== null && /^\d+$/.test(declared) && Number(declared) > caps.maxBlob) {
     return error(413, "Secret is too large");
   }
 
-  const blob = await readBounded(request.body, MAX_BLOB_BYTES);
+  const blob = await readBounded(request.body, caps.maxBlob);
   if (blob === null) return error(413, "Secret is too large");
   if (blob.byteLength <= BLOB_OVERHEAD_BYTES) return error(400, "Invalid secret size");
+
+  // The server cannot tell files from texts, so the rules go by size: only blobs above the largest text blob are large.
+  const large = blob.byteLength > MAX_TEXT_BLOB_BYTES;
+  if (large && ttl > LARGE_MAX_TTL_SECONDS) {
+    return json(409, { error: "Secrets larger than 16 KB can last at most 1 day.", maxTtl: LARGE_MAX_TTL_SECONDS });
+  }
 
   await store.purgeExpired(now);
 
   const id = newId();
   let stored: boolean;
   const longTtl = ttl > NEAR_FULL_MAX_TTL_SECONDS;
+  const rowCap = longTtl ? longTtlCap(caps.maxStored) : caps.maxStored;
+  const byteCap = large ? caps.maxLargeBytes : longTtl ? longTtlCap(caps.maxStoredBytes) : caps.maxStoredBytes;
   try {
-    stored = await store.insertIfBelowCap(id, blob, now + ttl * 1000, longTtl ? longTtlCap(maxStored) : maxStored);
+    stored = await store.insertIfBelowCap(id, blob, now + ttl * 1000, rowCap, byteCap);
   } catch (e) {
     if (!(e instanceof CounterMissingError)) throw e;
     console.error(e.name); // the name only: nothing about the request
@@ -124,7 +157,12 @@ export async function handle(
 
   if (url.pathname === "/api/secrets") {
     if (request.method !== "POST") return error(405, "Method not allowed", { Allow: "POST" });
-    return createSecret(request, store, url, now, options.maxStored ?? MAX_STORED_SECRETS);
+    return createSecret(request, store, url, now, {
+      maxStored: options.maxStored ?? MAX_STORED_SECRETS,
+      maxStoredBytes: options.maxStoredBytes ?? MAX_STORED_BYTES,
+      maxLargeBytes: options.maxLargeBytes ?? MAX_LARGE_STORED_BYTES,
+      maxBlob: blobLimit(options),
+    });
   }
 
   const match = /^\/api\/secrets\/([^/]+)(\/reveal)?$/.exec(url.pathname);

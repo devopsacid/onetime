@@ -81,7 +81,7 @@ export function openSqliteStore(path: string, migrations: Migration[]): SqliteSt
     return () => (statement ??= db.prepare(sql));
   };
   const insert = lazy(
-    "INSERT INTO secrets (id, blob, expires_at) SELECT ?1, ?2, ?3 WHERE (SELECT stored FROM stats WHERE id = 1) < ?4",
+    "INSERT INTO secrets (id, blob, expires_at) SELECT ?1, ?2, ?3 WHERE (SELECT stored < ?4 AND bytes + length(?2) <= ?5 FROM stats WHERE id = 1)",
   );
   const take = lazy("DELETE FROM secrets WHERE id = ? AND expires_at > ? RETURNING blob");
   const exists = lazy("SELECT 1 AS found FROM secrets WHERE id = ? AND expires_at > ?");
@@ -91,8 +91,8 @@ export function openSqliteStore(path: string, migrations: Migration[]): SqliteSt
 
   return {
     db,
-    async insertIfBelowCap(id, blob, expiresAt, maxStored) {
-      if (Number(insert().run(id, blob, expiresAt, maxStored).changes) !== 0) return true;
+    async insertIfBelowCap(id, blob, expiresAt, maxStored, maxBytes) {
+      if (Number(insert().run(id, blob, expiresAt, maxStored, maxBytes).changes) !== 0) return true;
       // Refused: full, or the counter row is missing (the subquery is then NULL). One cheap read tells them apart.
       if (counter().get() === undefined) throw new CounterMissingError();
       return false;

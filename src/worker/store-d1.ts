@@ -9,13 +9,13 @@ function toBytes(value: unknown): Uint8Array<ArrayBuffer> {
 
 export function d1Store(db: D1Database): SecretStore {
   return {
-    async insertIfBelowCap(id, blob, expiresAt, maxStored) {
-      // One statement checks the cap (the counter row that migration 0002's triggers maintain) and inserts, so concurrent creates cannot overshoot it.
+    async insertIfBelowCap(id, blob, expiresAt, maxStored, maxBytes) {
+      // One statement checks both caps (the counter row that the triggers of migration 0003 maintain) and inserts, so concurrent creates cannot overshoot them.
       const result = await db
         .prepare(
-          "INSERT INTO secrets (id, blob, expires_at) SELECT ?1, ?2, ?3 WHERE (SELECT stored FROM stats WHERE id = 1) < ?4",
+          "INSERT INTO secrets (id, blob, expires_at) SELECT ?1, ?2, ?3 WHERE (SELECT stored < ?4 AND bytes + length(?2) <= ?5 FROM stats WHERE id = 1)",
         )
-        .bind(id, blob.buffer, expiresAt, maxStored)
+        .bind(id, blob.buffer, expiresAt, maxStored, maxBytes)
         .run();
       if (result.meta.changes !== 0) return true;
       // Refused: full, or the counter row is missing (the subquery is then NULL). One cheap read tells them apart.
