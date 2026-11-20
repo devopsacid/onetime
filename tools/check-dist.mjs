@@ -276,7 +276,7 @@ for (const name of profile === "info" ? ["404.html"] : ["index.html", "404.html"
 // Which files exist (rule 3).
 {
   const must = { app: ["index.html", "command-line.html", "404.html", "cli"], info: ["how-it-works.html", "privacy.html", "404.html"], selfhost: ["index.html", "how-it-works.html", "command-line.html", "privacy.html", "404.html"] }[profile];
-  const mustNot = { app: ["how-it-works.html", "privacy.html"], info: ["index.html", "command-line.html", "cli", "_routes.json", "manifest.webmanifest"], selfhost: ["_redirects"] }[profile];
+  const mustNot = { app: ["how-it-works.html", "privacy.html"], info: ["index.html", "command-line.html", "cli", "_routes.json", "manifest.webmanifest", "_worker.js"], selfhost: ["_redirects"] }[profile];
   for (const name of must) if (!exists(name)) problems.push(`${profile} build: ${name} is missing`);
   for (const name of mustNot) if (exists(name)) problems.push(`${profile} build: ${name} must not be present`);
 }
