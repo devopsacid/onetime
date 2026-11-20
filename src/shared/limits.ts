@@ -3,11 +3,11 @@
 /** Largest secret (UTF-8 bytes) the app accepts. */
 export const MAX_SECRET_BYTES = 16 * 1024;
 
-/** AES-GCM overhead: 12-byte IV in front, 16-byte tag at the end. */
+/** v1 overhead: 12-byte IV in front, 16-byte tag at the end. The router refuses blobs of this size or less. */
 export const BLOB_OVERHEAD_BYTES = 12 + 16;
 
-/** Largest encrypted blob the Worker stores. */
-export const MAX_BLOB_BYTES = MAX_SECRET_BYTES + BLOB_OVERHEAD_BYTES;
+/** Largest encrypted blob the Worker stores: the largest v2 blob (2 + 12 + padded block + 16); also covers v1 (16,412). */
+export const MAX_BLOB_BYTES = MAX_SECRET_BYTES + 4 + 14 + 16;
 
 export const MIN_TTL_SECONDS = 60;
 export const MAX_TTL_SECONDS = 7 * 24 * 60 * 60;

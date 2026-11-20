@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { KEY_PATTERN, MAX_SECRET_BYTES } from "../src/shared/limits";
 import { fromBase64Url, toBase64Url } from "../src/web/base64url";
-import { SecretTooLargeError, decryptSecret, encryptSecret } from "../src/web/crypto";
+import { SecretTooLargeError, WRITE_FORMAT, createCodec, decryptSecret, encryptSecret } from "../src/web/crypto";
 import { CHARSETS, generatePassword, generateToken, generateUuid, randomInt } from "../src/web/generate";
 import { buildLink, parseFragment } from "../src/web/link";
 import { ApiError, createSecret } from "../src/web/api";
@@ -17,11 +17,17 @@ describe("base64url", () => {
 });
 
 describe("crypto", () => {
+  const v1 = (key: string) => ({ key, format: 1 as const, passphrase: false });
+  const v2 = (key: string, passphrase = false) => ({ key, format: 2 as const, passphrase });
+  // workerd refuses high PBKDF2 iteration counts; the real 600,000 path is proven in test/node/crypto-v2.test.ts.
+  const codec = createCodec({ writeFormat: 2, pbkdf2Iterations: 1000 });
+
   it("round-trips unicode text", async () => {
     const text = "pässwörd 🔑\nline two";
-    const { blob, key } = await encryptSecret(text);
+    const { blob, key, format } = await encryptSecret(text);
     expect(key).toMatch(KEY_PATTERN);
-    expect(await decryptSecret(blob, key)).toBe(text);
+    expect(format).toBe(WRITE_FORMAT);
+    expect(await decryptSecret(blob, v1(key))).toBe(text);
   });
 
   it("does not leave the plaintext in the blob", async () => {
@@ -39,24 +45,33 @@ describe("crypto", () => {
   it("rejects a wrong key", async () => {
     const { blob } = await encryptSecret("secret");
     const other = await encryptSecret("secret");
-    await expect(decryptSecret(blob, other.key)).rejects.toThrow();
+    await expect(decryptSecret(blob, v1(other.key))).rejects.toThrow();
   });
 
   it("rejects a tampered blob", async () => {
     const { blob, key } = await encryptSecret("secret");
     blob[blob.length - 1]! ^= 1;
-    await expect(decryptSecret(blob, key)).rejects.toThrow();
+    await expect(decryptSecret(blob, v1(key))).rejects.toThrow();
   });
 
   it("rejects a malformed key", async () => {
     const { blob } = await encryptSecret("secret");
-    await expect(decryptSecret(blob, "short")).rejects.toThrow("Invalid key");
+    await expect(decryptSecret(blob, v1("short"))).rejects.toThrow("Invalid key");
   });
 
   it("enforces the size limit in bytes, not characters", async () => {
     await expect(encryptSecret("a".repeat(MAX_SECRET_BYTES))).resolves.toBeDefined();
     await expect(encryptSecret("a".repeat(MAX_SECRET_BYTES + 1))).rejects.toBeInstanceOf(SecretTooLargeError);
     await expect(encryptSecret("é".repeat(MAX_SECRET_BYTES / 2 + 1))).rejects.toBeInstanceOf(SecretTooLargeError);
+  });
+
+  it("format 2 round-trips in the Workers runtime, with and without a passphrase", async () => {
+    const plain = await codec.encryptSecret("héllo");
+    expect(plain.blob.length).toBe(286);
+    expect(await codec.decryptSecret(plain.blob, v2(plain.key))).toBe("héllo");
+    const guarded = await codec.encryptSecret("héllo", "correct horse");
+    expect(await codec.decryptSecret(guarded.blob, v2(guarded.key, true), "correct horse")).toBe("héllo");
+    await expect(codec.decryptSecret(guarded.blob, v2(guarded.key, true), "wrong horse!!")).rejects.toThrow();
   });
 });
 
