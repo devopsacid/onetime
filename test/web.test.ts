@@ -17,8 +17,8 @@ describe("base64url", () => {
 });
 
 describe("crypto", () => {
-  const v1 = (key: string) => ({ key, format: 1 as const, passphrase: false });
-  const v2 = (key: string, passphrase = false) => ({ key, format: 2 as const, passphrase });
+  const v1 = (key: string) => ({ key, format: 1 as const, passphrase: false, file: false });
+  const v2 = (key: string, passphrase = false, file = false) => ({ key, format: 2 as const, passphrase, file });
   // workerd refuses high PBKDF2 iteration counts; the real 600,000 path is proven in test/node/crypto-v2.test.ts.
   const codec = createCodec({ writeFormat: 2, pbkdf2Iterations: 1000 });
 
@@ -138,29 +138,42 @@ describe("link", () => {
   const key = "b".repeat(43);
 
   it("builds and parses a v1 link, keeping id and key in the fragment", () => {
-    const link = buildLink("https://example.test", { id, key, format: 1, passphrase: false });
+    const link = buildLink("https://example.test", { id, key, format: 1, passphrase: false, file: false });
     expect(link).toBe(`https://example.test/#${id}.${key}`);
     const url = new URL(link);
     expect(url.pathname).toBe("/");
     expect(url.search).toBe("");
-    expect(parseFragment(url.hash)).toEqual({ id, key, format: 1, passphrase: false });
+    expect(parseFragment(url.hash)).toEqual({ id, key, format: 1, passphrase: false, file: false });
   });
 
   it("builds and parses the two v2 forms", () => {
-    const plain = buildLink("https://example.test", { id, key, format: 2, passphrase: false });
+    const plain = buildLink("https://example.test", { id, key, format: 2, passphrase: false, file: false });
     expect(plain).toBe(`https://example.test/#2.${id}.${key}`);
-    expect(parseFragment(new URL(plain).hash)).toEqual({ id, key, format: 2, passphrase: false });
-    const protectedLink = buildLink("https://example.test", { id, key, format: 2, passphrase: true });
+    expect(parseFragment(new URL(plain).hash)).toEqual({ id, key, format: 2, passphrase: false, file: false });
+    const protectedLink = buildLink("https://example.test", { id, key, format: 2, passphrase: true, file: false });
     expect(protectedLink).toBe(`https://example.test/#2p.${id}.${key}`);
-    expect(parseFragment(new URL(protectedLink).hash)).toEqual({ id, key, format: 2, passphrase: true });
+    expect(parseFragment(new URL(protectedLink).hash)).toEqual({ id, key, format: 2, passphrase: true, file: false });
+  });
+
+  it("builds and parses the two file forms, 2f and 2fp", () => {
+    const plain = buildLink("https://example.test", { id, key, format: 2, passphrase: false, file: true });
+    expect(plain).toBe(`https://example.test/#2f.${id}.${key}`);
+    expect(parseFragment(new URL(plain).hash)).toEqual({ id, key, format: 2, passphrase: false, file: true });
+    const protectedLink = buildLink("https://example.test", { id, key, format: 2, passphrase: true, file: true });
+    expect(protectedLink).toBe(`https://example.test/#2fp.${id}.${key}`);
+    expect(parseFragment(new URL(protectedLink).hash)).toEqual({ id, key, format: 2, passphrase: true, file: true });
+  });
+
+  it("never builds a file link in format 1", () => {
+    expect(buildLink("https://example.test", { id, key, format: 1, passphrase: false, file: true })).toBe(`https://example.test/#${id}.${key}`);
   });
 
   it("never builds a passphrase link in format 1", () => {
-    expect(buildLink("https://example.test", { id, key, format: 1, passphrase: true })).toBe(`https://example.test/#${id}.${key}`);
+    expect(buildLink("https://example.test", { id, key, format: 1, passphrase: true, file: false })).toBe(`https://example.test/#${id}.${key}`);
   });
 
   it("accepts the fragment without the leading #", () => {
-    expect(parseFragment(`2p.${id}.${key}`)).toEqual({ id, key, format: 2, passphrase: true });
+    expect(parseFragment(`2p.${id}.${key}`)).toEqual({ id, key, format: 2, passphrase: true, file: false });
   });
 
   it("treats an empty fragment as no link", () => {
@@ -180,6 +193,16 @@ describe("link", () => {
     `#1.${id}.${key}`,
     `#2P.${id}.${key}`,
     `#2pp.${id}.${key}`,
+    `#2pf.${id}.${key}`,
+    `#2F.${id}.${key}`,
+    `#2FP.${id}.${key}`,
+    `#f2.${id}.${key}`,
+    `#2ff.${id}.${key}`,
+    `#2fpp.${id}.${key}`,
+    `#2f.${id}`,
+    `#2f.${id}.${key}.x`,
+    `#2f..${key}`,
+    `#2f.${id}.${key.slice(1)}`,
     `#.${id}.${key}`,
     `#2.${id}.${key}.x`,
     `#2.${id}.${key.slice(1)}`,
@@ -267,18 +290,29 @@ describe("interop: parsers before format 2 reject the new links before anything 
   it("old readers call 2. and 2p. links invalid (nothing is burnt), and still read v1", () => {
     expect(oldParseFragment(`#2.${id}.${key}`)).toBe("invalid");
     expect(oldParseFragment(`#2p.${id}.${key}`)).toBe("invalid");
+    expect(oldParseFragment(`#2f.${id}.${key}`)).toBe("invalid");
+    expect(oldParseFragment(`#2fp.${id}.${key}`)).toBe("invalid");
     expect(oldParseFragment(`#${id}.${key}`)).toEqual({ id, key });
   });
 
   it("new readers read what old writers made, and old writers' links parse identically", () => {
-    expect(parseFragment(`#${id}.${key}`)).toMatchObject({ id, key, format: 1, passphrase: false });
+    expect(parseFragment(`#${id}.${key}`)).toMatchObject({ id, key, format: 1, passphrase: false, file: false });
   });
 });
 
 describe("FORMAT_PATTERN", () => {
-  it("matches exactly 2 and 2p", async () => {
+  it("matches exactly 2, 2p, 2f and 2fp", async () => {
     const { FORMAT_PATTERN } = await import("../src/shared/limits");
-    for (const ok of ["2", "2p"]) expect(FORMAT_PATTERN.test(ok)).toBe(true);
-    for (const bad of ["", "1", "3", "2P", "2pp", "p2", " 2", "2\n"]) expect(FORMAT_PATTERN.test(bad)).toBe(false);
+    for (const ok of ["2", "2p", "2f", "2fp"]) expect(FORMAT_PATTERN.test(ok)).toBe(true);
+    for (const bad of ["", "1", "3", "2P", "2pp", "p2", " 2", "2\n", "2pf", "2F", "f2", "2ff", "2fpp", "2fp\n"]) {
+      expect(FORMAT_PATTERN.test(bad)).toBe(false);
+    }
+  });
+
+  it("the pattern of blob-v2 / CLI 0.2.0 (/^2p?$/) rejects 2f and 2fp, so those readers call the links damaged before any reveal", () => {
+    const v2Pattern = /^2p?$/;
+    expect(v2Pattern.test("2f")).toBe(false);
+    expect(v2Pattern.test("2fp")).toBe(false);
+    expect(v2Pattern.test("2p")).toBe(true);
   });
 });
