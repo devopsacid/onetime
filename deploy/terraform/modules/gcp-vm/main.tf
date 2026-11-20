@@ -19,6 +19,7 @@ module "bootstrap" {
   data_disk_devices  = ["/dev/disk/by-id/google-${local.device_name}"]
   max_stored         = var.max_stored
   env                = var.env
+  max_body_bytes     = var.max_body_bytes
   caddy_tls_internal = var.caddy_tls_internal
 }
 

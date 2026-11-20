@@ -44,9 +44,19 @@ variable "data_disk_devices" {
 }
 
 variable "data_mount_path" {
-  description = "Where the data disk is mounted. /var/lib/onetime for the Docker setup (also used by the Ansible role's Docker mode)."
+  description = "Where the data disk is mounted and the database lives. /var/lib/onetime is also what the Ansible role's Docker mode uses."
   type        = string
   default     = "/var/lib/onetime"
+}
+
+variable "data_disk_wait_seconds" {
+  description = "How long the bootstrap waits for the data disk to appear (attachment can lag behind the boot). Without it the bootstrap stops and the app is not started."
+  type        = number
+  default     = 600
+  validation {
+    condition     = var.data_disk_wait_seconds >= 5
+    error_message = "data_disk_wait_seconds must be at least 5."
+  }
 }
 
 variable "max_stored" {
@@ -68,6 +78,16 @@ variable "env" {
       for k, v in var.env : can(regex("^[A-Za-z_][A-Za-z0-9_]*$", k)) && !contains(["HOST", "PORT", "ONETIME_DB"], k) && !can(regex("[\r\n]", v))
     ])
     error_message = "env names must be shell-style, must not be HOST, PORT or ONETIME_DB, and values must be one line."
+  }
+}
+
+variable "max_body_bytes" {
+  description = "Largest request body Caddy accepts, in bytes. A secret is at most 16 KB + 28 bytes today; the app refuses anything larger with 413 by itself."
+  type        = number
+  default     = 65536
+  validation {
+    condition     = var.max_body_bytes >= 1024 && floor(var.max_body_bytes) == var.max_body_bytes
+    error_message = "max_body_bytes must be a whole number of at least 1024."
   }
 }
 

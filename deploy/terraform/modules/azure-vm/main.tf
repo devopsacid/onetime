@@ -1,9 +1,12 @@
 # One Azure Linux VM with a separate managed data disk. One instance only: the database is SQLite on that disk.
 #
 # Changing the image or other user data replaces the VM (custom_data forces a new VM). Terraform detaches the data disk
-# first and attaches it to the new VM, which mounts the existing filesystem. The detach happens while the old VM still
-# runs; SQLite (synchronous=FULL) treats that like a power cut and keeps every committed write. For a clean stop, run
-# "sudo systemctl stop onetime" on the VM before applying. The static public IP stays.
+# first and attaches it to the new VM, which mounts the existing filesystem. The static public IP stays.
+#
+# REQUIRED before such an apply: deallocate the old VM, so the app stops cleanly before its disk is detached:
+#   az vm deallocate --resource-group <rg> --name <name>
+# (Terraform would otherwise detach the disk from the running VM.) "terraform plan" shows the replacement
+# ("must be replaced") before you apply.
 
 locals {
   tags = merge({ "app" = "onetime" }, var.tags)
@@ -21,6 +24,7 @@ module "bootstrap" {
   data_disk_devices  = local.data_devices
   max_stored         = var.max_stored
   env                = var.env
+  max_body_bytes     = var.max_body_bytes
   caddy_tls_internal = var.caddy_tls_internal
 }
 

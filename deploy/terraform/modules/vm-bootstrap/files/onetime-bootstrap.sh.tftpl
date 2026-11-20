@@ -1,0 +1,20 @@
+#!/bin/sh
+# Runs once from cloud-init (runcmd). Stops at the first failure: without the data disk nothing else happens, so the
+# app can never start on the root disk. Rendered by deploy/terraform/modules/vm-bootstrap.
+set -eu
+MNT='${mount_path}'
+
+/usr/local/sbin/onetime-data-disk
+id -u onetime >/dev/null 2>&1 || useradd --system --no-create-home --home-dir "$MNT" --shell /usr/sbin/nologin onetime
+chown onetime:onetime "$MNT"
+chmod 0700 "$MNT"
+# Started explicitly: an image may forbid service starts during package installation (policy-rc.d).
+systemctl enable --now docker.service
+%{ if full ~}
+/usr/local/sbin/onetime-pull
+systemctl daemon-reload
+systemctl enable --now onetime.service
+systemctl enable caddy.service
+systemctl reload-or-restart caddy.service
+%{ endif ~}
+echo "onetime-bootstrap: done"

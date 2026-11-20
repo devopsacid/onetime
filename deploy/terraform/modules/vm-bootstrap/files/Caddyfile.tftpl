@@ -16,9 +16,9 @@ ${domain} {
 %{ endif ~}
 	reverse_proxy 127.0.0.1:8080
 
-	# A secret is at most 16 KB plus 28 bytes; refuse anything bigger before it reaches the app.
+	# Refuse bodies over max_body_bytes before they reach the app (a secret is at most 16 KB plus 28 bytes today).
 	request_body {
-		max_size 64KB
+		max_size ${max_body_bytes}
 	}
 
 	encode zstd gzip

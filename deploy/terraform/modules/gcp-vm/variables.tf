@@ -95,6 +95,16 @@ variable "env" {
   default     = {}
 }
 
+variable "max_body_bytes" {
+  description = "Largest request body Caddy accepts, in bytes (a secret is at most 16 KB + 28 bytes today)."
+  type        = number
+  default     = 65536
+  validation {
+    condition     = var.max_body_bytes >= 1024 && floor(var.max_body_bytes) == var.max_body_bytes
+    error_message = "max_body_bytes must be a whole number of at least 1024."
+  }
+}
+
 variable "caddy_tls_internal" {
   description = "Caddy's local CA instead of a public certificate."
   type        = bool

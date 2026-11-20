@@ -32,6 +32,7 @@ module "bootstrap" {
   data_disk_devices  = local.data_devices
   max_stored         = var.max_stored
   env                = var.env
+  max_body_bytes     = var.max_body_bytes
   caddy_tls_internal = var.caddy_tls_internal
 }
 

@@ -12,8 +12,9 @@ locals {
   )
 
   data_disk_script = templatefile("${path.module}/files/onetime-data-disk.sh.tftpl", {
-    devices    = join(" ", var.data_disk_devices)
-    mount_path = var.data_mount_path
+    devices      = join(" ", var.data_disk_devices)
+    mount_path   = var.data_mount_path
+    wait_seconds = var.data_disk_wait_seconds
   })
 
   # Every entry has the same attributes, so Terraform keeps "defer" a boolean (cloud-init rejects the string "true").
@@ -34,7 +35,7 @@ locals {
       path        = "/usr/local/sbin/onetime-run"
       permissions = "0755"
       defer       = false
-      content     = file("${path.module}/files/onetime-run.sh")
+      content     = templatefile("${path.module}/files/onetime-run.sh.tftpl", { mount_path = var.data_mount_path })
     },
     {
       path        = "/usr/local/sbin/onetime-pull"
@@ -49,7 +50,7 @@ locals {
       path        = "/etc/systemd/system/onetime.service"
       permissions = "0644"
       defer       = false
-      content     = file("${path.module}/files/onetime.service")
+      content     = templatefile("${path.module}/files/onetime.service.tftpl", { mount_path = var.data_mount_path })
     },
     {
       # Written after the caddy package is installed, so it replaces the package's default site.
@@ -57,8 +58,9 @@ locals {
       permissions = "0644"
       defer       = true
       content = templatefile("${path.module}/files/Caddyfile.tftpl", {
-        domain       = var.domain
-        tls_internal = var.caddy_tls_internal
+        domain         = var.domain
+        tls_internal   = var.caddy_tls_internal
+        max_body_bytes = var.max_body_bytes
       })
     },
   ]
@@ -72,31 +74,27 @@ locals {
       local.full && var.registry_auth == "ecr" ? ["amazon-ecr-credential-helper"] : [],
     )
     write_files = concat(
-      [{
-        path        = "/usr/local/sbin/onetime-data-disk"
-        permissions = "0755"
-        defer       = false
-        content     = local.data_disk_script
-      }],
+      [
+        {
+          path        = "/usr/local/sbin/onetime-data-disk"
+          permissions = "0755"
+          defer       = false
+          content     = local.data_disk_script
+        },
+        {
+          path        = "/usr/local/sbin/onetime-bootstrap"
+          permissions = "0755"
+          defer       = false
+          content = templatefile("${path.module}/files/onetime-bootstrap.sh.tftpl", {
+            mount_path = var.data_mount_path
+            full       = local.full
+          })
+        },
+      ],
       [for f in local.files_full : f if local.full],
     )
-    runcmd = concat(
-      [
-        ["/usr/local/sbin/onetime-data-disk"],
-        ["sh", "-c", "id -u onetime >/dev/null 2>&1 || useradd --system --no-create-home --home-dir ${var.data_mount_path} --shell /usr/sbin/nologin onetime"],
-        ["chown", "onetime:onetime", var.data_mount_path],
-        ["chmod", "0700", var.data_mount_path],
-        # Started explicitly: an image may forbid service starts during package installation (policy-rc.d).
-        ["systemctl", "enable", "--now", "docker.service"],
-      ],
-      local.full ? [
-        ["/usr/local/sbin/onetime-pull"],
-        ["systemctl", "daemon-reload"],
-        ["systemctl", "enable", "--now", "onetime.service"],
-        ["systemctl", "enable", "caddy.service"],
-        ["systemctl", "reload-or-restart", "caddy.service"],
-      ] : [],
-    )
+    # One wrapper with "set -e": cloud-init's runcmd would carry on after a failed step.
+    runcmd = [["/usr/local/sbin/onetime-bootstrap"]]
   }
 
   user_data = "#cloud-config\n${yamlencode(local.cloud_config)}"

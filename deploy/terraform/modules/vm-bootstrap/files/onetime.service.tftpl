@@ -4,10 +4,15 @@ Description=onetime (Docker container), one-time secret links
 After=docker.service network-online.target
 Requires=docker.service
 Wants=network-online.target
-RequiresMountsFor=/var/lib/onetime
+RequiresMountsFor=${mount_path}
+# A failing start (for example no data disk) gives up after 5 tries in a minute instead of retrying every 2 s.
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
+# RequiresMountsFor alone is satisfied by the root filesystem when the data disk is missing.
+ExecStartPre=/usr/bin/mountpoint -q ${mount_path}
 ExecStartPre=-/usr/bin/docker rm --force onetime
 ExecStart=/usr/local/sbin/onetime-run
 ExecStop=/usr/bin/docker stop --time 10 onetime
