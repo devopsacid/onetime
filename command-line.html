@@ -122,9 +122,10 @@
           <div>
             <dt><code>onetime send --file PATH</code></dt>
             <dd>
-              Encrypts one file of up to 128 KB, its name included, and prints only the link. <code>--name NAME</code>
+              Encrypts one file of up to 256 KB, its name included, and prints only the link. <code>--name NAME</code>
               sets the name the recipient sees; <code>--file -</code> reads the file from a pipe. A file link lasts
-              1 hour or 1 day.
+              1 hour. The tool asks the server for its file limit first; a self-hosted server may set another one, up
+              to 5 MB.
             </dd>
           </div>
           <div>
@@ -180,7 +181,7 @@
 ./onetime send --passphrase-file passphrase.txt &lt; secret.txt</code></pre>
 
         <h3>Send a file</h3>
-        <p>Up to 128 KB. The name and contents are encrypted on your computer.</p>
+        <p>Up to 256 KB, or the limit of the server you send to. The name and contents are encrypted on your computer.</p>
 <pre class="code" tabindex="0" aria-label="Example: send a file"><code>./onetime send --file report.pdf --ttl 1h
 tar czf - notes | ./onetime send --file - --name notes.tar.gz</code></pre>
 

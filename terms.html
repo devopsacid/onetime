@@ -169,10 +169,16 @@
             A link that was already opened or has expired is no longer stored, so there is nothing left to delete.
           </li>
           <li>
-            There are no accounts, and the service keeps no contact details or IP addresses of the people who create
+            There are no accounts, and the site’s code keeps no contact details or IP addresses of the people who create
             links. So the sender of a deleted item cannot be told about the deletion, and there is no way to appeal
             against it.
           </li>
+          <!-- site:onetimepass -->
+          <li>
+            Cloudflare D1, the database, keeps its own recovery history for about 7 days. It holds only encrypted data,
+            never keys, so a deleted item cannot be read from it either.
+          </li>
+          <!-- /site:onetimepass -->
           <li>The person who sent the report gets a reply about the decision.</li>
         </ul>
       </section>
