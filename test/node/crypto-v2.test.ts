@@ -1,6 +1,5 @@
 import { createCipheriv, createDecipheriv, hkdfSync, pbkdf2Sync, randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { MAX_BLOB_BYTES, MAX_SECRET_BYTES, V2_BUCKETS } from "../../src/shared/limits";
 import { fromBase64Url, toBase64Url } from "../../src/web/base64url";
 import {
   SecretTooLargeError,
@@ -12,6 +11,10 @@ import {
   openBlob,
   type LinkKey,
 } from "../../src/web/crypto";
+
+// The v2 sizes are hard-coded here on purpose: if src/shared/limits.ts drifts, these tests must notice.
+const REF_BLOCKS = [256, 1024, 4096, 16388]; // blob sizes 286, 1054, 4126, 16418
+const MAX_TEXT = 16384;
 
 // ---- An independent implementation of format 2, straight from docs/plans/blob-v2.md, using node:crypto only. ----
 
@@ -27,7 +30,7 @@ function refKey(kLink: Buffer, passphrase?: string): Buffer {
 
 function refEncrypt(secret: string, kLink: Buffer, passphrase?: string, iv = randomBytes(12)): Buffer {
   const bytes = Buffer.from(secret, "utf8");
-  const bucket = V2_BUCKETS.find((b) => b >= bytes.length + 4)!;
+  const bucket = REF_BLOCKS.find((b) => b >= bytes.length + 4)!;
   const inner = Buffer.alloc(bucket);
   inner.writeUInt32BE(bytes.length, 0);
   bytes.copy(inner, 4);
@@ -49,7 +52,7 @@ function refDecrypt(blob: Buffer, kLink: Buffer, passphrase?: string): string {
 }
 
 const asBlob = (b: Buffer): Uint8Array<ArrayBuffer> => new Uint8Array(b);
-const link2 = (key: string, passphrase = false): LinkKey => ({ key, format: 2, passphrase });
+const link2 = (key: string, passphrase = false): LinkKey => ({ key, format: 2, passphrase, file: false });
 const PASS = "correct horse battery";
 
 const codec = createCodec({ writeFormat: 2 });
@@ -91,17 +94,17 @@ describe("format 2 against an independent node:crypto implementation (real 600,0
 
   it("uses the four sizes, and the exact blob lengths 286, 1054, 4126 and 16418", async () => {
     const sizes = new Map<number, number>();
-    for (const length of [0, 252, 253, 1020, 1021, 4092, 4093, MAX_SECRET_BYTES]) {
+    for (const length of [0, 252, 253, 1020, 1021, 4092, 4093, MAX_TEXT]) {
       const made = await codec.encryptSecret("a".repeat(length));
       sizes.set(length, made.blob.length);
       expect(await codec.decryptSecret(made.blob, link2(made.key))).toBe("a".repeat(length));
     }
     expect([...sizes.values()]).toEqual([286, 286, 1054, 1054, 4126, 4126, 16418, 16418]);
-    expect(sizes.get(MAX_SECRET_BYTES)).toBe(MAX_BLOB_BYTES);
+    expect(sizes.get(MAX_TEXT)).toBe(16418);
   });
 
   it("refuses a secret above the limit, counted in bytes", async () => {
-    await expect(codec.encryptSecret("é".repeat(MAX_SECRET_BYTES / 2 + 1))).rejects.toBeInstanceOf(SecretTooLargeError);
+    await expect(codec.encryptSecret("é".repeat(MAX_TEXT / 2 + 1))).rejects.toBeInstanceOf(SecretTooLargeError);
   });
 
   it("draws a new key, IV and ciphertext every time", async () => {
@@ -136,6 +139,23 @@ describe("format 2 failures all throw", () => {
     await expect(codec.decryptSecret(plain.blob, link2(plain.key, true), PASS)).rejects.toThrow();
     const protectedMade = await codec.encryptSecret("secret", PASS);
     await expect(codec.decryptSecret(protectedMade.blob, link2(protectedMade.key, false))).rejects.toThrow();
+  });
+
+  it("a blob encrypted without AAD fails even when its flag byte and the link agree", async () => {
+    const kLink = randomBytes(32);
+    const key = toBase64Url(kLink);
+    for (const passphrase of [undefined, PASS]) {
+      const inner = Buffer.alloc(256);
+      inner.writeUInt32BE(3, 0);
+      inner.write("abc", 4);
+      const header = Buffer.from([2, passphrase === undefined ? 0 : 1]);
+      const iv = Buffer.alloc(12, 7);
+      const cipher = createCipheriv("aes-256-gcm", refKey(kLink, passphrase), iv); // no setAAD
+      const body = Buffer.concat([cipher.update(inner), cipher.final()]);
+      const blob = asBlob(Buffer.concat([header, iv, body, cipher.getAuthTag()]));
+      expect(blob.length).toBe(286);
+      await expect(codec.decryptSecret(blob, link2(key, passphrase !== undefined), passphrase)).rejects.toThrow();
+    }
   });
 
   it("a wrong passphrase", async () => {
@@ -203,7 +223,7 @@ describe("format 2 failures all throw", () => {
 
   it("a v2 blob under a v1 link, and a v1 blob under a v2 link", async () => {
     const v2 = await codec.encryptSecret("secret");
-    await expect(codec.decryptSecret(v2.blob, { key: v2.key, format: 1, passphrase: false })).rejects.toThrow();
+    await expect(codec.decryptSecret(v2.blob, { key: v2.key, format: 1, passphrase: false, file: false })).rejects.toThrow();
     const v1 = await createCodec({ writeFormat: 1 }).encryptSecret("secret");
     expect(v1.format).toBe(1);
     await expect(codec.decryptSecret(v1.blob, link2(v1.key))).rejects.toThrow();
@@ -213,16 +233,16 @@ describe("format 2 failures all throw", () => {
 describe("format 1 stays readable", () => {
   it("opens a blob made by the code before format 2", async () => {
     const blob = Uint8Array.from(Buffer.from("3w3kTomXqSBjvVNfPs23C5MtIZSmhdUjiZ/T0CeEx11lvwZKw/DQqKS3UxcLYU2JtvL/b4g=", "base64"));
-    const link: LinkKey = { key: "mjqsQk6qepJVZ4Q1Fhhq72KWlBRgS1ZvTzvQfC3BQqQ", format: 1, passphrase: false };
+    const link: LinkKey = { key: "mjqsQk6qepJVZ4Q1Fhhq72KWlBRgS1ZvTzvQfC3BQqQ", format: 1, passphrase: false, file: false };
     expect(await decryptSecret(blob, link)).toBe("fixture-secret ünï 🔑");
   });
 
   it("round trips and keeps the old blob size (secret + 28)", async () => {
     const v1 = createCodec({ writeFormat: 1 });
     const made = await v1.encryptSecret("abc");
-    expect(made).toMatchObject({ format: 1, passphrase: false });
+    expect(made).toMatchObject({ format: 1, passphrase: false, file: false });
     expect(made.blob.length).toBe(3 + 28);
-    expect(await v1.decryptSecret(made.blob, { key: made.key, format: 1, passphrase: false })).toBe("abc");
+    expect(await v1.decryptSecret(made.blob, { key: made.key, format: 1, passphrase: false, file: false })).toBe("abc");
   });
 
   it("refuses a passphrase while writing format 1", async () => {
@@ -232,7 +252,7 @@ describe("format 1 stays readable", () => {
   it("a passphrase is never accepted for a format 1 link", async () => {
     const v1 = createCodec({ writeFormat: 1 });
     const made = await v1.encryptSecret("abc");
-    await expect(v1.decryptSecret(made.blob, { key: made.key, format: 1, passphrase: false }, PASS)).rejects.toThrow();
+    await expect(v1.decryptSecret(made.blob, { key: made.key, format: 1, passphrase: false, file: false }, PASS)).rejects.toThrow();
   });
 });
 

@@ -245,6 +245,9 @@ el<HTMLFormElement>("open-form").addEventListener("submit", async (event) => {
       el<HTMLTextAreaElement>("revealed").value = outcome.text;
       show("revealed");
       break;
+    case "unsupported":
+      showGone("This page cannot open this link yet", "This link holds a file. Nothing has been used up. Try again later.");
+      break;
     case "gone":
       openPass.value = "";
       showGone("This secret is no longer available", GONE_TEXT);

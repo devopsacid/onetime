@@ -11,6 +11,8 @@ export interface OpenDeps {
 }
 
 export type OpenOutcome =
+  /** A file link, and this build has no file UI: nothing was derived or requested. Removed when the file UI lands. */
+  | { kind: "unsupported" }
   | { kind: "revealed"; text: string }
   /** The entry cannot be right, so nothing was derived and no request was sent. */
   | { kind: "invalid"; problem: PassphraseProblem }
@@ -34,6 +36,7 @@ export async function openSecret(
   deps: OpenDeps,
   onPhase: (phase: OpenPhase) => void = () => {},
 ): Promise<OpenOutcome> {
+  if (link.file) return { kind: "unsupported" };
   const passphrase = link.passphrase ? entry : undefined;
   if (passphrase !== undefined) {
     const problem = validatePassphrase(passphrase);

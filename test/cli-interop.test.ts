@@ -182,7 +182,7 @@ describe("largest v2 blob through the real router", () => {
     const revealed = await routerFetch()(`${SERVER}/api/secrets/${id}/reveal`, { method: "POST" });
     const blob = new Uint8Array(await revealed.arrayBuffer());
     expect(blob).toEqual(made.blob);
-    expect(await codec.decryptSecret(blob, { key: made.key, format: 2, passphrase: false })).toBe(text);
+    expect(await codec.decryptSecret(blob, { key: made.key, format: 2, passphrase: false, file: false })).toBe(text);
   });
 
   it("answers 413 for 16,419 bytes", async () => {
