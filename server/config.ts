@@ -1,5 +1,17 @@
 import { isAbsolute, join, resolve } from "node:path";
-import { MAX_LARGE_STORED_BYTES, MAX_STORED_BYTES, MAX_STORED_SECRETS } from "../src/shared/limits";
+import {
+  FORMAT_MAX_FILE_BYTES,
+    MAX_FILE_BYTES,
+  MAX_LARGE_STORED_BYTES,
+  MAX_STORED_BYTES,
+  MAX_STORED_SECRETS,
+  MAX_TTL_SECONDS,
+  MIN_TTL_SECONDS,
+  fileBlobBytes,
+} from "../src/shared/limits";
+
+/** Longest life of a file on a self-hosted server unless ONETIME_MAX_FILE_TTL says otherwise (the hosted service uses 1 hour). */
+export const SELFHOST_FILE_TTL_SECONDS = 24 * 60 * 60;
 
 export interface Config {
   host: string;
@@ -12,8 +24,12 @@ export interface Config {
   maxConnections: number;
   /** Bytes of all stored blobs together (the capped insert refuses beyond this). */
   maxStoredBytes: number;
-  /** Large blobs (above 16,418 bytes: files) insert only while the total stays at or below this. 0 turns large blobs off. */
+  /** Large blobs (above 16,418 bytes: files) insert only while the total stays at or below this. 0 = files off (then maxFileBytes is 0 too). */
   maxLargeBytes: number;
+  /** Largest file in bytes (ONETIME_MAX_FILE_BYTES, ceiling 5 MiB); 0 = files off (then maxLargeBytes is 0 too). */
+  maxFileBytes: number;
+  /** Longest life of a file in seconds (ONETIME_MAX_FILE_TTL). */
+  maxFileTtl: number;
   /** POST /api/secrets requests handled at once; more get 503 with Retry-After. */
   maxUploads: number;
 }
@@ -56,7 +72,18 @@ export function parseConfig(env: Env, bundleDir: string, cwd: string): Config {
   const maxStoredBytes = integer("ONETIME_MAX_STORED_BYTES", MAX_STORED_BYTES, 1_000_000, 1_000_000_000_000);
   // The large budget cannot exceed the total: when only the total is lowered, the default follows it.
   const largeDefault = Math.min(MAX_LARGE_STORED_BYTES, maxStoredBytes);
-  const maxLargeBytes = integer("ONETIME_MAX_LARGE_BYTES", largeDefault, 0, maxStoredBytes);
+  let maxLargeBytes = integer("ONETIME_MAX_LARGE_BYTES", largeDefault, 0, maxStoredBytes);
+  let maxFileBytes = integer("ONETIME_MAX_FILE_BYTES", MAX_FILE_BYTES, 0, FORMAT_MAX_FILE_BYTES);
+  const maxFileTtl = integer("ONETIME_MAX_FILE_TTL", SELFHOST_FILE_TTL_SECONDS, MIN_TTL_SECONDS, MAX_TTL_SECONDS);
+  // Either setting at 0 turns files off, and then both read 0 so the router, /api/limits and the docs agree.
+  if (maxLargeBytes === 0 || maxFileBytes === 0) {
+    maxLargeBytes = 0;
+    maxFileBytes = 0;
+  } else if (maxLargeBytes < fileBlobBytes(maxFileBytes)) {
+    problems.push(
+      `ONETIME_MAX_LARGE_BYTES (${maxLargeBytes}) must hold at least one file blob of ONETIME_MAX_FILE_BYTES (${fileBlobBytes(maxFileBytes)} bytes)`,
+    );
+  }
 
   let host = "127.0.0.1";
   const hostValue = value("HOST");
@@ -75,6 +102,8 @@ export function parseConfig(env: Env, bundleDir: string, cwd: string): Config {
     maxConnections: integer("ONETIME_MAX_CONNECTIONS", 1000, 1, 100_000),
     maxStoredBytes,
     maxLargeBytes,
+    maxFileBytes,
+    maxFileTtl,
     maxUploads: integer("ONETIME_MAX_UPLOADS", 16, 1, 1000),
   };
   if (problems.length > 0) throw new ConfigError(problems);

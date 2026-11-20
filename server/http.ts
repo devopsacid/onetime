@@ -1,6 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { MAX_BLOB_BYTES } from "../src/shared/limits";
-import { MAX_LARGE_STORED_BYTES, MAX_STORED_BYTES } from "../src/shared/limits";
+import { LARGE_MAX_TTL_SECONDS, MAX_BLOB_BYTES, MAX_FILE_BYTES, MAX_LARGE_STORED_BYTES, MAX_STORED_BYTES, MAX_TEXT_BLOB_BYTES } from "../src/shared/limits";
 import { API_HEADERS, blobLimit, handle } from "../src/worker/index";
 import type { Site } from "./static";
 import type { ManagedStore } from "./store-sqlite";
@@ -9,9 +8,11 @@ export interface AppDeps {
   store: ManagedStore;
   site: Site;
   maxStored: number;
-  /** Defaults are the limits' MAX_STORED_BYTES, MAX_LARGE_STORED_BYTES and 16 uploads at once. */
+  /** Defaults are the hosted limits: MAX_STORED_BYTES, MAX_LARGE_STORED_BYTES, MAX_FILE_BYTES, 1 hour for files, and 16 uploads at once. */
   maxStoredBytes?: number;
   maxLargeBytes?: number;
+  maxFileBytes?: number;
+  maxFileTtl?: number;
   maxUploads?: number;
 }
 
@@ -149,8 +150,25 @@ function drainRequest(req: IncomingMessage): Promise<void> {
   });
 }
 
-export function createApp({ store, site, maxStored, maxStoredBytes = MAX_STORED_BYTES, maxLargeBytes = MAX_LARGE_STORED_BYTES, maxUploads = 16 }: AppDeps): App {
-  const maxBlobBytes = blobLimit({ maxLargeBytes });
+/**
+ * How long a request may take to arrive: 60 s, plus 1 s per 32 KiB of blob above a text blob (a 262 kbit/s line), so a file
+ * at the limit can still be sent on a slow connection (220 s for 5 MiB). Uploads are bounded by ONETIME_MAX_UPLOADS.
+ */
+export function requestTimeoutMs(maxBlobBytes: number): number {
+  return 60_000 + Math.ceil(Math.max(0, maxBlobBytes - MAX_TEXT_BLOB_BYTES) / (32 * 1024)) * 1000;
+}
+
+export function createApp({
+  store,
+  site,
+  maxStored,
+  maxStoredBytes = MAX_STORED_BYTES,
+  maxLargeBytes = MAX_LARGE_STORED_BYTES,
+  maxFileBytes = MAX_FILE_BYTES,
+  maxFileTtl = LARGE_MAX_TTL_SECONDS,
+  maxUploads = 16,
+}: AppDeps): App {
+  const maxBlobBytes = blobLimit({ maxLargeBytes, maxFileBytes });
   // Uploads being read and stored right now. Each holds up to about 3 x maxBlobBytes in memory (chunks, joined copy, driver copy).
   let uploads = 0;
   const pending = new Set<Promise<unknown>>();
@@ -171,7 +189,7 @@ export function createApp({ store, site, maxStored, maxStoredBytes = MAX_STORED_
     } else {
       if (isUpload) uploads++;
       try {
-        response = await handle(request, store, ctx, { maxStored, maxStoredBytes, maxLargeBytes, maxBlobBytes });
+        response = await handle(request, store, ctx, { maxStored, maxStoredBytes, maxLargeBytes, maxFileBytes, maxFileTtl, maxBlobBytes });
       } catch (error) {
         logFailure(error);
         response = Response.json({ error: "Internal error" }, { status: 500, headers: API_HEADERS });
@@ -237,7 +255,7 @@ export function createApp({ store, site, maxStored, maxStoredBytes = MAX_STORED_
 
   const server = createServer(
     {
-      requestTimeout: 60_000,
+      requestTimeout: requestTimeoutMs(maxBlobBytes),
       headersTimeout: 10_000,
       keepAliveTimeout: 5_000,
       maxHeaderSize: 8192,

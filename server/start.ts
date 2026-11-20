@@ -22,6 +22,8 @@ export async function startServer(config: Config): Promise<Running> {
     maxStored: config.maxStored,
     maxStoredBytes: config.maxStoredBytes,
     maxLargeBytes: config.maxLargeBytes,
+    maxFileBytes: config.maxFileBytes,
+    maxFileTtl: config.maxFileTtl,
     maxUploads: config.maxUploads,
   });
   app.server.maxConnections = config.maxConnections;

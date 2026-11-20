@@ -27,6 +27,8 @@ describe("connection limit", () => {
     maxConnections,
     maxStoredBytes: 400_000_000,
     maxLargeBytes: 200_000_000,
+    maxFileBytes: 262_144,
+    maxFileTtl: 86_400,
     maxUploads: 16,
   });
 
