@@ -4,7 +4,7 @@
 // parent directories, so wrangler runs with a fresh empty working directory outside the repo. The project already
 // exists (created once by the owner). Needs CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in the environment.
 // Usage: node tools/deploy-info.mjs [--commit <40-hex sha>]   (default: git rev-parse HEAD)
-// Refuses a dirty git tree and runs the info check-dist assertions before uploading; dist-info/ may not hold _worker.js.
+// In a git checkout refuses a dirty tree; from a `git archive` (no .git) it needs --commit. It runs the info check-dist assertions before uploading; dist-info/ may not hold _worker.js.
 // See docs/plans/info-origin-split.md. Deploy the commit whose `pnpm check` is green, info first, then the app.
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
@@ -25,13 +25,20 @@ export function assertInfoDist(dir) {
 }
 
 /**
- * Refuses to go on unless the git tree is clean (nothing uncommitted or untracked: the deployed commit hash must
- * describe what is uploaded) and the info check-dist assertions pass on dist-info/. `run` is spawnSync-shaped.
+ * In a git checkout: refuses unless the tree is clean (nothing uncommitted or untracked: the deployed commit hash must
+ * describe what is uploaded). Outside a git repository (a clean `git archive`, the documented flow) it goes on only when
+ * the caller passed `commit`, a 40-hex sha, and says so through `note`. Either way the info check-dist assertions must
+ * pass on dist-info/. `run` is spawnSync-shaped.
  */
-export function preflight(repo, run = (command, args) => spawnSync(command, args, { cwd: repo, encoding: "utf8" })) {
+export function preflight(repo, run = (command, args) => spawnSync(command, args, { cwd: repo, encoding: "utf8" }), { commit, note = () => {} } = {}) {
   const git = run("git", ["status", "--porcelain"]);
-  if (git.status !== 0) throw new Error(`git status failed: ${String(git.stderr ?? "").trim()}`);
-  if (String(git.stdout ?? "").trim() !== "") throw new Error("the git tree has uncommitted or untracked changes (git status --porcelain is not empty); commit or remove them first");
+  if (git.status === 0) {
+    if (String(git.stdout ?? "").trim() !== "") throw new Error("the git tree has uncommitted or untracked changes (git status --porcelain is not empty); commit or remove them first");
+  } else if (/^[0-9a-f]{40}$/.test(commit ?? "")) {
+    note(`not a git checkout: treating this as an archive of commit ${commit} (taken from --commit)`);
+  } else {
+    throw new Error(`git status failed: ${String(git.stderr ?? "").trim()}; outside a git repository (an archive) pass --commit <40-hex sha>`);
+  }
   const check = run(process.execPath, [join(repo, "tools", "check-dist.mjs"), "dist-info", "--profile", "info"]);
   if (check.status !== 0) throw new Error(`check-dist (info) failed:\n${String(check.stdout ?? "")}${String(check.stderr ?? "")}`);
 }
@@ -53,13 +60,14 @@ function main() {
   const repo = resolve(fileURLToPath(new URL("..", import.meta.url)));
   const flag = process.argv.indexOf("--commit");
   let sha = flag !== -1 ? process.argv[flag + 1] ?? "" : "";
-  if (flag === -1) {
+  const explicit = flag !== -1;
+  if (!explicit) {
     const r = spawnSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" });
     sha = r.status === 0 ? r.stdout.trim() : "";
   }
   const tmpBase = join(homedir(), ".tmp");
   mkdirSync(tmpBase, { recursive: true });
-  preflight(repo);
+  preflight(repo, undefined, { commit: explicit ? sha : undefined, note: (m) => console.log(`deploy-info: ${m}`) });
   assertInfoDist(join(repo, "dist-info"));
   const plan = deployPlan({ repo, sha, tmpBase });
   const cwd = mkdtempSync(join(plan.cwdParent, "onetime-info-deploy-"));
