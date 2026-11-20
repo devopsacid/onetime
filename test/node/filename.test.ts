@@ -106,7 +106,7 @@ describe("cleanMime", () => {
     expect(cleanMime("application/vnd.ms-excel")).toBe("application/vnd.ms-excel");
   });
   it("returns an empty string for anything else", () => {
-    for (const raw of ["", "pdf", "a/b/c", "text/", "/plain", "text/pl ain", "text/<script>", "text/plain\n", "é/x", "x".repeat(64) + "/y", "-a/b"]) {
+    for (const raw of ["", "pdf", "a/b/c", "text/", "/plain", "text/pl ain", "text/<script>", "text/pl\nain", "é/x", "x".repeat(64) + "/y", "-a/b"]) {
       expect(cleanMime(raw), JSON.stringify(raw)).toBe("");
     }
   });
