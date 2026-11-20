@@ -3,35 +3,46 @@
 // Fails on: inline <script> content other than application/ld+json, invalid JSON-LD, style="" attributes,
 // <style> elements, on*="" handler attributes, and resource URLs (src, non-<a> href, action, poster, srcset,
 // formaction, data, xlink:href, url(...) in attribute values) pointing anywhere but this site.
-// Analytics guard: the app page (index.html) and 404.html, with every JS/CSS file they load (directly, via
-// modulepreload or via imports), must not contain googletagmanager, google-analytics or gtag; no HTML file may
-// contain a Google URL.
-// Profile: `dir/_selfhost.json` present = self-host build (its origin is the own origin, and no Google, GA ID, owner
-// address or onetimepass.pages.dev outside cli/ may appear anywhere); absent = the Pages build (no _selfhost.json).
-// Both: no `site:` block markers and no {{placeholders}} left in text files.
-// Usage: node tools/check-dist.mjs [dir]   (default: dist)
+// Profiles (docs/plans/info-origin-split.md): `dir/_selfhost.json` present = self-host; else `--profile info` = the info
+// site (dist-info); else the app (dist).
+//   app:      one strict CSP in /* and no Google string in any file; index, command-line, 404 and cli/ present, the info
+//             pages absent; _redirects exact (never a rule for / or /index.html); no resource URL to the info origin.
+//   info:     INFO_CSP in /*; 404 and every chunk it loads free of Google strings; how-it-works, privacy, 404 present,
+//             no index, command-line, cli/, _routes.json or manifest; _redirects exact; no resource URL to the app origin.
+//   selfhost: strict CSP, no GA, owner data or onetimepass(-info) hosts (cli/ may name the project URL); all five pages.
+// All: every root-relative <a href> points into the build; no `site:` markers or {{placeholders}} left.
+// Usage: node tools/check-dist.mjs [dir] [--profile info]   (default dir: dist)
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+import { INFO_CSP, INFO_ORIGIN, OWNER_ORIGIN, redirectsForApp, redirectsForInfo } from "./site-profile-core.mjs";
 
-const PAGES_ORIGIN = "https://onetimepass.pages.dev";
 const RESOURCE_ATTRS = new Set(["src", "href", "action", "poster", "srcset", "formaction", "data", "xlink:href"]);
 
-const root = process.argv[2] ?? "dist";
+const args = process.argv.slice(2);
+const profileFlag = args.indexOf("--profile");
+if (profileFlag !== -1 && args[profileFlag + 1] !== "info") {
+  console.error('check-dist: --profile accepts only "info"');
+  process.exit(2);
+}
+const wantInfo = profileFlag !== -1;
+const positional = args.filter((a, i) => !a.startsWith("--") && (profileFlag === -1 || i !== profileFlag + 1));
+const root = positional[0] ?? "dist";
 const problems = [];
 
 // Profile: _selfhost.json decides. A broken one is a problem, not a fallback to the Pages rules.
 let selfhost = false;
-let OWN_ORIGIN = PAGES_ORIGIN;
+let OWN_ORIGIN = wantInfo ? INFO_ORIGIN : OWNER_ORIGIN;
 {
   let raw = null;
   try {
     raw = readFileSync(join(root, "_selfhost.json"), "utf8");
   } catch {
-    // Pages profile.
+    // app or info profile.
   }
   if (raw !== null) {
     selfhost = true;
+    OWN_ORIGIN = OWNER_ORIGIN;
     try {
       const origin = JSON.parse(raw).origin;
       if (typeof origin !== "string" || !/^https?:\/\/[^/\s]+$/.test(origin)) throw new Error("no valid origin");
@@ -46,9 +57,12 @@ function textFiles(dir) {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);
     if (statSync(path).isDirectory()) return textFiles(path);
-    return /\.(html|m?js|css|json|txt|xml|svg|webmanifest|sha256|cmd)$|^_headers$/.test(name) ? [path] : [];
+    return /\.(html|m?js|css|json|txt|xml|svg|webmanifest|sha256|cmd)$|^_(?:headers|redirects)$/.test(name) ? [path] : [];
   });
 }
+
+const profile = selfhost ? "selfhost" : wantInfo ? "info" : "app";
+const exists = (name) => existsSync(join(root, name));
 
 function htmlFiles(dir) {
   return readdirSync(dir).flatMap((name) => {
@@ -85,6 +99,14 @@ function decodeEntities(value) {
 const ATTR = /([^\s"'>\/=]+)(?:\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
 const TOKEN = /<!--[\s\S]*?-->|<!doctype[^>]*>|<(\/?)([a-zA-Z][\w:-]*)((?:\s+[^\s"'>\/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*)\s*\/?>/gi;
 
+function isFile(urlPath) {
+  try {
+    return statSync(join(root, urlPath)).isFile();
+  } catch {
+    return false;
+  }
+}
+
 function checkFile(path) {
   const text = readFileSync(path, "utf8");
   const file = relative(process.cwd(), path);
@@ -112,6 +134,14 @@ function checkFile(path) {
       }
       for (const css of value.matchAll(/url\(\s*(['"]?)(.*?)\1\s*\)/gi)) {
         if (!isOwn(css[2] ?? "")) report(match.index, `external url() in <${name} ${attr}>: ${css[2]}`);
+      }
+    }
+
+    if (name === "a" && attrs.has("href")) {
+      const href = attrs.get("href") ?? "";
+      if (href.startsWith("/") && !href.startsWith("//")) {
+        const path = href.split(/[?#]/)[0] ?? "";
+        if (path !== "/" && !isFile(path) && !isFile(`${path}.html`)) report(match.index, `link to ${path}, which is not in this build`);
       }
     }
 
@@ -149,7 +179,7 @@ if (files.length === 0) {
 }
 for (const file of files) checkFile(file);
 
-const FORBIDDEN = /googletagmanager|google-analytics|gtag/i;
+const FORBIDDEN = /googletagmanager|google-analytics|analytics\.google|gtag|G-W3GR41J2NR/i;
 const GOOGLE_URL = /(?:https?:)?\/\/[^\s"'<>]*(?:google|gstatic|doubleclick)[^\s"'<>]*/i;
 
 function localRef(ref, from) {
@@ -187,8 +217,9 @@ function reachable(page) {
   return [...seen];
 }
 
-for (const name of ["index.html", "404.html"]) {
+for (const name of profile === "info" ? ["404.html"] : ["index.html", "404.html"]) {
   const page = join(root, name);
+  if (!existsSync(page)) continue; // reported by the file rules below
   const targets = [page, ...reachable(page)];
   for (const file of targets) {
     let text;
@@ -201,11 +232,10 @@ for (const name of ["index.html", "404.html"]) {
     if (hit) problems.push(`${relative(process.cwd(), file)}: analytics string "${hit[0]}" in ${name} or a file it loads`);
   }
 }
-// _headers guard: Google hosts only in the CSP of the info paths; strict policy everywhere else.
+// _headers guard: exactly one CSP line in /*: the strict policy (app, self-host) or INFO_CSP (info). Nothing detaches it.
 {
-  const INFO_PATHS = ["/how-it-works", "/how-it-works.html", "/command-line", "/command-line.html", "/privacy", "/privacy.html"];
   const STRICT = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
-  const NO_OVERRIDE = ["/", "/index.html", "/404", "/404.html"];
+  const expected = profile === "info" ? INFO_CSP : STRICT;
   let headersText = null;
   try {
     headersText = readFileSync(join(root, "_headers"), "utf8");
@@ -223,10 +253,13 @@ for (const name of ["index.html", "404.html"]) {
       } else if (current !== null) rules.get(current).push(raw.trim());
     }
     if (/unsafe-inline/i.test(headersText)) problems.push("_headers: 'unsafe-inline' appears");
-    const csp = (lines) => lines.filter((l) => /^content-security-policy:/i.test(l));
-    const star = csp(rules.get("/*") ?? []);
-    if (star.length !== 1 || star[0].replace(/^[^:]+:\s*/, "") !== STRICT) problems.push("_headers: the /* CSP is not the strict policy");
-    // The /* rule carries the feature lockdown and CORP in both profiles; the copy button needs clipboard-write for itself.
+    if (/^\s*!/m.test(headersText)) problems.push("_headers: a detach line (! Name) appears; one CSP applies to every path");
+    const allCsp = [...rules].flatMap(([path, lines]) => lines.filter((l) => /content-security-policy/i.test(l)).map(() => path));
+    if (allCsp.length !== 1 || allCsp[0] !== "/*") problems.push(`_headers: exactly one Content-Security-Policy line, in /*, is required (found ${allCsp.length}: ${allCsp.join(", ")})`);
+    const csp = (rules.get("/*") ?? []).filter((l) => /^content-security-policy:/i.test(l));
+    if (csp.length === 1 && csp[0].replace(/^[^:]+:\s*/, "") !== expected) problems.push(`_headers: the /* CSP is not the ${profile === "info" ? "info" : "strict"} policy`);
+    if (profile !== "info" && /googletagmanager|google-analytics|analytics\.google/i.test(headersText)) problems.push("_headers: a Google host outside the info site");
+    // The /* rule carries the feature lockdown and CORP in every profile; the copy button needs clipboard-write for itself.
     const header = (name) => (rules.get("/*") ?? []).filter((l) => l.toLowerCase().startsWith(`${name.toLowerCase()}:`)).map((l) => l.replace(/^[^:]+:\s*/, ""));
     if (header("Cross-Origin-Resource-Policy").join() !== "same-origin") problems.push("_headers: /* must set Cross-Origin-Resource-Policy: same-origin");
     const permissions = header("Permissions-Policy");
@@ -237,20 +270,42 @@ for (const name of ["index.html", "404.html"]) {
       }
       if (!permissions[0].split(",").some((p) => p.trim() === "clipboard-write=(self)")) problems.push("_headers: Permissions-Policy must keep clipboard-write=(self)");
     }
-    for (const [path, lines] of rules) {
-      const google = /googletagmanager|google-analytics|analytics\.google/i.test(lines.join("\n"));
-      if (google && !INFO_PATHS.includes(path)) problems.push(`_headers: Google host in the rule for ${path}`);
-      if (NO_OVERRIDE.includes(path) && lines.some((l) => /content-security-policy/i.test(l))) problems.push(`_headers: ${path} must not override the CSP`);
-    }
-    for (const path of INFO_PATHS) {
-      const lines = rules.get(path) ?? [];
-      if (selfhost) {
-        if (csp(lines).length > 0 || lines.some((l) => /content-security-policy/i.test(l))) problems.push(`_headers: ${path} must not override the CSP in a self-host build`);
-        continue;
+  }
+}
+
+// Which files exist (rule 3).
+{
+  const must = { app: ["index.html", "command-line.html", "404.html", "cli"], info: ["how-it-works.html", "privacy.html", "404.html"], selfhost: ["index.html", "how-it-works.html", "command-line.html", "privacy.html", "404.html"] }[profile];
+  const mustNot = { app: ["how-it-works.html", "privacy.html"], info: ["index.html", "command-line.html", "cli", "_routes.json", "manifest.webmanifest"], selfhost: ["_redirects"] }[profile];
+  for (const name of must) if (!exists(name)) problems.push(`${profile} build: ${name} is missing`);
+  for (const name of mustNot) if (exists(name)) problems.push(`${profile} build: ${name} must not be present`);
+}
+
+// _redirects (rule 5): the exact generated text; the app never redirects / or /index.html.
+if (profile !== "selfhost") {
+  let text = null;
+  try {
+    text = readFileSync(join(root, "_redirects"), "utf8");
+  } catch {
+    problems.push(`${root}/_redirects is missing`);
+  }
+  if (text !== null) {
+    if (profile === "app") {
+      for (const line of text.split("\n")) {
+        const source = line.trim().split(/\s+/)[0];
+        if (source === "/" || source === "/index.html") problems.push(`_redirects: a rule for ${source} (a secret link's fragment must never follow a redirect)`);
       }
-      const i = lines.findIndex((l) => l === "! Content-Security-Policy");
-      if (i === -1 || csp(lines).length !== 1) problems.push(`_headers: ${path} must detach the CSP and set exactly one`);
     }
+    if (text !== (profile === "app" ? redirectsForApp() : redirectsForInfo())) problems.push(`_redirects does not equal the generated ${profile} redirects`);
+  }
+}
+
+// No Google string anywhere in the app (rule 2); the info site is checked through 404.html above.
+if (profile === "app") {
+  for (const file of textFiles(root)) {
+    const text = readFileSync(file, "utf8");
+    const hit = FORBIDDEN.exec(text);
+    if (hit) problems.push(`${relative(process.cwd(), file)}:${lineOf(text, hit.index)}: analytics string "${hit[0]}" in the app build`);
   }
 }
 for (const file of files) {
@@ -276,7 +331,7 @@ for (const file of textFiles(root)) {
   try {
     txt = readFileSync(join(root, ".well-known", "security.txt"), "utf8");
   } catch {
-    if (!selfhost) problems.push(".well-known/security.txt is missing from the Pages build");
+    if (!selfhost) problems.push(".well-known/security.txt is missing from the app or info build");
   }
   if (txt !== null) {
     const field = (name) => [...txt.matchAll(new RegExp(`^${name}:[ \\t]*(.+?)[ \\t]*$`, "gim"))].map((m) => m[1]);
@@ -305,10 +360,9 @@ if (selfhost) {
     if (ga) problems.push(`${rel}:${lineOf(text, ga.index)}: analytics string "${ga[0]}" in a self-host build`);
     const mail = OWNER_MAIL.exec(text);
     if (mail) problems.push(`${rel}:${lineOf(text, mail.index)}: the owner's address in a self-host build`);
+    if (text.includes("onetimepass-info")) problems.push(`${rel}: onetimepass-info in a self-host build`);
     if (!inCli && text.includes("onetimepass.pages.dev")) problems.push(`${rel}: onetimepass.pages.dev outside cli/ in a self-host build`);
   }
-} else if (existsSync(join(root, "_selfhost.json"))) {
-  problems.push("_selfhost.json in the Pages build");
 }
 
 if (problems.length > 0) {
@@ -316,4 +370,4 @@ if (problems.length > 0) {
   for (const problem of problems) console.error(`  ${problem}`);
   process.exit(1);
 }
-console.log(`check-dist: ${selfhost ? "self-host" : "Pages"} profile, ${files.length} HTML files OK (no inline script or style, no handlers, no external resources, JSON-LD valid, no analytics code reachable from index.html or 404.html)`);
+console.log(`check-dist: ${profile} profile, ${files.length} HTML files OK (no inline script or style, no handlers, no external resources, JSON-LD valid, links resolve, ${profile === "info" ? "no analytics code reachable from 404.html" : "no analytics code"})`);

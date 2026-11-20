@@ -37,7 +37,7 @@ function fixture(root: string, profile: Profile): string {
   mkdirSync(join(dir, ".well-known"), { recursive: true });
   writeFileSync(join(dir, ".well-known", "security.txt"), securityTxtForPages({ privacyHtml: '<a href="mailto:o@example.org">o</a>', now: new Date(), origin: ownOrigin(profile) })!);
   if (profile === "app") {
-    mkdirSync(join(dir, "cli"));
+    mkdirSync(join(dir, "cli"), { recursive: true });
     writeFileSync(join(dir, "cli", "onetime.mjs"), "// cli\n");
     writeFileSync(join(dir, "_headers"), headers);
     writeFileSync(join(dir, "_redirects"), redirectsForApp());
@@ -132,7 +132,7 @@ describe("check-dist profiles", () => {
   });
   it("selfhost: the owner's origin or address outside cli/ fails, inside cli/ the project URL is allowed", () => {
     const dir = fixture(tmp.path, "selfhost");
-    mkdirSync(join(dir, "cli"));
+    mkdirSync(join(dir, "cli"), { recursive: true });
     writeFileSync(join(dir, "cli", "onetime.mjs"), "// https://onetimepass.pages.dev\n");
     expect(check(dir).code).toBe(0);
     writeFileSync(join(dir, "robots.txt"), "Sitemap: https://onetimepass.pages.dev/sitemap.xml\n");
