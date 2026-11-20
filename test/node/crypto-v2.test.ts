@@ -252,7 +252,7 @@ describe("module defaults and the iterations test hook", () => {
   it("deriveKey then openBlob equals decryptSecret", async () => {
     const made = await codec.encryptSecret("two steps", PASS);
     const link = link2(made.key, true);
-    const aes = await deriveKey(link, PASS).catch(() => codec.deriveKey(link, PASS));
+    const aes = await deriveKey(link, PASS);
     expect(aes.extractable).toBe(false);
     expect(await openBlob(made.blob, aes, link)).toBe("two steps");
   });

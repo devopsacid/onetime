@@ -6,3 +6,12 @@ export function pickTtlOption(maxTtl: number, values: readonly number[]): number
   }
   return best;
 }
+
+/**
+ * What the near-full handler should select: the largest option that fits maxTtl, but only when it is
+ * shorter than the current selection. Null means leave the select alone (never raise the sender's choice).
+ */
+export function lowerTtlSelection(current: number, maxTtl: number, values: readonly number[]): number | null {
+  const picked = pickTtlOption(maxTtl, values);
+  return picked !== null && picked < current ? picked : null;
+}

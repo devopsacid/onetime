@@ -1,5 +1,5 @@
 import { MAX_SECRET_BYTES } from "../shared/limits";
-import { pickTtlOption } from "./ttl";
+import { lowerTtlSelection } from "./ttl";
 import { ApiError, createSecret, revealSecret, secretExists } from "./api";
 import { SecretTooLargeError, decryptSecret, encryptSecret } from "./crypto";
 import {
@@ -73,17 +73,17 @@ el<HTMLFormElement>("create-form").addEventListener("submit", async (event) => {
 
   createButton.disabled = true;
   try {
-    const { blob, key } = await encryptSecret(text);
+    const { blob, key, format } = await encryptSecret(text);
     const id = await createSecret(blob, Number(ttlSelect.value));
     secretInput.value = "";
     updateSize();
-    el<HTMLInputElement>("link").value = buildLink(location.origin, { id, key });
+    el<HTMLInputElement>("link").value = buildLink(location.origin, { id, key, format, passphrase: false });
     el("created-ttl").textContent = ttlSelect.selectedOptions[0]?.textContent ?? "";
     show("created");
   } catch (error) {
     const picked =
       error instanceof ApiError && error.status === 409 && error.maxTtl !== undefined
-        ? pickTtlOption(error.maxTtl, Array.from(ttlSelect.options, (option) => Number(option.value)))
+        ? lowerTtlSelection(Number(ttlSelect.value), error.maxTtl, Array.from(ttlSelect.options, (option) => Number(option.value)))
         : null;
     if (picked !== null) {
       // Never resubmit silently: the sender decides.
@@ -178,7 +178,8 @@ const GONE_TEXT =
 
 revealButton.addEventListener("click", async () => {
   if (!pending) return;
-  const { id, key } = pending;
+  const link = pending;
+  const { id } = link;
   setError("open-error", null);
   revealButton.disabled = true;
   try {
@@ -187,7 +188,7 @@ revealButton.addEventListener("click", async () => {
     history.replaceState(null, "", location.pathname);
     pending = null;
     try {
-      el<HTMLTextAreaElement>("revealed").value = await decryptSecret(blob, key);
+      el<HTMLTextAreaElement>("revealed").value = await decryptSecret(blob, link);
       show("revealed");
     } catch {
       showGone(
@@ -245,6 +246,15 @@ async function route(): Promise<void> {
     showGone(
       "This link is incomplete",
       "Part of the link is missing or changed. Copy the whole link again, including everything after the # sign.",
+    );
+    return;
+  }
+
+  if (parsed.passphrase) {
+    // The passphrase field comes with the writers deploy. Until then never press Reveal for the user: it would burn the secret.
+    showGone(
+      "This page cannot open this link yet",
+      "The link needs a passphrase, which this page does not support yet. Nothing has been used up. Try again later.",
     );
     return;
   }
