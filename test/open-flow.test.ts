@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../src/web/api";
 import { createCodec } from "../src/web/crypto";
-import { openSecret, type OpenDeps, type OpenPhase } from "../src/web/open-flow";
+import { createLatestGuard } from "../src/web/latest";
+import { openSecret, openSecretGuarded, type OpenDeps, type OpenPhase } from "../src/web/open-flow";
 import { passphraseProblemText, planCreate, passphraseCreateEnabled } from "../src/web/passphrase-ui";
 
 // workerd refuses high PBKDF2 iteration counts; the real count is proven in test/node/crypto-v2.test.ts.
@@ -101,5 +102,45 @@ describe("openSecret on a file link before the file UI exists", () => {
     const outcome = await openSecret({ ...link, file: true }, "", deps);
     expect(outcome).toEqual({ kind: "unsupported" });
     expect(calls).toEqual([]);
+  });
+});
+
+describe("openSecretGuarded: a hash change while a reveal is in flight", () => {
+  it("returns the outcome as current when nothing else was routed", async () => {
+    const { link, deps } = await setup();
+    const guard = createLatestGuard();
+    const ticket = guard.current();
+    const phases: OpenPhase[] = [];
+    const result = await openSecretGuarded(guard, ticket, link, "", deps, (p) => phases.push(p));
+    expect(result).toEqual({ stale: false, outcome: { kind: "revealed", text: "the secret" } });
+    expect(phases).toEqual(["preparing", "revealing", "revealed"]);
+  });
+
+  it("flags the outcome stale and never signals 'revealed' (so the caller never rewrites the address bar) after a new route", async () => {
+    const { link, deps } = await setup();
+    const guard = createLatestGuard();
+    const ticket = guard.current();
+    const phases: OpenPhase[] = [];
+    const result = await openSecretGuarded(
+      guard,
+      ticket,
+      link,
+      "",
+      { ...deps, revealSecret: async (id) => (guard.next(), deps.revealSecret(id)) }, // hashchange while the request is out
+      (p) => phases.push(p),
+    );
+    expect(result).toEqual({ stale: true });
+    expect(phases).toEqual(["preparing", "revealing"]);
+  });
+
+  it("a route that happened before the phases started also suppresses them", async () => {
+    const { link, deps } = await setup();
+    const guard = createLatestGuard();
+    const ticket = guard.current();
+    guard.next();
+    const phases: OpenPhase[] = [];
+    const result = await openSecretGuarded(guard, ticket, link, "", deps, (p) => phases.push(p));
+    expect(result.stale).toBe(true);
+    expect(phases).toEqual([]);
   });
 });

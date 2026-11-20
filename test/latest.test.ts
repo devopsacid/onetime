@@ -11,3 +11,15 @@ describe("createLatestGuard", () => {
     expect(guard.isCurrent(second)).toBe(true);
   });
 });
+
+describe("createLatestGuard.current", () => {
+  it("returns the ticket in force without issuing a new one", () => {
+    const guard = createLatestGuard();
+    const first = guard.next();
+    expect(guard.current()).toBe(first);
+    expect(guard.current()).toBe(first);
+    expect(guard.isCurrent(guard.current())).toBe(true);
+    guard.next();
+    expect(guard.isCurrent(first)).toBe(false);
+  });
+});
