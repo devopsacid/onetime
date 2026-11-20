@@ -13,7 +13,7 @@ Marks: **(tested)** = the project ran it (see [What was tested](#what-was-tested
 | Service + headless Service | port 80 to 8080 |
 | Ingress | optional: class, host, TLS secret, optional cert-manager issuer, free annotations |
 | ServiceAccount | `automountServiceAccountToken: false` |
-| NetworkPolicy | optional: only the listed peers may reach port 8080; all egress denied (the app makes no outbound connections) |
+| NetworkPolicy | optional: only the listed peers may reach port 8080; all egress denied (the app makes no outbound connections). Rendering fails when it is enabled with an empty `ingressFrom` |
 | BackendConfig, ManagedCertificate, FrontendConfig | optional, GKE only |
 | helm test pod | runs `wget /healthz` from the app image itself |
 
@@ -79,8 +79,9 @@ Example values:
 ### Generic Kubernetes, on-prem, k3s
 
 - ingress-nginx: the per-Ingress annotation `nginx.ingress.kubernetes.io/enable-access-log: "false"` is **not enough**. In the controller ConfigMap set `disable-access-log: "true"` and `error-log-level: "crit"`. Without the second one, every pod restart writes lines such as `connect() failed ... client: <IP> ... request: "POST /api/secrets/<id>/reveal HTTP/2.0"` to the controller log; the project's kind test produced exactly that line. Optional: `hsts: "false"`, so the app's own HSTS header is the only one.
-- Upstream ingress-nginx is retired (announced by Kubernetes SIG Network in November 2025, no maintenance after March 2026). Prefer Traefik or another maintained controller for new clusters.
-- Traefik writes access logs only when `accessLog` is configured; leave it off. The k3s example adds a `buffering` Middleware that limits bodies to 64 KB **(not tested)**.
+- ingress-nginx stays the tested default. Upstream ingress-nginx is retired (announced by Kubernetes SIG Network in November 2025, no maintenance after March 2026); Traefik is the suggested alternative for new clusters (`values-k3s-traefik.yaml`, **not tested**).
+- For ingress-nginx classes (a class name containing `nginx`, `webapprouting.kubernetes.azure.com`, or any `nginx.ingress.kubernetes.io/` annotation) `helm install` and `helm upgrade` print a warning with the two controller settings and how to check them.
+- Traefik writes access logs only when `accessLog` is configured; leave it off. Whether Traefik's error log writes request paths during an app restart was **not tested**. The k3s example adds a `buffering` Middleware limited to `ingress.maxBodyBytes`; the chart passes Ingress annotation values through `tpl`, so the middleware reference uses the release namespace **(not tested)**.
 - `local-path` volumes live on one node; the pod is pinned there. Longhorn: RWO volumes only (Longhorn RWX uses NFS).
 - `persistence.accessModes: [ReadWriteOncePod]` is stricter (one pod, not one node) where the CSI driver supports it; `local-path` does not.
 
@@ -97,7 +98,7 @@ Example values:
 
 - EC2 node groups (managed, self-managed or Auto Mode) with the EBS CSI driver and a `gp3` StorageClass.
 - The AWS Load Balancer Controller creates an ALB; TLS uses an ACM certificate (`alb.ingress.kubernetes.io/certificate-arn`). The example sets `access_logs.s3.enabled=false` and `connection_logs.s3.enabled=false` explicitly (both are off by default).
-- ALB has no request-body limit setting. The app refuses bodies over 16 KB + 28 bytes with 413 by itself.
+- ALB has no request-body limit setting, so `ingress.maxBodyBytes` has no effect there. The app refuses bodies over its own limit (16 KB + 28 bytes today) with 413 by itself.
 - `target-type: ip` means the ALB connects from VPC addresses: the NetworkPolicy allows the VPC CIDR. NetworkPolicy needs the VPC CNI network policy agent.
 - Not supported: EKS on Fargate (EFS only).
 
@@ -160,7 +161,7 @@ Request paths contain secret ids. Checklist for every cluster:
 
 ## Values reference
 
-See `deploy/helm/onetime/values.yaml` (every key is commented) and `values.schema.json`. Notable keys: `config.maxStored` (ONETIME_MAX_STORED), `extraEnv` (map of further variables, for example `ONETIME_MAX_CONNECTIONS`; HOST, PORT and ONETIME_DB are refused), `persistence.*`, `ingress.*`, `networkPolicy.*`, `gke.*`, `extraObjects`.
+See `deploy/helm/onetime/values.yaml` (every key is commented) and `values.schema.json`. Notable keys: `ingress.maxBodyBytes` (proxy body limit, default 65536, see [deploy-architecture.md](deploy-architecture.md)), `config.maxStored` (ONETIME_MAX_STORED), `extraEnv` (map of further variables, for example `ONETIME_MAX_CONNECTIONS`; HOST, PORT and ONETIME_DB are refused), `persistence.*`, `ingress.*`, `networkPolicy.*`, `gke.*`, `extraObjects`.
 
 ## What was tested
 

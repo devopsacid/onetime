@@ -21,8 +21,8 @@ Both modes use `Restart=on-failure` with `RestartPreventExitStatus=2 3`, so a ba
 
 Optional reverse proxy (`onetime_proxy`):
 
-- **Caddy** (default): automatic HTTPS, `request_body max_size 64KB`, no `log` directive, **and** a global `log default { exclude http.log.error http.stdlib }`. That last part is needed: without it Caddy still writes handler errors with the full request URI and the client IP. The project's test put `POST /api/secrets/<id>/reveal` into the journal by sending a reveal while the app was stopped (as during every restart). `deploy/Caddyfile.example` does not have this block yet.
-- **nginx**: `access_log off` in `nginx.conf` and in the site, the global `error_log` set to `crit`, the Debian/Ubuntu default site removed, `client_max_body_size 64k`, no forwarding headers. You provide the certificate (certbot, acme.sh, your CA); `onetime_nginx_selfsigned: true` creates a self-signed one for tests. Uses `http2 on` on nginx 1.25.1+ and `listen ... http2` on older versions. On SELinux hosts it sets `httpd_can_network_connect`.
+- **Caddy** (default): automatic HTTPS, `request_body max_size` from `onetime_max_body_bytes`, no `log` directive, **and** a global `log default { exclude http.log.error http.stdlib }`. That last part is needed: without it Caddy still writes handler errors with the full request URI and the client IP. The project's test put `POST /api/secrets/<id>/reveal` into the journal by sending a reveal while the app was stopped (as during every restart). `deploy/Caddyfile.example` has the same block.
+- **nginx**: `access_log off` in `nginx.conf` and in the site, the global `error_log` set to `crit`, the Debian/Ubuntu default site removed, `client_max_body_size` from `onetime_max_body_bytes`, no forwarding headers. The role does **not** touch existing log files or other sites: log files written before it ran stay on disk (delete them yourself if they may hold request paths), and any other `server` block with its own `access_log` keeps logging its own requests. You provide the certificate (certbot, acme.sh, your CA); `onetime_nginx_selfsigned: true` creates a self-signed one for tests. Uses `http2 on` on nginx 1.25.1+ and `listen ... http2` on older versions. On SELinux hosts it sets `httpd_can_network_connect`.
 - **none**: bring your own proxy; it must follow the logging rule.
 
 The role does not manage the firewall: open 80 and 443, keep 8080 closed.
@@ -30,7 +30,9 @@ The role does not manage the firewall: open 80 and 443, keep 8080 closed.
 ## Prerequisites
 
 - Controller: Ansible core 2.16 or newer. No collections are needed (only `ansible.builtin`).
-- Target: Debian 12/13, Ubuntu 24.04, or RHEL/Rocky/Alma 9/10, with Python 3, SSH and sudo. Caddy on the RHEL family comes from EPEL (the role installs `epel-release`; on RHEL proper enable EPEL yourself).
+- Target: Debian 12/13, Ubuntu 24.04, or RHEL/Rocky/Alma 9/10, with Python 3, SSH and sudo.
+- Package sources: the NodeSource and Docker CE repository keys are downloaded over HTTPS from their vendors and are **not** pinned to a fingerprint. If you need that, put the keys in place yourself (or mirror the repositories) and set `onetime_node_install: none` / `onetime_docker_install: false`.
+- A registry login (`onetime_registry`) is used only for the pull and logged out again right after it, also when the pull fails. Caddy on the RHEL family comes from EPEL (the role installs `epel-release`; on RHEL proper enable EPEL yourself).
 - `--check` on Debian/Ubuntu needs `python3-apt` on the target (Ansible's apt module cannot install it in check mode). Debian and Ubuntu cloud images have it.
 - DNS for `onetime_domain` pointing at the host, so Caddy can get a certificate.
 
@@ -81,8 +83,12 @@ Main variables (all in `roles/onetime/defaults/main.yml`, validated by `meta/arg
 | `onetime_max_stored` | | ONETIME_MAX_STORED |
 | `onetime_env` | `{}` | more variables, e.g. `ONETIME_MAX_CONNECTIONS: "200"`; HOST, PORT, ONETIME_DB are refused |
 | `onetime_data_dir` | `/var/lib/onetime` | Docker mode database folder (mount a data disk here) |
+| `onetime_require_data_mount` | `false` | `true` when a separate data disk is used: the unit refuses to start unless the database folder is a mount point |
+| `onetime_max_body_bytes` | `65536` | proxy body limit (at least 1024) |
 
-With a separate data disk: in Docker mode mount it at `/var/lib/onetime` before the first run (the Terraform VM modules do that). In systemd mode the unit's state lives in `/var/lib/private/onetime`; mount the disk there **(not tested)**. Local or block storage only, never NFS/SMB.
+With a separate data disk: in Docker mode mount it at `/var/lib/onetime` before the first run (the Terraform VM modules do that). In systemd mode the unit's state lives in `/var/lib/private/onetime`; mount the disk there **(not tested)**. Set `onetime_require_data_mount: true` in both cases, so the app never starts on the root disk when the data disk is missing (`ExecStartPre=mountpoint -q ...`; **not tested** in the role, the same guard is tested in the Terraform bootstrap). Local or block storage only, never NFS/SMB.
+
+Switching modes on one host (Docker to systemd or back) does not move the database: Docker mode keeps it in `/var/lib/onetime` (owner `onetime`), systemd mode in `/var/lib/private/onetime` (owned by the dynamic user, which systemd fixes on start). Stop the service, move the files yourself (`onetime.db`, and `onetime.db-wal` if present), then run the playbook with the new mode.
 
 ## Upgrade
 

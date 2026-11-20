@@ -48,7 +48,7 @@ Request paths contain secret ids (`/api/secrets/<id>/reveal`). The app writes no
 | Caddy | access log off unless a `log` directive exists, **but handler errors (`http.log.error`) are logged with the request URI and client IP**, e.g. a reveal during a restart | no `log` directive, plus a global `log default { exclude http.log.error http.stdlib }` (Ansible role, VM cloud-init). Tested: without the exclusion a reveal path reached the journal, with it nothing |
 | nginx | on | `access_log off` in the http context and the server, global `error_log ... crit`, distribution default site removed (Ansible) |
 | ingress-nginx (also AKS application routing) | on, and the error log (level `notice`) writes request lines | per Ingress `enable-access-log: "false"` **and** controller config `disable-access-log: "true"`, `error-log-level: crit` (required, see the on-prem values). Tested in kind: with the annotation alone a restart logged `request: "POST /api/secrets/<id>/reveal"` with the client IP; with the controller settings nothing |
-| Traefik (k3s) | off unless `accesslog` is configured | nothing to switch off; the docs say not to enable it |
+| Traefik (k3s) | off unless `accesslog` is configured | nothing to switch off; the docs say not to enable it. **Not tested**: whether Traefik's own error log writes request paths during an app restart was not probed |
 | AWS ALB | off (`access_logs.s3.enabled=false`) | set explicitly, also `connection_logs.s3.enabled=false` |
 | Azure Application Gateway, Application Gateway for Containers | only through Azure diagnostic settings | the docs say not to enable the access-log category (`ApplicationGatewayAccessLog`, or the access log of Application Gateway for Containers), and to check Azure Policy that adds diagnostic settings |
 | GKE Ingress (external Application Load Balancer) | **on** for backends created by Ingress | the chart creates a `BackendConfig` with `logging.enable: false` and attaches it to the Service (GKE values) |
@@ -59,7 +59,16 @@ The app never reads `Host` or `X-Forwarded-*`, so no forwarding headers or trust
 
 ### 5. TLS and request size
 
-TLS terminates in front of the app (Caddy, nginx, an ingress controller or a cloud load balancer). Browsers only allow the page's encryption in a secure context, so plain HTTP works only on `localhost`. The proxy may limit request bodies to 64 KB; a secret is at most 16 KB plus 28 bytes. The app also enforces its own limit (413), so a proxy without a body limit (AWS ALB) is still safe.
+TLS terminates in front of the app (Caddy, nginx, an ingress controller or a cloud load balancer). Browsers only allow the page's encryption in a secure context, so plain HTTP works only on `localhost`. The proxy limits request bodies; a secret is at most 16 KB plus 28 bytes today, and the default limit is 65536 bytes (64 KB). The app also enforces its own limit (413), so a proxy without a body limit (AWS ALB, Application Gateway for Containers, GKE Ingress) is still safe. A planned file-transfer feature will raise the upload size to about 1 MiB, so the proxy limit is a setting everywhere:
+
+| Tool | Setting | Default | Used for |
+|---|---|---|---|
+| Helm | `ingress.maxBodyBytes` | 65536 | `nginx.ingress.kubernetes.io/proxy-body-size` on ingress-nginx classes (unless set as an annotation), the Traefik Middleware in `values-k3s-traefik.yaml` |
+| Ansible | `onetime_max_body_bytes` | 65536 | Caddy `request_body max_size`, nginx `client_max_body_size` |
+| Terraform (VMs) | `max_body_bytes` (vm-bootstrap and the three VM modules) | 65536 | Caddy `request_body max_size` |
+| `deploy/Caddyfile.example`, `deploy/nginx.conf.example` | edit `64KB` / `64k` by hand | 64 KB | |
+
+On ALB, Application Gateway for Containers and the GKE Ingress there is nothing to set; the app's own limit applies.
 
 ### 6. Backups bring back used links
 
@@ -93,8 +102,10 @@ Not supported, and the deploy code ships nothing for them. The reasons:
 
 1. **Durable storage is a network filesystem.** On ECS Fargate and EKS Fargate the only storage that outlives a task is EFS (NFS). The storage rule forbids it, and the server cannot detect every network-share setup, so a misconfiguration would fail silently (two writers, a corrupted WAL, or a revealed secret coming back).
 2. **ECS-managed EBS volumes are per task.** ECS can attach an EBS volume to a Fargate task, but a service creates a new volume for every task it starts and removes it when the task stops; it can only be seeded from a snapshot. A seed snapshot is a backup: it would bring back secrets revealed after it was taken (fact 6). Without a seed, the volume is simply ephemeral.
-3. **An ephemeral variant would be technically possible but changes the product.** One task (`desired_count = 1`, `maximumPercent = 100`, `minimumHealthyPercent = 0`, so the old task stops before the new one starts) with the database on the task's own ephemeral storage keeps both SQLite rules: local disk, one writer. But every deploy, crash, scaling event and every Fargate platform retirement of the task would silently delete all unopened secrets. Whether that is acceptable is a product decision for the owner (see the open question in the Terraform guide), not something the infrastructure should decide on its own. The same reasoning applies to Cloud Run and Azure Container Apps with in-memory or ephemeral storage, where new revisions additionally overlap the old one.
-4. **What would make them supported:** a Postgres store (the `SecretStore` interface in `src/worker/store.ts` leaves room for it; `insertIfBelowCap` would need an advisory lock). With Postgres (RDS, Azure Database for PostgreSQL, Cloud SQL), the app becomes stateless and can run with several replicas on Fargate, Container Apps or Cloud Run, and the Helm chart could drop the single-replica rule.
+3. **An ephemeral variant would be technically possible but changes the product.** One task (`desired_count = 1`, `maximumPercent = 100`, `minimumHealthyPercent = 0`, so the old task stops before the new one starts) with the database on the task's own ephemeral storage keeps both SQLite rules: local disk, one writer. But every deploy, crash, scaling event and every Fargate platform retirement of the task would silently delete all unopened secrets. Whether that is acceptable is a product decision; the owner decided against it (see below). The same reasoning applies to Cloud Run and Azure Container Apps with in-memory or ephemeral storage, where new revisions additionally overlap the old one.
+4. **What would make them supported:** a Postgres store (the `SecretStore` interface in `src/worker/store.ts` leaves room for it; `insertIfBelowCap` would need an advisory lock). With Postgres (RDS, Azure Database for PostgreSQL, Cloud SQL), the app becomes stateless and can run with several replicas on Fargate, Container Apps or Cloud Run, and the Helm chart could drop the single-replica rule. A future in-memory or Redis store could be another option for these platforms; it would need its own answer to the one-time and durability rules.
+
+The owner decided on 2026-11-20 not to ship an ephemeral-storage Fargate module.
 
 ## Design choices in the deploy code
 
@@ -103,3 +114,11 @@ Not supported, and the deploy code ships nothing for them. The reasons:
 - **No PodDisruptionBudget.** With one replica a PDB either blocks node drains forever or does nothing. A drain is a short outage, like an update.
 - **Clusters, registries and DNS are not created.** The Terraform code deploys onto an existing cluster and takes an image reference. Creating clusters is a large, opinionated domain (use the official EKS/AKS/GKE modules); a registry is one CLI command, shown in the guides; DNS is one record pointing at the output address. Certificates come from Caddy (VMs), cert-manager (generic Kubernetes, AKS), ACM (EKS) or Google-managed certificates (GKE).
 - **The VMs use Docker from cloud-init**, with the same hardening as `compose.yaml`, behind Caddy with automatic HTTPS. The Ansible role can take over later (for example to switch to systemd mode).
+
+## Not automated yet
+
+The checks that proved the logging and storage behaviour were run by hand with throwaway rigs and are not in the repository or CI. Follow-up work:
+
+1. **kind log check**: build the image, install the chart with `values-kind-test.yaml` behind ingress-nginx, run the API round trip, restart the pod while reveal requests arrive, and fail if the controller log contains a secret id (once with the controller defaults to prove the check catches the leak, once with `disable-access-log` and `error-log-level: crit`).
+2. **Ansible containers**: privileged Debian 13 and Rocky 9 containers with systemd as PID 1; run the playbook twice (second run `changed=0`), `--check`, the round trip through Caddy and nginx, and a journal / log grep for the secret id, also while the app is stopped.
+3. **cloud-init NoCloud**: render `vm-bootstrap`, boot a privileged Ubuntu 24.04 systemd container with a NoCloud seed, a loop device as data disk and a local registry; check the first boot, a replacement boot on the same disk (no reformat, data kept) and a boot without the disk (the app must not start).

@@ -47,12 +47,20 @@ To manage the app with Ansible instead (for example systemd mode, or updates wit
 **VMs.** Changing `image` (or anything else in the user data) **replaces the VM**: the old one is removed first, the data disk is detached and attached to the new VM, which finds the existing filesystem and does not format it. The static IP stays. This is a short outage by design.
 
 - AWS: `user_data_replace_on_change`; the volume attachment uses `stop_instance_before_detaching`, so the app stops cleanly.
-- Azure: `custom_data` forces a new VM. Terraform detaches the disk while the old VM still runs; SQLite (`synchronous=FULL`) treats that like a power cut and keeps committed writes. For a clean stop run `sudo systemctl stop onetime` on the VM before `apply`.
+- Azure: `custom_data` forces a new VM, and Terraform would detach the disk from the running VM. **Deallocate the old VM first** (this is the required procedure; it is simpler than switching to Ansible for updates): run `terraform plan`, and when it shows the VM "must be replaced", run `az vm deallocate --resource-group <rg> --name <name>`, then `terraform apply`. The deallocation shuts the VM down, which stops onetime cleanly before the disk is detached.
 - GCP: `replace_triggered_by` on the user-data checksum.
 
 New base images (AMI, Ubuntu image) are ignored after creation, so a new Ubuntu release does not replace the VM by itself. Unattended upgrades on Ubuntu keep packages patched.
 
 **Clusters.** Change `image_digest` and apply: Helm upgrades the StatefulSet, the old pod stops before the new one starts.
+
+> **ingress-nginx warning for `k8s-release`.** Terraform does not show Helm's NOTES, so the chart's warning does not reach you here. If the Ingress is served by ingress-nginx (on-prem values, kind, or the AKS application routing add-on), the controller itself must run with `disable-access-log: "true"` and `error-log-level: "crit"` in its ConfigMap; otherwise every restart of onetime writes the reveal path with the secret id and the client IP to the controller log. Check with `kubectl -n ingress-nginx get configmap ingress-nginx-controller -o jsonpath='{.data}'`. See [deploy-helm.md](deploy-helm.md).
+
+## Data disk guard and body limit
+
+The bootstrap is one script with `set -e`: if the data disk does not appear within `data_disk_wait_seconds` (default 600), nothing else is installed or started. `onetime.service` also runs `ExecStartPre=mountpoint -q /var/lib/onetime`, and `onetime-run` checks the mount again, so the app never starts on the root disk.
+
+The proxy body limit is `max_body_bytes` (default 65536) on vm-bootstrap and the three VM modules.
 
 ## Backup and restore
 
@@ -84,7 +92,7 @@ State holds no secrets from this code (no passwords, keys or tokens), but it doe
 
 ## Platform notes
 
-- **Fargate, Container Apps, Cloud Run, Lightsail containers: not supported**, see the verdict in [deploy-architecture.md](deploy-architecture.md). An experimental single-task ECS Fargate setup on ephemeral storage would keep the SQLite rules but delete all unopened secrets on every deploy and task replacement; it is an open question for the owner, not shipped.
+- **Fargate, Container Apps, Cloud Run, Lightsail containers: not supported**, see the verdict in [deploy-architecture.md](deploy-architecture.md). They need a Postgres store; the owner decided not to ship an ephemeral-storage Fargate module.
 - **arm64**: set an arm64 instance type, AMI parameter or image and build a multi-arch image **(not tested)**.
 - **IPv6**: the AWS security group allows 80/443 over IPv6; the modules do not assign IPv6 addresses.
 
