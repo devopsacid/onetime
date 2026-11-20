@@ -26,7 +26,7 @@ function fixture(root: string, profile: "selfhost" | "onetimepass"): string {
     for (const name of ["index", "404", "how-it-works", "command-line", "privacy"]) {
       writeFileSync(join(dir, `${name}.html`), page().replaceAll(ORIGIN, "https://onetimepass.pages.dev"));
     }
-    mkdirSync(join(dir, ".well-known"));
+    mkdirSync(join(dir, ".well-known"), { recursive: true });
     writeFileSync(join(dir, ".well-known", "security.txt"), securityTxtForPages({ privacyHtml: '<a href="mailto:o@example.org">o</a>', now: new Date() })!);
   }
   return dir;

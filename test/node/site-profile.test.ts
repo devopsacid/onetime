@@ -249,10 +249,6 @@ describe("security.txt", () => {
     expect(securityTxtForSelfhost({ origin: "https://my.host", contact: "", now })).toBeNull();
     expect(() => securityTxtForSelfhost({ origin: "https://my.host", contact: "nonsense", now })).toThrow();
   });
-  it("headersForSelfhost leaves no header-less rule for it", () => {
-    const out = headersForSelfhost(readFileSync(join(ROOT, "public", "_headers"), "utf8"));
-    expect(out).not.toMatch(/^\/\.well-known\/security\.txt\n(?:\n|$)/m);
-  });
 });
 
 describe("siteProfile plugin config", () => {

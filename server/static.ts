@@ -76,8 +76,9 @@ function readOrigin(files: Map<string, Uint8Array>, dir: string): string {
   throw new SiteError(`${dir}/_selfhost.json is invalid: it needs a non-empty "origin" string`);
 }
 
-/** A name that must never be served: anything starting with "_" at the root, or any dot-segment name. */
+/** A name that must never be served, except /.well-known/security.txt: anything starting with "_" at the root, or any dot-segment name. */
 function hidden(path: string): boolean {
+  if (path === "/.well-known/security.txt") return false; // the one dot path served (RFC 9116)
   return path.slice(1).startsWith("_") || path.split("/").some((segment) => segment.startsWith("."));
 }
 

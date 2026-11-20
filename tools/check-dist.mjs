@@ -269,6 +269,30 @@ for (const file of textFiles(root)) {
   if (placeholder) problems.push(`${relative(process.cwd(), file)}:${lineOf(text, placeholder.index)}: placeholder left in the output: ${placeholder[0]}`);
 }
 
+// security.txt (RFC 9116): required in the Pages build, optional in self-host (only with an operator contact).
+// Expires must parse, be at least 30 days ahead and under a year; Contact and a Canonical for this origin are required.
+{
+  let txt = null;
+  try {
+    txt = readFileSync(join(root, ".well-known", "security.txt"), "utf8");
+  } catch {
+    if (!selfhost) problems.push(".well-known/security.txt is missing from the Pages build");
+  }
+  if (txt !== null) {
+    const field = (name) => [...txt.matchAll(new RegExp(`^${name}:[ \\t]*(.+?)[ \\t]*$`, "gim"))].map((m) => m[1]);
+    if (field("Contact").length === 0) problems.push("security.txt: no Contact field");
+    const canonical = field("Canonical");
+    if (canonical.length !== 1 || canonical[0] !== `${OWN_ORIGIN}/.well-known/security.txt`) problems.push(`security.txt: Canonical must be ${OWN_ORIGIN}/.well-known/security.txt`);
+    const expires = field("Expires");
+    const at = expires.length === 1 && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(expires[0]) ? Date.parse(expires[0]) : NaN;
+    const days = (at - Date.now()) / 864e5;
+    if (Number.isNaN(days)) problems.push("security.txt: Expires is missing, repeated or not an ISO 8601 date-time");
+    else if (days < 30) problems.push(`security.txt: Expires is ${days < 0 ? "in the past" : "less than 30 days away"} (rebuild; the build sets it 11 months ahead)`);
+    else if (days > 366) problems.push("security.txt: Expires is more than a year ahead (RFC 9116 says less than a year)");
+    if (selfhost && /devopsacid|onetimepass|github\.com\/[^\s]*\/security\/advisories/i.test(txt)) problems.push("security.txt: the original site's contact or repository in a self-host build");
+  }
+}
+
 if (selfhost) {
   // Nothing of the owner's analytics or identity may ship in a self-host build.
   const GA = /googletagmanager|google-analytics|analytics\.google|gtag|G-W3GR41J2NR/i;

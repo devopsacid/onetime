@@ -2,13 +2,15 @@
 //   ONETIME_SITE=onetimepass (default): the owner's Pages build, output dist/.
 //   ONETIME_SITE=selfhost: output dist-selfhost/. Needs ONETIME_ORIGIN; optional ONETIME_OPERATOR_NAME,
 //   ONETIME_OPERATOR_CONTACT and ONETIME_INDEXABLE=1.
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import {
   headersForSelfhost,
   operatorContactHtml,
   operatorNameHtml,
   parseOrigin,
+  securityTxtForPages,
+  securityTxtForSelfhost,
   robotsForSelfhost,
   sitemapForSelfhost,
   transformHtml,
@@ -47,7 +49,18 @@ export function siteProfile(env = process.env) {
       handler: (html) => transformHtml(html, settings),
     },
     async closeBundle() {
-      if (settings.profile !== "selfhost") return;
+      const writeSecurityTxt = async (text) => {
+        if (text === null) return;
+        await mkdir(join(outDir, ".well-known"), { recursive: true });
+        await writeFile(join(outDir, ".well-known", "security.txt"), text);
+      };
+      if (settings.profile !== "selfhost") {
+        // The published address is read from the built privacy page (the Pages profile), so the two never differ.
+        const privacyHtml = await readFile(join(outDir, "privacy.html"), "utf8");
+        await writeSecurityTxt(securityTxtForPages({ privacyHtml, now: new Date() }));
+        return;
+      }
+      await writeSecurityTxt(securityTxtForSelfhost({ origin: settings.origin, contact: settings.operatorContact, now: new Date() }));
       const read = (name) => readFile(join(outDir, name), "utf8");
       await writeFile(join(outDir, "_headers"), headersForSelfhost(await read("_headers"), { indexable: settings.indexable }));
       await writeFile(join(outDir, "robots.txt"), robotsForSelfhost(await read("robots.txt"), settings));

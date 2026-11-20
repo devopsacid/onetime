@@ -166,3 +166,36 @@ export function robotsForSelfhost(text, { origin, indexable }) {
 export function sitemapForSelfhost(text, origin) {
   return text.replaceAll(OWNER_ORIGIN, origin);
 }
+
+const OWNER_ADVISORY_URL = "https://github.com/devopsacid/onetime/security/advisories/new";
+const OWNER_POLICY_URL = "https://github.com/devopsacid/onetime/blob/main/SECURITY.md";
+
+/** RFC 9116 `Expires`: build time plus 11 months, so a file made by a build is never close to its end (RFC: under a year). */
+export function securityTxtExpires(now) {
+  const date = new Date(now.getTime());
+  date.setUTCMonth(date.getUTCMonth() + 11);
+  return `${date.toISOString().slice(0, 19)}Z`;
+}
+
+/** security.txt of the Pages profile. `privacyHtml` is the source of privacy.html: the published address is read from its mailto link. */
+export function securityTxtForPages({ privacyHtml, now }) {
+  const mail = /href="mailto:([^"\s]+)"/.exec(privacyHtml);
+  if (mail === null) throw new Error("privacy.html has no mailto: link to use as the security contact");
+  return [
+    `Contact: ${OWNER_ADVISORY_URL}`,
+    `Contact: mailto:${mail[1]}`,
+    `Expires: ${securityTxtExpires(now)}`,
+    `Canonical: ${OWNER_ORIGIN}/.well-known/security.txt`,
+    `Policy: ${OWNER_POLICY_URL}`,
+    "Preferred-Languages: en, sk",
+    "",
+  ].join("\n");
+}
+
+/** security.txt of a self-host build from the operator contact, or null when none is set (then no file is written). */
+export function securityTxtForSelfhost({ origin, contact, now }) {
+  if (contact === undefined || contact === "") return null;
+  operatorContactHtml(contact); // validates: email address or https URL
+  const value = contact.startsWith("https://") ? contact : `mailto:${contact}`;
+  return [`Contact: ${value}`, `Expires: ${securityTxtExpires(now)}`, `Canonical: ${origin}/.well-known/security.txt`, ""].join("\n");
+}
