@@ -6,6 +6,16 @@ import {
   securityTxtForSelfhost,
   applyBlocks,
   headersForSelfhost,
+  headersForInfo,
+  INFO_CSP,
+  INFO_ORIGIN,
+  OWNER_ORIGIN,
+  redirectsForApp,
+  redirectsForInfo,
+  rewriteLinks,
+  robotsForInfo,
+  sitemapForSite,
+  dropManifestLink,
   operatorContactHtml,
   operatorNameHtml,
   parseOrigin,
@@ -13,7 +23,7 @@ import {
   sitemapForSelfhost,
   transformHtml,
 } from "../../tools/site-profile-core.mjs";
-import { siteProfile } from "../../tools/site-profile.mjs";
+import { inputsFor, readProfileEnv, siteProfile } from "../../tools/site-profile.mjs";
 import { ROOT } from "./helpers";
 
 // Built from pieces so the owner's address is not spelled out in this file.
@@ -252,18 +262,232 @@ describe("security.txt", () => {
 });
 
 describe("siteProfile plugin config", () => {
+  type Cfg = { define: Record<string, string>; build: { outDir: string; rollupOptions: { input: Record<string, string> } } };
   const configFor = (env: Record<string, string>) => {
-    const plugin = siteProfile(env) as unknown as { config(c: { root?: string }): { define: Record<string, boolean>; build: { outDir: string } } };
+    const plugin = siteProfile(env) as unknown as { config(c: { root?: string }): Cfg };
     return plugin.config({ root: ROOT });
   };
-  it("enables Google Analytics only for the Pages profile", () => {
-    expect(configFor({}).define).toEqual({ __GA_ENABLED__: true });
-    expect(configFor({ ONETIME_SITE: "onetimepass" }).define).toEqual({ __GA_ENABLED__: true });
-    expect(configFor({ ONETIME_SITE: "selfhost", ONETIME_ORIGIN: "https://my.host" }).define).toEqual({ __GA_ENABLED__: false });
-    expect(configFor({ ONETIME_SITE: "selfhost", ONETIME_ORIGIN: "https://my.host", ONETIME_INDEXABLE: "1" }).define).toEqual({ __GA_ENABLED__: false });
+  const SELF = { ONETIME_SITE: "selfhost", ONETIME_ORIGIN: "https://my.host" };
+  it("defines __SITE__ per profile (analytics code is reachable only in the info profile)", () => {
+    expect(configFor({}).define).toEqual({ __SITE__: '"app"' });
+    expect(configFor({ ONETIME_SITE: "onetimepass" }).define).toEqual({ __SITE__: '"app"' });
+    expect(configFor({ ONETIME_SITE: "info" }).define).toEqual({ __SITE__: '"info"' });
+    expect(configFor(SELF).define).toEqual({ __SITE__: '"selfhost"' });
+    expect(configFor({ ...SELF, ONETIME_INDEXABLE: "1" }).define).toEqual({ __SITE__: '"selfhost"' });
   });
-  it("writes the Pages build to dist and the self-host build to dist-selfhost", () => {
+  it("writes app to dist, info to dist-info and self-host to dist-selfhost", () => {
     expect(configFor({}).build.outDir).toBe("dist");
-    expect(configFor({ ONETIME_SITE: "selfhost", ONETIME_ORIGIN: "https://my.host" }).build.outDir).toBe("dist-selfhost");
+    expect(configFor({ ONETIME_SITE: "info" }).build.outDir).toBe("dist-info");
+    expect(configFor(SELF).build.outDir).toBe("dist-selfhost");
+  });
+  it("takes the inputs from the profile", () => {
+    expect(configFor({}).build.rollupOptions.input).toEqual(inputsFor("onetimepass"));
+    expect(configFor({ ONETIME_SITE: "info" }).build.rollupOptions.input).toEqual(inputsFor("info"));
+  });
+  it("rejects an unknown profile and accepts info without an origin", () => {
+    expect(readProfileEnv({ ONETIME_SITE: "info" })).toEqual({ profile: "info", outDir: "dist-info" });
+    expect(() => readProfileEnv({ ONETIME_SITE: "other" })).toThrow();
+  });
+});
+
+describe("inputsFor", () => {
+  it("app: index, command-line, 404", () => {
+    expect(inputsFor("onetimepass")).toEqual({ main: "index.html", commandLine: "command-line.html", notFound: "404.html" });
+  });
+  it("info: how-it-works, privacy, 404", () => {
+    expect(inputsFor("info")).toEqual({ howItWorks: "how-it-works.html", privacy: "privacy.html", notFound: "404.html" });
+  });
+  it("selfhost: all five pages", () => {
+    expect(Object.values(inputsFor("selfhost")).sort()).toEqual(["404.html", "command-line.html", "how-it-works.html", "index.html", "privacy.html"]);
+  });
+});
+
+describe("origins", () => {
+  it("are fixed and neither contains the other", () => {
+    expect(OWNER_ORIGIN).toBe("https://onetimepass.pages.dev");
+    expect(INFO_ORIGIN).toBe("https://onetimepass-info.pages.dev");
+    expect(INFO_ORIGIN.includes(OWNER_ORIGIN)).toBe(false);
+    expect(OWNER_ORIGIN.includes(INFO_ORIGIN)).toBe(false);
+  });
+});
+
+describe("rewriteLinks", () => {
+  const a = (href: string, extra = "") => `<a class="x" href="${href}"${extra}>t</a>`;
+  it("app profile: info-home paths become absolute info links, fragment and query kept", () => {
+    expect(rewriteLinks(a("/how-it-works"), "onetimepass")).toBe(a(`${INFO_ORIGIN}/how-it-works`));
+    expect(rewriteLinks(a("/privacy#cookies"), "onetimepass")).toBe(a(`${INFO_ORIGIN}/privacy#cookies`));
+    expect(rewriteLinks(a("/how-it-works?x=1#server"), "onetimepass")).toBe(a(`${INFO_ORIGIN}/how-it-works?x=1#server`));
+  });
+  it("app profile: app-home paths, assets, fragments and absolute links stay", () => {
+    for (const href of ["/", "/command-line", "/cli/onetime.mjs", "/cli/", "#top", "/favicon.svg", "https://example.org/", "mailto:a@b.example", "/#x"]) {
+      expect(rewriteLinks(a(href), "onetimepass")).toBe(a(href));
+    }
+  });
+  it("info profile: app-home paths become absolute app links, fragment kept", () => {
+    expect(rewriteLinks(a("/"), "info")).toBe(a(`${OWNER_ORIGIN}/`));
+    expect(rewriteLinks(a("/command-line"), "info")).toBe(a(`${OWNER_ORIGIN}/command-line`));
+    expect(rewriteLinks(a("/cli/onetime.mjs"), "info")).toBe(a(`${OWNER_ORIGIN}/cli/onetime.mjs`));
+    expect(rewriteLinks(a("/cli/"), "info")).toBe(a(`${OWNER_ORIGIN}/cli/`));
+    expect(rewriteLinks(a("/#abc"), "info")).toBe(a(`${OWNER_ORIGIN}/#abc`));
+  });
+  it("info profile: info-home paths and fragments stay", () => {
+    for (const href of ["/how-it-works", "/privacy#cookies", "#faq", "/privacy"]) expect(rewriteLinks(a(href), "info")).toBe(a(href));
+  });
+  it("handles single quotes, other attributes after href and several links", () => {
+    expect(rewriteLinks("<a href='/privacy' download>p</a> <a href=\"/\">h</a>", "onetimepass")).toBe(`<a href='${INFO_ORIGIN}/privacy' download>p</a> <a href="/">h</a>`);
+  });
+  it("rewrites only <a href>: other tags and attributes are untouched", () => {
+    const html = '<link rel="canonical" href="/privacy"><img src="/privacy"><area href="/privacy"><script src="/privacy"></script>';
+    expect(rewriteLinks(html, "onetimepass")).toBe(html);
+    expect(rewriteLinks('<abbr title="x" href="/privacy">', "onetimepass")).toBe('<abbr title="x" href="/privacy">');
+  });
+  it("does not touch protocol-relative links or unknown root paths", () => {
+    expect(rewriteLinks(a("//privacy"), "onetimepass")).toBe(a("//privacy"));
+    expect(rewriteLinks(a("/privacy.html"), "onetimepass")).toBe(a("/privacy.html"));
+    expect(rewriteLinks(a("/privacyx"), "onetimepass")).toBe(a("/privacyx"));
+  });
+  it("selfhost is refused here (the caller must not rewrite)", () => {
+    expect(() => rewriteLinks(a("/privacy"), "selfhost" as never)).toThrow();
+  });
+});
+
+describe("transformHtml with three profiles", () => {
+  const html = '<link rel="manifest" href="/manifest.webmanifest" />\n<a href="/privacy">p</a> <a href="/">h</a> https://onetimepass-info.pages.dev/x https://onetimepass.pages.dev/y\n';
+  it("app: rewrites links, keeps the manifest line", () => {
+    const out = transformHtml(html, { ...OPTS, profile: "onetimepass" });
+    expect(out).toContain(`<a href="${INFO_ORIGIN}/privacy">`);
+    expect(out).toContain('<a href="/">');
+    expect(out).toContain('rel="manifest"');
+  });
+  it("info: rewrites links, drops the manifest link line", () => {
+    const out = transformHtml(html, { ...OPTS, profile: "info" });
+    expect(out).toContain('<a href="/privacy">');
+    expect(out).toContain(`<a href="${OWNER_ORIGIN}/">`);
+    expect(out).not.toContain("manifest");
+  });
+  it("selfhost: links untouched, both origins replaced", () => {
+    const out = transformHtml(html, { ...OPTS, profile: "selfhost" });
+    expect(out).toContain('<a href="/privacy">p</a> <a href="/">h</a>');
+    expect(out).toContain("https://my.host/x https://my.host/y");
+    expect(out).not.toMatch(/pages\.dev/);
+  });
+  it("dropManifestLink removes only the manifest link", () => {
+    expect(dropManifestLink('<a>\n    <link rel="manifest" href="/manifest.webmanifest" />\n<b>\n')).toBe("<a>\n<b>\n");
+    expect(dropManifestLink('<link rel="icon" href="/x">\n')).toBe('<link rel="icon" href="/x">\n');
+  });
+});
+
+describe("headersForInfo", () => {
+  const sample = [
+    "/*",
+    "  Content-Security-Policy: default-src 'none'; script-src 'self'",
+    "  Referrer-Policy: no-referrer",
+    "",
+    "# comment of the root",
+    "/",
+    "  Cache-Control: no-store",
+    "",
+    "/index.html",
+    "  Cache-Control: no-store",
+    "",
+    "/command-line",
+    "  Cache-Control: no-store",
+    "",
+    "/command-line.html",
+    "  Cache-Control: no-store",
+    "",
+    "/how-it-works",
+    "  Cache-Control: no-store",
+    "",
+    "/assets/*",
+    "  Cache-Control: public, max-age=31536000, immutable",
+    "",
+    "# Downloads",
+    "/cli/*",
+    "  X-Robots-Tag: noindex",
+    "",
+  ].join("\n");
+  const out = headersForInfo(sample);
+  it("replaces the /* CSP with INFO_CSP, once", () => {
+    expect(out.match(/Content-Security-Policy:/g)).toHaveLength(1);
+    expect(out).toContain(`/*\n  Content-Security-Policy: ${INFO_CSP}\n  Referrer-Policy: no-referrer\n`);
+  });
+  it("drops the app-only rules, with the comment lines above them", () => {
+    for (const rule of ["/", "/index.html", "/command-line", "/command-line.html", "/cli/*"]) expect(out.split("\n")).not.toContain(rule);
+    expect(out).not.toMatch(/comment of the root|Downloads|X-Robots-Tag/);
+  });
+  it("keeps the other rules and the other /* headers", () => {
+    expect(out).toContain("/how-it-works\n  Cache-Control: no-store");
+    expect(out).toContain("/assets/*\n  Cache-Control: public, max-age=31536000, immutable");
+    expect(out.endsWith("\n") && !out.endsWith("\n\n")).toBe(true);
+  });
+  it("INFO_CSP is the Google policy: GA hosts, nothing inline", () => {
+    expect(INFO_CSP).toContain("script-src 'self' https://www.googletagmanager.com;");
+    expect(INFO_CSP).not.toContain("unsafe-inline");
+    expect(INFO_CSP.startsWith("default-src 'none';")).toBe(true);
+  });
+  it("throws when there is no /* CSP to replace", () => {
+    expect(() => headersForInfo("/*\n  A: b\n")).toThrow();
+  });
+});
+
+describe("redirects, robots, sitemap for the sites", () => {
+  it("app _redirects: exactly the six old info URLs, 301, never / or /index.html", () => {
+    expect(redirectsForApp()).toBe(
+      [
+        `/how-it-works https://onetimepass-info.pages.dev/how-it-works 301`,
+        `/how-it-works.html https://onetimepass-info.pages.dev/how-it-works 301`,
+        `/how-it-works/ https://onetimepass-info.pages.dev/how-it-works 301`,
+        `/privacy https://onetimepass-info.pages.dev/privacy 301`,
+        `/privacy.html https://onetimepass-info.pages.dev/privacy 301`,
+        `/privacy/ https://onetimepass-info.pages.dev/privacy 301`,
+        "",
+      ].join("\n"),
+    );
+  });
+  it("info _redirects: / and the app pages and /cli/* go to the app", () => {
+    expect(redirectsForInfo()).toBe(
+      [
+        `/ https://onetimepass.pages.dev/ 301`,
+        `/index.html https://onetimepass.pages.dev/ 301`,
+        `/command-line https://onetimepass.pages.dev/command-line 301`,
+        `/command-line.html https://onetimepass.pages.dev/command-line 301`,
+        `/cli/* https://onetimepass.pages.dev/cli/:splat 301`,
+        "",
+      ].join("\n"),
+    );
+  });
+  it("info robots.txt", () => {
+    expect(robotsForInfo()).toBe("User-agent: *\nAllow: /\n\nSitemap: https://onetimepass-info.pages.dev/sitemap.xml\n");
+  });
+  const sitemap = [
+    "<urlset>",
+    `  <url>\n    <loc>${OWNER_ORIGIN}/</loc>\n    <lastmod>2026-11-20</lastmod>\n  </url>`,
+    `  <url>\n    <loc>${INFO_ORIGIN}/how-it-works</loc>\n    <lastmod>2026-11-20</lastmod>\n  </url>`,
+    `  <url>\n    <loc>${OWNER_ORIGIN}/command-line</loc>\n    <lastmod>2026-11-19</lastmod>\n  </url>`,
+    `  <url>\n    <loc>${INFO_ORIGIN}/privacy</loc>\n    <lastmod>2026-11-19</lastmod>\n  </url>`,
+    "</urlset>",
+    "",
+  ].join("\n");
+  it("sitemapForSite keeps only the entries of one origin", () => {
+    const app = sitemapForSite(sitemap, OWNER_ORIGIN);
+    expect(app).toContain(`${OWNER_ORIGIN}/</loc>`);
+    expect(app).toContain(`${OWNER_ORIGIN}/command-line</loc>`);
+    expect(app).not.toContain("onetimepass-info");
+    expect(app.startsWith("<urlset>") && app.endsWith("</urlset>\n")).toBe(true);
+    const info = sitemapForSite(sitemap, INFO_ORIGIN);
+    expect(info).toContain(`${INFO_ORIGIN}/how-it-works</loc>`);
+    expect(info).toContain(`${INFO_ORIGIN}/privacy</loc>`);
+    expect(info.match(/<url>/g)).toHaveLength(2);
+    expect(info).not.toContain(`${OWNER_ORIGIN}/`);
+  });
+  it("sitemapForSelfhost replaces both origins", () => {
+    const out = sitemapForSelfhost(sitemap, "https://my.host");
+    expect(out).not.toContain("pages.dev");
+    expect(out.match(/https:\/\/my\.host\//g)).toHaveLength(4);
+  });
+  it("security.txt is generated per origin", () => {
+    const out = securityTxtForPages({ privacyHtml: '<a href="mailto:o@example.org">o</a>', now: new Date("2026-11-20T00:00:00Z"), origin: INFO_ORIGIN });
+    expect(out).toContain(`Canonical: ${INFO_ORIGIN}/.well-known/security.txt`);
   });
 });
