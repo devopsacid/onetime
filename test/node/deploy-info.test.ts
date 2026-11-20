@@ -89,6 +89,23 @@ describe("preflight", () => {
     expect(() => preflight(ROOT, r.run)).toThrow(/git status/);
   });
 
+  it("outside a git repository accepts an explicit --commit sha (an archive), says so, and still runs check-dist", () => {
+    const r = recorder({ "status --porcelain": { status: 128, stdout: "", stderr: "fatal: not a git repository" } });
+    const notes: string[] = [];
+    expect(() => preflight(ROOT, r.run, { commit: SHA, note: (m: string) => notes.push(m) })).not.toThrow();
+    expect(r.calls.some((c) => c.includes("check-dist.mjs"))).toBe(true);
+    expect(notes.join(" ")).toMatch(/archive/i);
+  });
+  it("outside a git repository refuses without an explicit commit, or with a malformed one", () => {
+    const r = recorder({ "status --porcelain": { status: 128, stdout: "", stderr: "fatal: not a git repository" } });
+    expect(() => preflight(ROOT, r.run)).toThrow(/git status|--commit/);
+    expect(() => preflight(ROOT, r.run, { commit: "main" })).toThrow(/--commit/);
+    expect(r.calls.some((c) => c.includes("check-dist.mjs"))).toBe(false);
+  });
+  it("in a git checkout a dirty tree is refused even with --commit", () => {
+    const r = recorder({ "status --porcelain": { status: 0, stdout: " M x\n", stderr: "" } });
+    expect(() => preflight(ROOT, r.run, { commit: SHA })).toThrow(/uncommitted/);
+  });
   it("refuses when the info check-dist assertions fail", () => {
     const r = recorder({ "check-dist.mjs": { status: 1, stdout: "", stderr: "problem" } });
     expect(() => preflight(ROOT, r.run)).toThrow(/check-dist/);
