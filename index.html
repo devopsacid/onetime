@@ -101,7 +101,20 @@
         </p>
 
         <form id="create-form" class="card" novalidate>
-          <div class="field">
+          <fieldset id="mode-switch" class="mode-switch" hidden>
+            <legend>What do you want to send?</legend>
+            <label><input type="radio" name="mode" value="text" checked /> Text</label>
+            <label><input type="radio" name="mode" value="file" /> File</label>
+          </fieldset>
+
+          <div id="file-field" class="field" hidden>
+            <label for="file-input">File</label>
+            <input id="file-input" type="file" aria-describedby="file-note" />
+            <p id="file-note" class="hint">One file, up to 1.0 MB. You can also drop a file on this form. The name and contents are encrypted in your browser.</p>
+            <p id="file-summary" class="hint"></p>
+          </div>
+
+          <div id="text-field" class="field">
             <div class="field-head">
               <label for="secret">Secret</label>
               <span id="secret-size" class="hint"></span>
@@ -179,7 +192,10 @@
                 <option value="604800">7 days</option>
               </select>
             </div>
-            <button type="submit" id="create-submit" class="button">Create one-time link</button>
+            <div class="actions">
+              <button type="submit" id="create-submit" class="button">Create one-time link</button>
+              <button type="button" id="create-cancel" class="button button-secondary" hidden>Cancel</button>
+            </div>
           </div>
           <p id="create-error" class="notice notice-error" role="alert" hidden></p>
         </form>
@@ -200,6 +216,7 @@
             <li>It can be opened <strong>once</strong>. After that the secret is deleted.</li>
             <li>If nobody opens it, it stops working after <strong id="created-ttl"></strong> and is deleted soon after.</li>
             <li>The link is the only copy of the key. It cannot be recovered if you lose it.</li>
+            <li id="created-file" hidden>File: <strong id="created-file-name"></strong> (<span id="created-file-size"></span>). Files can be opened once and last at most 1 day.</li>
             <li id="created-pp-hint" hidden>This link needs the passphrase. Send it separately, not in the same message.</li>
             <li id="created-check-hint" hidden>You can check whether it was opened: open the link yourself without pressing Reveal.</li>
           </ul>
@@ -210,7 +227,7 @@
       <!-- Open -->
       <section id="view-open" hidden data-nosnippet>
         <h1 tabindex="-1" id="open-title">Someone shared a secret with you</h1>
-        <p class="lead">It can be shown only once. Make sure you are ready to copy it or save it somewhere safe.</p>
+        <p class="lead" id="open-lead">It can be shown only once. Make sure you are ready to copy it or save it somewhere safe.</p>
         <form id="open-form" class="card" novalidate>
           <div id="open-passphrase" class="field" hidden>
             <label for="open-pass">Passphrase</label>
@@ -236,6 +253,36 @@
           <div class="row row-end">
             <p class="hint">It has been deleted from the server. This link no longer works.</p>
             <button type="button" class="button" data-copy="revealed">Copy</button>
+          </div>
+        </div>
+        <p><a href="/">Share a secret of your own</a></p>
+      </section>
+
+      <!-- Revealed file -->
+      <section id="view-file" hidden data-nosnippet>
+        <h1 tabindex="-1">Here is your file</h1>
+        <div class="card">
+          <dl class="file-facts">
+            <dt>Name</dt>
+            <dd id="file-name"></dd>
+            <dt>Size</dt>
+            <dd id="file-size"></dd>
+            <div id="file-type-row" hidden>
+              <dt>Type</dt>
+              <dd id="file-type"></dd>
+            </div>
+          </dl>
+          <p id="file-risky" class="notice notice-error" hidden>
+            This kind of file can run code on your device. Open it only if you expected it from the sender.
+          </p>
+          <p class="hint">Files are not checked for viruses: the service cannot see them.</p>
+          <p class="hint">
+            It has been deleted from the server and this link no longer works. The file stays only in this tab: save it now.
+            If nothing happens when you press Save file, allow downloads for this site and press it again.
+          </p>
+          <div class="actions">
+            <a id="file-save" class="button" download>Save file</a>
+            <button type="button" id="file-discard" class="button button-secondary">Discard</button>
           </div>
         </div>
         <p><a href="/">Share a secret of your own</a></p>
