@@ -10,7 +10,7 @@ const PASS = "correct horse battery";
 
 async function setup(passphrase?: string) {
   const { blob, key, passphrase: needs } = await codec.encryptSecret("the secret", passphrase);
-  const link = { id: "x".repeat(22), key, format: 2 as const, passphrase: needs };
+  const link = { id: "x".repeat(22), key, format: 2 as const, passphrase: needs, file: false };
   const calls: string[] = [];
   const deps: OpenDeps = {
     deriveKey: (l, p) => (calls.push("derive"), codec.deriveKey(l, p)),
@@ -92,5 +92,14 @@ describe("create passphrase planning", () => {
     expect(passphraseProblemText("too-long")).toBe("A passphrase has 8 to 256 characters.");
     expect(passphraseProblemText("too-short")).toBe("A passphrase has 8 to 256 characters.");
     expect(passphraseProblemText("control")).toBe("A passphrase cannot contain control characters.");
+  });
+});
+
+describe("openSecret on a file link before the file UI exists", () => {
+  it("refuses with no key derivation and no request, so nothing can be burnt", async () => {
+    const { link, deps, calls } = await setup();
+    const outcome = await openSecret({ ...link, file: true }, "", deps);
+    expect(outcome).toEqual({ kind: "unsupported" });
+    expect(calls).toEqual([]);
   });
 });
