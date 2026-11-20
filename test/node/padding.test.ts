@@ -153,7 +153,8 @@ describe("pad and unpad with file buckets", () => {
       const payload = new Uint8Array(META + file).fill(0x63);
       const padded = pad(payload, FILE_BUCKETS);
       expect(padded.length).toBe(block);
-      expect(unpad(padded, FILE_BUCKETS, MAX_FILE_BYTES + META)).toEqual(payload);
+      // Buffer.equals: vitest's toEqual on a megabyte of typed array is very slow.
+      expect(Buffer.from(unpad(padded, FILE_BUCKETS, MAX_FILE_BYTES + META)).equals(payload)).toBe(true);
     });
   }
 
