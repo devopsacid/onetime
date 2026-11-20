@@ -25,8 +25,8 @@ describe("CLI entry point", () => {
     expect(main).toMatch(/max \+ 1/);
   });
 
-  it("is version 0.3.0 (it reads file links)", () => {
-    expect(JSON.parse(read("package.json")).version).toBe("0.3.0");
+  it("is version 0.4.0 (it asks the server for its file limits)", () => {
+    expect(JSON.parse(read("package.json")).version).toBe("0.4.0");
   });
 });
 

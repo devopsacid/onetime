@@ -373,15 +373,15 @@ describe("limits and hints", () => {
     expect(await hint(120)).toContain("--ttl 120 or shorter");
   });
 
-  it("reads a 1,048,994-byte reveal and refuses 1,048,995", async () => {
+  it("reads a 5,243,298-byte reveal and refuses 5,243,299", async () => {
     const link = `${SERVER}/#2.${ID}.${KEY}`;
     const answer = (size: number, declared = true) =>
       (async () =>
         new Response(new Uint8Array(size), { status: 200, headers: declared ? { "Content-Length": String(size) } : {} })) as unknown as typeof fetch;
-    // 1,048,994 passes the size cap and then fails to decrypt (exit 4); one more is refused by the cap (exit 5), declared or not.
-    expect(await run(["get", link], makeIo({ fetch: answer(1_048_994), stdin: null }))).toBe(EXIT.decrypt);
-    expect(await run(["get", link], makeIo({ fetch: answer(1_048_995), stdin: null }))).toBe(EXIT.network);
-    expect(await run(["get", link], makeIo({ fetch: answer(1_048_995, false), stdin: null }))).toBe(EXIT.network);
+    // 5,243,298 passes the size cap and then fails to decrypt (exit 4); one more is refused by the cap (exit 5), declared or not.
+    expect(await run(["get", link], makeIo({ fetch: answer(5_243_298), stdin: null }))).toBe(EXIT.decrypt);
+    expect(await run(["get", link], makeIo({ fetch: answer(5_243_299), stdin: null }))).toBe(EXIT.network);
+    expect(await run(["get", link], makeIo({ fetch: answer(5_243_299, false), stdin: null }))).toBe(EXIT.network);
   });
 
   it("sends and gets a 16,384-byte secret as a 16,418-byte blob", async () => {

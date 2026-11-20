@@ -293,7 +293,7 @@ describe("hostile server responses", () => {
     run(["get", link, "--server", "https://s.example"], makeIo({ fetch: (async () => response()) as unknown as typeof fetch }));
 
   it("rejects an oversized reveal body (Content-Length and counted stream)", async () => {
-    expect(await getWith(() => new Response("x", { headers: { "Content-Length": "1048995" } }))).toBe(EXIT.network);
+    expect(await getWith(() => new Response("x", { headers: { "Content-Length": "5243299" } }))).toBe(EXIT.network);
     let pulled = 0;
     const res = () =>
       new Response(
@@ -305,7 +305,7 @@ describe("hostile server responses", () => {
         }),
       );
     expect(await getWith(res)).toBe(EXIT.network);
-    expect(pulled).toBeLessThan(20);
+    expect(pulled).toBeLessThan(90); // the 5,243,298-byte cap is 80 chunks of 64 KiB
   });
   it("rejects oversized or non-JSON create answers", async () => {
     const send = (r: () => Response) =>
