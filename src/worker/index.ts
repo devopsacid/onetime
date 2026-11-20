@@ -3,6 +3,8 @@ import {
   ID_PATTERN,
   MAX_BLOB_BYTES,
   MAX_STORED_SECRETS,
+  NEAR_FULL_MAX_TTL_SECONDS,
+  longTtlCap,
   MAX_TTL_SECONDS,
   MIN_TTL_SECONDS,
 } from "../shared/limits";
@@ -91,12 +93,20 @@ async function createSecret(request: Request, store: SecretStore, url: URL, now:
 
   const id = newId();
   let stored: boolean;
+  const longTtl = ttl > NEAR_FULL_MAX_TTL_SECONDS;
   try {
-    stored = await store.insertIfBelowCap(id, blob, now + ttl * 1000, maxStored);
+    stored = await store.insertIfBelowCap(id, blob, now + ttl * 1000, longTtl ? longTtlCap(maxStored) : maxStored);
   } catch (e) {
     if (!(e instanceof CounterMissingError)) throw e;
     console.error(e.name); // the name only: nothing about the request
     return error(500, "Internal error");
+  }
+  if (!stored && longTtl) {
+    // Also answered while the store is completely full: the router cannot tell the cases apart without a second query.
+    return json(
+      409,
+      { error: "The service is nearly full, so new links can last at most 1 day right now.", maxTtl: NEAR_FULL_MAX_TTL_SECONDS },
+    );
   }
   if (!stored) return error(503, "The service is full right now, try again later", { "Retry-After": "300" });
   return json(201, { id });

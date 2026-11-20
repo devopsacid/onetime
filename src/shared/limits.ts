@@ -16,6 +16,14 @@ export const DEFAULT_TTL_SECONDS = 24 * 60 * 60;
 /** Global safety valve: create returns 503 while this many unexpired secrets are stored. */
 export const MAX_STORED_SECRETS = 20_000;
 
+/** While the store is above 80 % of the cap, links may last at most this long (409 otherwise). */
+export const NEAR_FULL_MAX_TTL_SECONDS = 24 * 60 * 60;
+
+/** Cap for creates with a TTL above NEAR_FULL_MAX_TTL_SECONDS: 80 % of the cap, at least 1. */
+export function longTtlCap(maxStored: number): number {
+  return Math.max(1, Math.floor((maxStored * 4) / 5));
+}
+
 /** Secret ids are 16 random bytes in base64url. */
 export const ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 /** Keys are 32 random bytes in base64url. */

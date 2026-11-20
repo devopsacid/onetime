@@ -1,4 +1,5 @@
 import { MAX_SECRET_BYTES } from "../shared/limits";
+import { pickTtlOption } from "./ttl";
 import { ApiError, createSecret, revealSecret, secretExists } from "./api";
 import { SecretTooLargeError, decryptSecret, encryptSecret } from "./crypto";
 import {
@@ -80,6 +81,22 @@ el<HTMLFormElement>("create-form").addEventListener("submit", async (event) => {
     el("created-ttl").textContent = ttlSelect.selectedOptions[0]?.textContent ?? "";
     show("created");
   } catch (error) {
+    const picked =
+      error instanceof ApiError && error.status === 409 && error.maxTtl !== undefined
+        ? pickTtlOption(error.maxTtl, Array.from(ttlSelect.options, (option) => Number(option.value)))
+        : null;
+    if (picked !== null) {
+      // Never resubmit silently: the sender decides.
+      ttlSelect.value = String(picked);
+      const label = ttlSelect.selectedOptions[0]?.textContent?.toLowerCase() ?? "1 day";
+      setError(
+        "create-error",
+        `The service is nearly full, so links can last at most ${label} right now. Expiry is now set to ${label}: press Create one-time link again.`,
+      );
+      createButton.disabled = false;
+      createButton.focus();
+      return;
+    }
     setError(
       "create-error",
       error instanceof SecretTooLargeError

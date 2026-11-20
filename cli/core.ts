@@ -327,7 +327,8 @@ arguments end up in shell history and the process list.
   onetime send --ttl 1h < secret.txt
 
 Prints only the link on stdout; hints go to stderr.
---ttl   how long an unopened link lasts: 1h, 1d (default), 7d, or seconds (60 to 604800)
+--ttl   how long an unopened link lasts: 1h, 1d (default), 7d, or seconds (60 to 604800);
+       at most 1d while the service is nearly full
 `,
   gen: `onetime gen - generate a secret and share it in one step
 
@@ -392,7 +393,19 @@ async function request(io: Io, url: string, init: RequestInit): Promise<Response
 async function serverError(response: Response): Promise<ExitError> {
   let detail = "";
   try {
-    const body = (await readJson(response)) as { error?: unknown };
+    const body = (await readJson(response)) as { error?: unknown; maxTtl?: unknown };
+    if (
+      response.status === 409 &&
+      typeof body.maxTtl === "number" &&
+      Number.isSafeInteger(body.maxTtl) &&
+      body.maxTtl >= MIN_TTL_SECONDS &&
+      body.maxTtl <= MAX_TTL_SECONDS
+    ) {
+      return new ExitError(
+        EXIT.network,
+        `The service is nearly full right now, so links can last at most ${describeTtl(body.maxTtl)}. Run the command again with --ttl 1d or shorter.`,
+      );
+    }
     if (typeof body.error === "string") detail = `: ${cleanMessage(body.error)}`;
   } catch {
     // not JSON
