@@ -13,7 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Full gate. Linux x64 only: the workerd tests (@cloudflare/vitest-plugin) and the node:sqlite
+  # Full gate (typecheck, tests, and the build + check-dist of the app dist/, the info site dist-info/ and the
+  # self-host dist-selfhost/). Linux x64 only: the workerd tests (@cloudflare/vitest-plugin) and the node:sqlite
   # tests need it and Node >= 22.13. Some Node process tests are load-sensitive; a rerun of the
   # job is the first thing to try before suspecting the code.
   check:

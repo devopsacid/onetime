@@ -1,6 +1,6 @@
 # ADR: info pages on their own origin (security plan item 8)
 
-Status: accepted by the owner on 2026-11-20 (separate Pages project, no custom domain). Not implemented yet.
+Status: accepted by the owner on 2026-11-20 (separate Pages project, no custom domain). Implemented on branch `sec/info-split` (not deployed, no Cloudflare resource created yet). See "Deviations" at the end.
 Supersedes: the "Recommended" bullet of item 8 in `docs/plans/security-hardening.md`. Item 7 (custom domain, WAF) is dropped for now, see `docs/plans/near-full-ttl.md`.
 
 ## Recommendation
@@ -152,3 +152,14 @@ Residual: tampered explanations on the info site, and phishing links from it. Th
 1. `/command-line` on the app origin without analytics (loses its page views and the `cli_download` event). **Default: yes.** Alternative: on the info origin with GA; then a compromised gtag.js can rewrite install commands.
 2. No "Cookie settings" link on app pages. **Default: yes.**
 3. Redirect status 301 (permanent). **Default: 301.**
+
+## Deviations (implementation, 2026-11-20)
+
+- `_redirects` rules use one space between fields (valid for Pages); the aligned columns in the plan are cosmetic.
+- Commit order: `public/_headers` and `public/sitemap.xml` changed before the check-dist tests, because the check-dist fixtures are built from the real `_headers`.
+- The 404 page is one source for both sites, so its footer shows only "Privacy" (no "Cookie settings" link), also on the info site. The consent banner and Cookie settings stay on `how-it-works` and `privacy`.
+- `securityTxtForPages` takes an `origin`; both Pages builds write `.well-known/security.txt` with their own `Canonical`, and the address is read from the `privacy.html` source (the app build has no privacy page).
+- `privacy.html`: the BreadcrumbList block moved into a self-host block (info page drops it, self-host keeps it). `how-it-works.html`: dropped from the Pages block only.
+- `purgeLegacyAnalyticsState()` stays DOM-thin: its testable part is `legacyPurgeActions` in `consent.ts` (the Workers test config has no DOM types).
+- `tools/deploy-info.mjs` reads the commit from `--commit <sha>` or `git rev-parse HEAD`; it also refuses `dist-info/` with `functions`, `cli`, `command-line.html`, manifest or wrangler config files.
+- `check-dist` imports the generated `_redirects` text and `INFO_CSP` from `site-profile-core.mjs` instead of repeating them.
