@@ -2,7 +2,7 @@ import { CounterMissingError, type SecretStore } from "./store";
 
 /** D1 hands BLOB columns to JavaScript as an array of numbers. */
 function toBytes(value: unknown): Uint8Array<ArrayBuffer> {
-  if (Array.isArray(value)) return Uint8Array.from(value as number[]);
+  if (Array.isArray(value)) return new Uint8Array(value as number[]);
   if (value instanceof ArrayBuffer) return new Uint8Array(value.slice(0));
   throw new Error("Unexpected blob type");
 }

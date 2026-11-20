@@ -77,6 +77,11 @@ async function readBounded(body: ReadableStream<Uint8Array> | null, limit: numbe
     }
     chunks.push(value);
   }
+  // One whole-buffer chunk needs no join copy (the stores bind `.buffer`, so a partial view must still be copied).
+  const only = chunks.length === 1 ? chunks[0]! : null;
+  if (only !== null && only.byteOffset === 0 && only.byteLength === only.buffer.byteLength && only.buffer instanceof ArrayBuffer) {
+    return only as Uint8Array<ArrayBuffer>;
+  }
   const out = new Uint8Array(total);
   let offset = 0;
   for (const chunk of chunks) {
