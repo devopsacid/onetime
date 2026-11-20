@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { GA_MEASUREMENT_ID } from "../src/web/analytics-config";
 import { analyticsAllowedHere } from "../src/web/analytics-origin";
-import { cliDownloadKind } from "../src/web/analytics-events";
+import { purgeLegacyAnalyticsState } from "../src/web/ga-cookies";
 import {
   CONSENT_MAX_AGE_MS,
+  CONSENT_STORAGE_KEY,
   CONSENT_VERSION,
   analyticsCookieNames,
   analyticsEnabled,
@@ -79,19 +80,63 @@ describe("sanitizePageLocation", () => {
   });
 });
 
-describe("cliDownloadKind", () => {
-  it("maps download paths to a fixed enum", () => {
-    expect(cliDownloadKind("/cli/onetime.mjs")).toBe("script");
-    expect(cliDownloadKind("/cli/onetime.cmd")).toBe("windows_shim");
-    expect(cliDownloadKind("/cli/onetime.mjs.sha256")).toBe("checksum");
-    expect(cliDownloadKind("/cli/other")).toBeNull();
-    expect(cliDownloadKind("/")).toBeNull();
+describe("purgeLegacyAnalyticsState", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  function stub(cookie: string, hostname = "onetimepass.pages.dev", storage: Record<string, string> = {}) {
+    const written: string[] = [];
+    const removed: string[] = [];
+    vi.stubGlobal("document", {
+      get cookie() {
+        return cookie;
+      },
+      set cookie(value: string) {
+        written.push(value);
+      },
+    });
+    vi.stubGlobal("location", { hostname });
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => storage[k] ?? null,
+      removeItem: (k: string) => {
+        removed.push(k);
+        delete storage[k];
+      },
+    });
+    return { written, removed, storage };
+  }
+  it("deletes every _ga cookie (host and parent-domain variants) whatever the consent record says, and the consent record", () => {
+    const accepted = serializeConsent("accepted", Date.now());
+    const { written, removed, storage } = stub("a=1; _ga=GA1.1.2; _ga_ABC123=GS1; theme=dark", "onetimepass.pages.dev", { [CONSENT_STORAGE_KEY]: accepted });
+    purgeLegacyAnalyticsState();
+    for (const name of ["_ga", "_ga_ABC123"]) {
+      for (const expected of cookieDeletionStrings(name, "onetimepass.pages.dev")) expect(written).toContain(expected);
+    }
+    expect(written.some((w) => w.startsWith("a=") || w.startsWith("theme="))).toBe(false);
+    expect(removed).toEqual([CONSENT_STORAGE_KEY]);
+    expect(storage[CONSENT_STORAGE_KEY]).toBeUndefined();
+  });
+  it("removes the consent record even with no cookies, and leaves the theme alone", () => {
+    const { written, removed } = stub("", "onetimepass.pages.dev", { theme: "dark" });
+    purgeLegacyAnalyticsState();
+    expect(written).toEqual([]);
+    expect(removed).toEqual([CONSENT_STORAGE_KEY]);
+  });
+  it("survives blocked storage", () => {
+    stub("_ga=1");
+    vi.stubGlobal("localStorage", {
+      removeItem: () => {
+        throw new Error("blocked");
+      },
+    });
+    expect(() => purgeLegacyAnalyticsState()).not.toThrow();
   });
 });
 
 describe("analyticsAllowedHere", () => {
-  it("allows only the original site", () => {
-    expect(analyticsAllowedHere("https://onetimepass.pages.dev")).toBe(true);
+  it("allows only the info site", () => {
+    expect(analyticsAllowedHere("https://onetimepass-info.pages.dev")).toBe(true);
+  });
+  it("refuses the app origin, where nothing may run analytics", () => {
+    expect(analyticsAllowedHere("https://onetimepass.pages.dev")).toBe(false);
   });
   it("refuses forks, previews, localhost and look-alikes", () => {
     for (const origin of [
@@ -103,6 +148,9 @@ describe("analyticsAllowedHere", () => {
       "http://onetimepass.pages.dev",
       "https://onetimepass.pages.dev:8443",
       "https://my.host",
+      "https://onetimepass-info.pages.dev:8443",
+      "https://abc123.onetimepass-info.pages.dev",
+      "http://onetimepass-info.pages.dev",
       "",
       "null",
     ]) {
