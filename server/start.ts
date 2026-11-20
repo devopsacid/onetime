@@ -16,7 +16,14 @@ export interface Running {
 export async function startServer(config: Config): Promise<Running> {
   const site = loadSite(config.distDir);
   const store = openSqliteStore(config.dbPath, readMigrations(config.migrationsDir));
-  const app = createApp({ store, site, maxStored: config.maxStored });
+  const app = createApp({
+    store,
+    site,
+    maxStored: config.maxStored,
+    maxStoredBytes: config.maxStoredBytes,
+    maxLargeBytes: config.maxLargeBytes,
+    maxUploads: config.maxUploads,
+  });
   app.server.maxConnections = config.maxConnections;
   try {
     await new Promise<void>((resolve, reject) => {

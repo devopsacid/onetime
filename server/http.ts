@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { MAX_BLOB_BYTES } from "../src/shared/limits";
-import { API_HEADERS, handle } from "../src/worker/index";
+import { MAX_LARGE_STORED_BYTES, MAX_STORED_BYTES } from "../src/shared/limits";
+import { API_HEADERS, blobLimit, handle } from "../src/worker/index";
 import type { Site } from "./static";
 import type { ManagedStore } from "./store-sqlite";
 
@@ -8,6 +9,10 @@ export interface AppDeps {
   store: ManagedStore;
   site: Site;
   maxStored: number;
+  /** Defaults are the limits' MAX_STORED_BYTES, MAX_LARGE_STORED_BYTES and 16 uploads at once. */
+  maxStoredBytes?: number;
+  maxLargeBytes?: number;
+  maxUploads?: number;
 }
 
 export interface App {
@@ -30,12 +35,12 @@ export interface BoundedBody {
 }
 
 /**
- * The request body as a Web stream that hands out at most MAX_BLOB_BYTES + 1 bytes, then ends.
+ * The request body as a Web stream that hands out at most `maxBlobBytes` + 1 bytes (default MAX_BLOB_BYTES), then ends.
  * Not Readable.toWeb(req): its cancel() destroys the socket, so the router's 413 could not be written.
  * Cancelling here only pauses the request.
  */
-export function boundedBody(req: IncomingMessage): BoundedBody {
-  const limit = MAX_BLOB_BYTES + 1;
+export function boundedBody(req: IncomingMessage, maxBlobBytes: number = MAX_BLOB_BYTES): BoundedBody {
+  const limit = maxBlobBytes + 1;
   let total = 0;
   let complete = false;
   let detach = (): void => {};
@@ -90,7 +95,7 @@ export function boundedBody(req: IncomingMessage): BoundedBody {
 
 const SKIPPED_REQUEST_HEADERS = new Set(["host", "connection", "keep-alive", "transfer-encoding", "upgrade", "proxy-connection", "te"]);
 
-function webRequest(req: IncomingMessage, url: URL): { request: Request; body: BoundedBody | null } {
+function webRequest(req: IncomingMessage, url: URL, maxBlobBytes: number): { request: Request; body: BoundedBody | null } {
   const headers = new Headers();
   for (const [name, value] of Object.entries(req.headers)) {
     if (value === undefined || SKIPPED_REQUEST_HEADERS.has(name)) continue;
@@ -101,7 +106,7 @@ function webRequest(req: IncomingMessage, url: URL): { request: Request; body: B
     req.resume();
     return { request: new Request(url, { method, headers }), body: null };
   }
-  const body = boundedBody(req);
+  const body = boundedBody(req, maxBlobBytes);
   return { request: new Request(url, { method, headers, body: body.stream, duplex: "half" } as RequestInit), body };
 }
 
@@ -144,7 +149,10 @@ function drainRequest(req: IncomingMessage): Promise<void> {
   });
 }
 
-export function createApp({ store, site, maxStored }: AppDeps): App {
+export function createApp({ store, site, maxStored, maxStoredBytes = MAX_STORED_BYTES, maxLargeBytes = MAX_LARGE_STORED_BYTES, maxUploads = 16 }: AppDeps): App {
+  const maxBlobBytes = blobLimit({ maxLargeBytes });
+  // Uploads being read and stored right now. Each holds up to about 3 x maxBlobBytes in memory (chunks, joined copy, driver copy).
+  let uploads = 0;
   const pending = new Set<Promise<unknown>>();
   const ctx = {
     waitUntil(promise: Promise<unknown>): void {
@@ -154,13 +162,22 @@ export function createApp({ store, site, maxStored }: AppDeps): App {
   };
 
   async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
-    const { request, body } = webRequest(req, url);
+    const { request, body } = webRequest(req, url, maxBlobBytes);
+    const isUpload = req.method === "POST" && url.pathname === "/api/secrets";
     let response: Response;
-    try {
-      response = await handle(request, store, ctx, { maxStored });
-    } catch (error) {
-      logFailure(error);
-      response = Response.json({ error: "Internal error" }, { status: 500, headers: API_HEADERS });
+    if (isUpload && uploads >= maxUploads) {
+      // Refused before anything is read; the unread body is drained below like for a 413.
+      response = Response.json({ error: "The server is busy, try again in a few seconds" }, { status: 503, headers: { ...API_HEADERS, "Retry-After": "5" } });
+    } else {
+      if (isUpload) uploads++;
+      try {
+        response = await handle(request, store, ctx, { maxStored, maxStoredBytes, maxLargeBytes, maxBlobBytes });
+      } catch (error) {
+        logFailure(error);
+        response = Response.json({ error: "Internal error" }, { status: 500, headers: API_HEADERS });
+      } finally {
+        if (isUpload) uploads--;
+      }
     }
     const bytes = new Uint8Array(await response.arrayBuffer());
     if (body !== null && !body.complete()) {
@@ -220,7 +237,7 @@ export function createApp({ store, site, maxStored }: AppDeps): App {
 
   const server = createServer(
     {
-      requestTimeout: 15_000,
+      requestTimeout: 60_000,
       headersTimeout: 10_000,
       keepAliveTimeout: 5_000,
       maxHeaderSize: 8192,

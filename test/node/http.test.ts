@@ -130,7 +130,7 @@ describe("API bridge", () => {
     expect(new Uint8Array(await r.arrayBuffer())).toEqual(blob);
   });
 
-  it("accepts a streamed upload of exactly 16,418 bytes and answers 413 for one byte more", async () => {
+  it("accepts a streamed upload of exactly 1,048,994 bytes (ttl one hour) and answers 413 for one byte more", async () => {
     const streamed = (total: number) => {
       let sent = 0;
       const stream = new ReadableStream<Uint8Array>({
@@ -148,8 +148,9 @@ describe("API bridge", () => {
         duplex: "half",
       } as RequestInit);
     };
-    expect((await streamed(16_418)).status).toBe(201);
-    const over = await streamed(16_419);
+    // A large blob with a 1 hour ttl is fine.
+    expect((await streamed(MAX_BLOB_BYTES)).status).toBe(201);
+    const over = await streamed(MAX_BLOB_BYTES + 1);
     expect(over.status).toBe(413);
     expect(await over.json()).toEqual({ error: "Secret is too large" });
   });
@@ -452,7 +453,7 @@ describe("static through HTTP", () => {
 
 describe("server settings and silence", () => {
   it("configures the timeouts and limits", () => {
-    expect(server.requestTimeout).toBe(15_000);
+    expect(server.requestTimeout).toBe(60_000);
     expect(server.headersTimeout).toBe(10_000);
     expect(server.keepAliveTimeout).toBe(5_000);
     expect(server.maxRequestsPerSocket).toBe(100);
@@ -611,7 +612,6 @@ describe("files through the Node server", () => {
       expect(refused.headers.get("retry-after")).toBe("5");
       expect(refused.headers.get("cache-control")).toBe("no-store");
       expect(((await refused.json()) as { error: string }).error).toMatch(/busy|try again/i);
-      expect(store.db.prepare("SELECT 1").get()).toBeDefined(); // the shared test store is untouched
 
       a.finish(900);
       expect(await a.done).toBe(201);
@@ -634,7 +634,6 @@ describe("files through the Node server", () => {
       expect((await post(s.base, big(64), 3600)).status).toBe(503);
       a.req.destroy();
       await a.done;
-      await waitForValue(() => true);
       let status = 0;
       for (let i = 0; i < 100 && status !== 201; i++) {
         status = (await post(s.base, big(64), 3600)).status;
