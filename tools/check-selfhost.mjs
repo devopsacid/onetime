@@ -119,7 +119,9 @@ try {
   const bytes = new Uint8Array(await revealed.arrayBuffer());
   expect(revealed.status === 200 && bytes.length === blob.length && bytes.every((b, i) => b === blob[i]), "POST reveal did not return the same bytes");
   expect((await get(`/api/secrets/${id}/reveal`, { method: "POST" })).status === 404, "second reveal: expected 404");
-  expect(!JSON.stringify([...created.headers]).toLowerCase().includes("content-security-policy"), "API responses must not carry a CSP");
+  expect(created.headers.get("content-security-policy") === "default-src 'none'; frame-ancestors 'none'", "API responses must carry the API's own CSP, not the site's");
+  expect(created.headers.get("cross-origin-resource-policy") === "same-origin", "API responses must carry CORP same-origin");
+  expect((created.headers.get("strict-transport-security") ?? "").startsWith("max-age="), "API responses must carry HSTS");
 
   // A second instance on the same database must refuse (exit 3).
   const second = spawnSync(process.execPath, ["--no-warnings", server], { env, encoding: "utf8", timeout: 10_000 });

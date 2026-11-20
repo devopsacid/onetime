@@ -8,6 +8,8 @@ export interface Config {
   distDir: string;
   migrationsDir: string;
   maxStored: number;
+  /** Open sockets the server accepts at once; more are closed on arrival. */
+  maxConnections: number;
 }
 
 export class ConfigError extends Error {
@@ -59,6 +61,7 @@ export function parseConfig(env: Env, bundleDir: string, cwd: string): Config {
     distDir: path("ONETIME_DIST", join(bundleDir, "..", "dist-selfhost")),
     migrationsDir: join(bundleDir, "..", "migrations"),
     maxStored: integer("ONETIME_MAX_STORED", MAX_STORED_SECRETS, 1, 10_000_000),
+    maxConnections: integer("ONETIME_MAX_CONNECTIONS", 1000, 1, 100_000),
   };
   if (problems.length > 0) throw new ConfigError(problems);
   return config;

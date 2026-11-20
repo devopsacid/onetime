@@ -17,6 +17,7 @@ export async function startServer(config: Config): Promise<Running> {
   const site = loadSite(config.distDir);
   const store = openSqliteStore(config.dbPath, readMigrations(config.migrationsDir));
   const app = createApp({ store, site, maxStored: config.maxStored });
+  app.server.maxConnections = config.maxConnections;
   try {
     await new Promise<void>((resolve, reject) => {
       app.server.once("error", reject);

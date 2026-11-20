@@ -17,7 +17,7 @@ Public site for sharing a secret (password, token, credentials) through a link t
 
 - Vanilla TypeScript + Vite (`index.html`, `src/web/`), output `dist/`. No framework, no runtime dependencies.
 - Cloudflare Pages Function `functions/api/[[path]].ts` → router `handle(request, store, ctx, options)` in `src/worker/index.ts`; `public/_routes.json` limits the Function to `/api/*`. The router is runtime-neutral (no `node:` or `cloudflare:` imports, a test enforces it) and talks to a `SecretStore` (`src/worker/store.ts`): `store-d1.ts` for Pages, `server/store-sqlite.ts` for self-hosting. Both keep the same single SQL statements.
-- D1 database `onetime` (binding `DB`), schema in `migrations/`.
+- D1 database `onetime` (binding `DB`), schema in `migrations/`. `0002_counter.sql` adds `stats(stored)`, kept exact by triggers on `secrets`; the capped insert reads it instead of `COUNT(*)`, so the cap counts stored rows (expired, not yet purged ones included). It must be applied remotely (`pnpm db:migrate:remote`, owner approval) before the deploy that contains it.
 - Tests: two Vitest configs. `vitest.config.ts` runs in the Workers runtime via `@cloudflare/vitest-plugin` (no DOM, D1); `vitest.node.config.ts` runs `test/node/` in Node (SQLite store, Node server, site profiles). The API contract suite `test/contract/api-contract.ts` runs against both stores, including concurrency and a structural check that reveal and capped insert are single statements. Put testable browser logic in DOM-free modules under `src/web/`; `main.ts` is wiring only. The router takes `options { now, maxStored }` as test hooks.
 - pnpm; build scripts for `esbuild` and `workerd` are allowed in `pnpm-workspace.yaml`.
 
