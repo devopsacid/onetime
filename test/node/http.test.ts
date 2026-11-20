@@ -471,7 +471,7 @@ describe("server settings and silence", () => {
     await fetch(`${base}/`);
     await fetch(`${base}/nope`);
     await fetch(`${base}/healthz`);
-    await sendChunked("/api/secrets?ttl=3600", MAX_BLOB_BYTES * 20);
+    await sendChunked("/api/secrets?ttl=3600", MAX_BLOB_BYTES * 20, true); // tolerant: far above the bounded drain, a client reset is fine
     await drain();
     expect(out).not.toHaveBeenCalled();
     expect(err).not.toHaveBeenCalled();
