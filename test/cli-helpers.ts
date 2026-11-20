@@ -37,12 +37,26 @@ export function makeIo(opts: {
   env?: Record<string, string | undefined>;
   fetch?: typeof fetch;
   writeStdout?: (text: string) => void | Promise<void>;
+  /** Hidden prompts answered in order; once used up, `prompt` is the answer. */
+  promptQueue?: string[];
+  /** Files readFile can see, by path. */
+  files?: Record<string, string | Uint8Array>;
+  writeFormat?: 1 | 2;
 } = {}): TestIo {
   const io: TestIo = {
     out: "",
     err: "",
     prompts: [],
     version: "9.9.9",
+    // workerd refuses the real 600,000 iterations; format 2 with a passphrase is proven against node:crypto in test/node.
+    pbkdf2Iterations: 1000,
+    ...(opts.writeFormat === undefined ? {} : { writeFormat: opts.writeFormat }),
+    readFile: async (path, max) => {
+      const file = opts.files?.[path];
+      if (file === undefined) throw new Error("ENOENT");
+      const raw = typeof file === "string" ? new TextEncoder().encode(file) : file;
+      return raw.subarray(0, max + 1);
+    },
     env: opts.env ?? {},
     fetch:
       opts.fetch ??
@@ -58,7 +72,7 @@ export function makeIo(opts: {
     },
     promptHidden: async (label) => {
       io.prompts.push(label);
-      return opts.prompt ?? "";
+      return opts.promptQueue?.shift() ?? opts.prompt ?? "";
     },
     stdout: { isTTY: opts.stdoutTty ?? false, write: opts.writeStdout ?? ((s) => void (io.out += s)) },
     stderr: { write: (s) => void (io.err += s) },

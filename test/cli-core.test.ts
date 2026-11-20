@@ -67,8 +67,16 @@ describe("parseLinkInput", () => {
       origin: "https://a.example",
       id: ID,
       key: KEY,
+      format: 1,
+      passphrase: false,
     });
-    expect(parseLinkInput(`  ${ID}.${KEY}\n`, "https://d.example")).toEqual({ origin: "https://d.example", id: ID, key: KEY });
+    expect(parseLinkInput(`  ${ID}.${KEY}\n`, "https://d.example")).toEqual({
+      origin: "https://d.example",
+      id: ID,
+      key: KEY,
+      format: 1,
+      passphrase: false,
+    });
   });
   it("flags damaged links", () => {
     for (const bad of [`https://a.example/#${ID}`, `https://a.example/`, `${ID}`, `${ID}.short`, "", `https://a.example/#${ID}.${KEY}.x`]) {

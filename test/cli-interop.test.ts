@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EXIT, run } from "../cli/core";
-import { decryptSecret, encryptSecret } from "../src/web/crypto";
+import { createCodec, decryptSecret, encryptSecret } from "../src/web/crypto";
 import { fromBase64Url } from "../src/web/base64url";
 import { parseFragment } from "../src/web/link";
 import { makeIo, routerFetch, SERVER, type Recorded } from "./cli-helpers";
@@ -30,7 +30,7 @@ describe("CLI send -> browser decrypt", () => {
     const response = await routerFetch()(`${SERVER}/api/secrets/${parsed.id}/reveal`, { method: "POST" });
     const blob = new Uint8Array(await response.arrayBuffer());
     expect(blob.length).toBeGreaterThan(28);
-    expect(await decryptSecret(blob, parsed.key)).toBe(text);
+    expect(await decryptSecret(blob, parsed)).toBe(text);
   });
   it("prints only the link on stdout and hints on stderr", async () => {
     const io = makeIo({ stdin: "x\n", ...fetchOpt() });
@@ -164,5 +164,28 @@ describe("gen", () => {
     expect(io.err).toContain(secret);
     expect(io.err).toMatch(/secret/i);
     expect(io.out).not.toContain(secret);
+  });
+});
+
+describe("largest v2 blob through the real router", () => {
+  const codec = createCodec({ writeFormat: 2, pbkdf2Iterations: 1000 });
+  const post = (body: Uint8Array) =>
+    routerFetch()(`${SERVER}/api/secrets?ttl=3600`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body });
+
+  it("stores a 16,384-byte secret as a 16,418-byte blob and returns the same bytes", async () => {
+    const text = "x".repeat(16_384);
+    const made = await codec.encryptSecret(text);
+    expect(made.blob.length).toBe(16_418);
+    const created = await post(made.blob);
+    expect(created.status).toBe(201);
+    const { id } = (await created.json()) as { id: string };
+    const revealed = await routerFetch()(`${SERVER}/api/secrets/${id}/reveal`, { method: "POST" });
+    const blob = new Uint8Array(await revealed.arrayBuffer());
+    expect(blob).toEqual(made.blob);
+    expect(await codec.decryptSecret(blob, { key: made.key, format: 2, passphrase: false })).toBe(text);
+  });
+
+  it("answers 413 for 16,419 bytes", async () => {
+    expect((await post(new Uint8Array(16_419).fill(1))).status).toBe(413);
   });
 });
