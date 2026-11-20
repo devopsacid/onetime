@@ -3,6 +3,18 @@
 #
 # NO `log` directive on purpose: Caddy writes access logs only when `log` is present, and the request
 # paths contain secret ids. Do not add it. (Caddy's own runtime messages about certificates do not contain request paths.)
+#
+# The global block below is needed as well. Without any `log` directive Caddy still writes handler errors (logger
+# http.log.error) with the full request URI and the client IP, for example "dial tcp 127.0.0.1:8080: connect: connection
+# refused" for a reveal request that arrives while the app restarts: that put /api/secrets/<id>/reveal into the journal in
+# the project's test. http.stdlib carries TLS handshake errors with client IPs. Both loggers are dropped; certificate and
+# start-up messages stay.
+{
+	log default {
+		exclude http.log.error http.stdlib
+	}
+}
+
 onetime.example.com {
 	# The upstream is the app on the same host (systemd unit, or the compose file's 127.0.0.1:8080 port).
 	# If Caddy runs in a container on a shared Docker network, use the service name instead: onetime:8080

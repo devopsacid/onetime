@@ -147,6 +147,7 @@ Use `deploy/Caddyfile.example`. Replace the host name.
 
 - Caddy gets and renews the certificate itself when the domain points to the host and ports 80 and 443 are open. With a public CA certificate **(not tested)**.
 - The example has no `log` directive. Do not add one: Caddy writes access logs only when `log` is present.
+- Access logs are not the only risk. Without a `log` directive Caddy still writes handler errors with the full request URI and the client IP, for example when the app is restarting and a reveal request arrives. The example therefore starts with a global block, `log default { exclude http.log.error http.stdlib }`, that drops those errors and the TLS handshake errors (client IPs). Keep it. Without the block, a reveal sent while the app was stopped put `/api/secrets/<id>/reveal` into the journal; with it, nothing **(tested with Debian's Caddy 2.6.2, see [deploy-ansible.md](deploy-ansible.md))**.
 - Tested with Caddy's local CA (`tls internal`) in a container: page, security headers, the full create and reveal round trip, a 70 KB body refused with 413, and no request line in Caddy's log **(tested)**.
 
 ### nginx
