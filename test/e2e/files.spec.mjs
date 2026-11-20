@@ -276,7 +276,7 @@ for (const { name, browser } of browsers) {
       await page.locator("#file-input").setInputFiles({ name, mimeType, buffer: Buffer.from(bytes) });
     };
 
-    it("create a file in the UI: mode switch, 1 hour / 1 day only, #2f. link, a second context downloads identical bytes", async () => {
+    it("create a file in the UI: mode switch, 1 hour only, #2f. link, a second context downloads identical bytes", async () => {
       const bytes = bytesOf(70_000, 3);
       const a = await session(browser);
       const b = await session(browser);
@@ -290,7 +290,7 @@ for (const { name, browser } of browsers) {
         await visible(page, "file-field");
         assert.match((await page.locator("#file-summary").textContent()) ?? "", /report ü\.bin/);
         const offered = await page.locator("#ttl option").evaluateAll((os) => os.filter((o) => !o.hidden && !o.disabled).map((o) => o.value));
-        assert.deepEqual(offered, ["3600", "86400"], "files: 1 hour and 1 day only");
+        assert.deepEqual(offered, ["3600"], "files: 1 hour only");
         await page.locator("#create-submit").click();
         await visible(page, "view-created");
         const link = await page.locator("#link").inputValue();
@@ -389,19 +389,19 @@ for (const { name, browser } of browsers) {
       }
     });
 
-    it("a file of 128 KiB + 1 is refused in the browser before any upload; exactly 128 KiB is accepted", async () => {
+    it("a file of 256 KiB + 1 is refused in the browser before any upload; exactly 256 KiB is accepted", async () => {
       const a = await session(browser);
       try {
         const page = await a.context.newPage();
         await page.goto("/");
         await visible(page, "view-create");
-        await chooseFile(page, "toobig.bin", bytesOf(128 * 1024 + 1));
-        await page.locator("#create-error").filter({ hasText: "Files can be at most 128.0 KB." }).waitFor();
+        await chooseFile(page, "toobig.bin", bytesOf(256 * 1024 + 1));
+        await page.locator("#create-error").filter({ hasText: "Files can be at most 256.0 KB." }).waitFor();
         await page.locator("#create-submit").click();
-        assert.match((await page.locator("#create-error").textContent()) ?? "", /Files can be at most 128\.0 KB\./);
+        assert.match((await page.locator("#create-error").textContent()) ?? "", /Files can be at most 256.0 KB\./);
         assert.equal(await page.locator("#view-created").isHidden(), true);
         assert.deepEqual(a.requests.filter((r) => r.method === "POST"), [], "no upload was attempted");
-        await chooseFile(page, "max.bin", bytesOf(128 * 1024));
+        await chooseFile(page, "max.bin", bytesOf(256 * 1024));
         assert.equal(await page.locator("#create-error").isHidden(), true);
         await page.locator("#create-submit").click();
         await visible(page, "view-created");
