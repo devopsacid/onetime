@@ -155,7 +155,7 @@ describe("transformHtml", () => {
 });
 
 describe("real pages", () => {
-  const pages = ["index.html", "privacy.html", "how-it-works.html", "command-line.html", "404.html"];
+  const pages = ["index.html", "privacy.html", "terms.html", "how-it-works.html", "command-line.html", "404.html"];
   for (const page of pages) {
     it(`${page}: both profiles transform cleanly`, () => {
       const source = readFileSync(join(ROOT, page), "utf8");
@@ -294,11 +294,11 @@ describe("inputsFor", () => {
   it("app: index, command-line, 404", () => {
     expect(inputsFor("onetimepass")).toEqual({ main: "index.html", commandLine: "command-line.html", notFound: "404.html" });
   });
-  it("info: how-it-works, privacy, 404", () => {
-    expect(inputsFor("info")).toEqual({ howItWorks: "how-it-works.html", privacy: "privacy.html", notFound: "404.html" });
+  it("info: how-it-works, privacy, terms, 404", () => {
+    expect(inputsFor("info")).toEqual({ howItWorks: "how-it-works.html", privacy: "privacy.html", terms: "terms.html", notFound: "404.html" });
   });
-  it("selfhost: all five pages", () => {
-    expect(Object.values(inputsFor("selfhost")).sort()).toEqual(["404.html", "command-line.html", "how-it-works.html", "index.html", "privacy.html"]);
+  it("selfhost: all six pages", () => {
+    expect(Object.values(inputsFor("selfhost")).sort()).toEqual(["404.html", "command-line.html", "how-it-works.html", "index.html", "privacy.html", "terms.html"]);
   });
 });
 
@@ -317,6 +317,8 @@ describe("rewriteLinks", () => {
     expect(rewriteLinks(a("/how-it-works"), "onetimepass")).toBe(a(`${INFO_ORIGIN}/how-it-works`));
     expect(rewriteLinks(a("/privacy#cookies"), "onetimepass")).toBe(a(`${INFO_ORIGIN}/privacy#cookies`));
     expect(rewriteLinks(a("/how-it-works?x=1#server"), "onetimepass")).toBe(a(`${INFO_ORIGIN}/how-it-works?x=1#server`));
+    expect(rewriteLinks(a("/terms"), "onetimepass")).toBe(a(`${INFO_ORIGIN}/terms`));
+    expect(rewriteLinks(a("/terms#moderation"), "onetimepass")).toBe(a(`${INFO_ORIGIN}/terms#moderation`));
   });
   it("app profile: app-home paths, assets, fragments and absolute links stay", () => {
     for (const href of ["/", "/command-line", "/cli/onetime.mjs", "/cli/", "#top", "/favicon.svg", "https://example.org/", "mailto:a@b.example", "/#x"]) {
@@ -331,7 +333,7 @@ describe("rewriteLinks", () => {
     expect(rewriteLinks(a("/#abc"), "info")).toBe(a(`${OWNER_ORIGIN}/#abc`));
   });
   it("info profile: info-home paths and fragments stay", () => {
-    for (const href of ["/how-it-works", "/privacy#cookies", "#faq", "/privacy"]) expect(rewriteLinks(a(href), "info")).toBe(a(href));
+    for (const href of ["/how-it-works", "/privacy#cookies", "#faq", "/privacy", "/terms"]) expect(rewriteLinks(a(href), "info")).toBe(a(href));
   });
   it("handles single quotes, other attributes after href and several links", () => {
     expect(rewriteLinks("<a href='/privacy' download>p</a> <a href=\"/\">h</a>", "onetimepass")).toBe(`<a href='${INFO_ORIGIN}/privacy' download>p</a> <a href="/">h</a>`);
@@ -432,7 +434,7 @@ describe("headersForInfo", () => {
 });
 
 describe("redirects, robots, sitemap for the sites", () => {
-  it("app _redirects: exactly the six old info URLs, 301, never / or /index.html", () => {
+  it("app _redirects: exactly the nine info URLs, 301, never / or /index.html", () => {
     expect(redirectsForApp()).toBe(
       [
         `/how-it-works https://onetimepass-info.pages.dev/how-it-works 301`,
@@ -441,6 +443,9 @@ describe("redirects, robots, sitemap for the sites", () => {
         `/privacy https://onetimepass-info.pages.dev/privacy 301`,
         `/privacy.html https://onetimepass-info.pages.dev/privacy 301`,
         `/privacy/ https://onetimepass-info.pages.dev/privacy 301`,
+        `/terms https://onetimepass-info.pages.dev/terms 301`,
+        `/terms.html https://onetimepass-info.pages.dev/terms 301`,
+        `/terms/ https://onetimepass-info.pages.dev/terms 301`,
         "",
       ].join("\n"),
     );

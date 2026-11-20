@@ -74,7 +74,7 @@ export function makeDist(root: string, extra: { selfhost?: boolean } = {}): stri
   const dist = join(root, "dist-selfhost");
   mkdirSync(join(dist, "assets"), { recursive: true });
   mkdirSync(join(dist, "cli"), { recursive: true });
-  for (const name of ["index", "how-it-works", "command-line", "privacy", "404"]) writeFileSync(join(dist, `${name}.html`), page(name));
+  for (const name of ["index", "how-it-works", "command-line", "privacy", "terms", "404"]) writeFileSync(join(dist, `${name}.html`), page(name));
   writeFileSync(join(dist, "assets", "main-abc123.js"), "console.log(1)\n");
   writeFileSync(join(dist, "assets", "style-abc123.css"), "body{}\n");
   writeFileSync(join(dist, "robots.txt"), "User-agent: *\nDisallow: /\n");

@@ -19,7 +19,7 @@ function fixture(root: string, profile: Profile): string {
   const dir = join(root, "d");
   profiles.set(dir, profile);
   mkdirSync(join(dir, "assets"), { recursive: true });
-  const names = { selfhost: ["index", "404", "how-it-works", "command-line", "privacy"], app: ["index", "404", "command-line"], info: ["404", "how-it-works", "privacy"] }[profile];
+  const names = { selfhost: ["index", "404", "how-it-works", "command-line", "privacy", "terms"], app: ["index", "404", "command-line"], info: ["404", "how-it-works", "privacy", "terms"] }[profile];
   for (const name of names) writeFileSync(join(dir, `${name}.html`), page(ownOrigin(profile)));
   writeFileSync(join(dir, "theme-init.js"), "document.documentElement.dataset.theme='light'\n");
   writeFileSync(join(dir, "assets", "a.js"), "console.log('app')\n");
@@ -345,8 +345,8 @@ describe("check-dist rules per profile", () => {
   });
 
   describe("3: which files exist", () => {
-    it("app: how-it-works.html or privacy.html present fails; a missing page or cli/ fails", () => {
-      for (const name of ["how-it-works.html", "privacy.html"]) {
+    it("app: how-it-works.html, privacy.html or terms.html present fails; a missing page or cli/ fails", () => {
+      for (const name of ["how-it-works.html", "privacy.html", "terms.html"]) {
         const dir = fixture(tmp.path, "app");
         put(dir, name, page(APP));
         failsWith(dir, new RegExp(name.replace(".", "\\.")));
@@ -366,7 +366,7 @@ describe("check-dist rules per profile", () => {
         failsWith(dir, new RegExp(name.split("/")[0]!.replace(".", "\\.")));
         rmSync(dir, { recursive: true });
       }
-      for (const name of ["how-it-works.html", "privacy.html", "404.html"]) {
+      for (const name of ["how-it-works.html", "privacy.html", "terms.html", "404.html"]) {
         const dir = fixture(tmp.path, "info");
         rmSync(join(dir, name));
         failsWith(dir, new RegExp(name.replace(".", "\\.")));
@@ -389,6 +389,10 @@ describe("check-dist rules per profile", () => {
       dir = fixture(tmp.path, "selfhost");
       rmSync(join(dir, "privacy.html"));
       failsWith(dir, /privacy\.html/);
+      rmSync(dir, { recursive: true });
+      dir = fixture(tmp.path, "selfhost");
+      rmSync(join(dir, "terms.html"));
+      failsWith(dir, /terms\.html/);
     });
   });
 

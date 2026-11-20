@@ -9,7 +9,7 @@ const SHA = "0123456789abcdef0123456789abcdef01234567";
 function infoDist(root: string, extra: string[] = []): string {
   const dir = join(root, "dist-info");
   mkdirSync(dir, { recursive: true });
-  for (const name of ["how-it-works.html", "privacy.html", "404.html", "_headers", "_redirects", ...extra]) writeFileSync(join(dir, name), "x\n");
+  for (const name of ["how-it-works.html", "privacy.html", "terms.html", "404.html", "_headers", "_redirects", ...extra]) writeFileSync(join(dir, name), "x\n");
   return dir;
 }
 
@@ -37,6 +37,13 @@ describe("assertInfoDist", () => {
     expect(() => assertInfoDist(dir)).toThrow(/functions/);
     const u = tempDir("deploy-info-");
     expect(() => assertInfoDist(join(u.path, "missing"))).toThrow();
+  });
+  it("refuses a dist without terms.html", () => {
+    const t = tempDir("deploy-info-");
+    const dir = join(t.path, "dist-info");
+    mkdirSync(dir, { recursive: true });
+    for (const name of ["how-it-works.html", "privacy.html", "404.html", "_headers", "_redirects"]) writeFileSync(join(dir, name), "x\n");
+    expect(() => assertInfoDist(dir)).toThrow(/terms\.html/);
   });
 });
 

@@ -105,7 +105,7 @@ describe("the real public/_headers", () => {
   });
 
   it("sets no-store on the HTML paths", () => {
-    for (const path of ["/", "/index.html", "/how-it-works", "/command-line", "/privacy", "/404", "/privacy.html"]) {
+    for (const path of ["/", "/index.html", "/how-it-works", "/command-line", "/privacy", "/terms", "/terms.html", "/404", "/privacy.html"]) {
       expect(get(headersFor(rules, path), "Cache-Control")).toBe("no-store");
     }
   });
@@ -143,12 +143,12 @@ describe("the real public/_headers", () => {
 
 describe("headers of the info site (headersForInfo of the real file)", () => {
   const rules = parseHeaders(headersForInfo(readFileSync(PUBLIC_HEADERS, "utf8")));
-  it.each(["/how-it-works", "/how-it-works.html", "/privacy", "/privacy.html", "/404", "/assets/x.js", "/og-image.png"])("serves INFO_CSP once on %s", (path) => {
+  it.each(["/how-it-works", "/how-it-works.html", "/privacy", "/privacy.html", "/terms", "/404", "/assets/x.js", "/og-image.png"])("serves INFO_CSP once on %s", (path) => {
     const list = headersFor(rules, path).filter(([n]) => n.toLowerCase() === "content-security-policy");
     expect(list).toEqual([["Content-Security-Policy", INFO_CSP]]);
   });
   it("sets no-store on its pages and keeps the shared security headers", () => {
-    for (const path of ["/how-it-works", "/privacy", "/404"]) {
+    for (const path of ["/how-it-works", "/privacy", "/terms", "/terms.html", "/404"]) {
       expect(get(headersFor(rules, path), "Cache-Control")).toBe("no-store");
       expect(get(headersFor(rules, path), "Cross-Origin-Resource-Policy")).toBe("same-origin");
       expect(get(headersFor(rules, path), "Permissions-Policy")).toContain("clipboard-write=(self)");
