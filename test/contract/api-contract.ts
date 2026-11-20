@@ -268,6 +268,11 @@ export function defineApiContract(h: ApiHarness): void {
       expect((await create(blobOf(MAX_BLOB_BYTES + 1))).status).toBe(413);
     });
 
+    it("takes exactly 16,418 bytes (the largest v2 blob) and refuses 16,419 with 413", async () => {
+      expect((await create(blobOf(16_418))).status).toBe(201);
+      expect((await create(blobOf(16_419))).status).toBe(413);
+    });
+
     it("rejects a blob too small to hold any ciphertext", async () => {
       expect((await create(blobOf(28))).status).toBe(400);
     });

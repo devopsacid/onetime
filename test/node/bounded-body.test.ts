@@ -28,6 +28,18 @@ async function readAll(stream: ReadableStream<Uint8Array>): Promise<number> {
 }
 
 describe("boundedBody", () => {
+  it("lets exactly 16,418 bytes through complete and cuts at 16,419", async () => {
+    expect(MAX_BLOB_BYTES).toBe(16_418);
+    const exact = Readable.from([Buffer.alloc(16_418, 1)]) as unknown as IncomingMessage;
+    const ok = boundedBody(exact);
+    expect(await readAll(ok.stream)).toBe(16_418);
+    expect(ok.complete()).toBe(true);
+    const over = Readable.from([Buffer.alloc(16_419, 1)]) as unknown as IncomingMessage;
+    const cut = boundedBody(over);
+    expect(await readAll(cut.stream)).toBe(16_419);
+    expect(cut.complete()).toBe(false);
+  });
+
   it("ends at MAX_BLOB_BYTES + 1 bytes and stops pulling from an endless upstream", async () => {
     const { req, produced } = endless(64 * 1024);
     const body = boundedBody(req);

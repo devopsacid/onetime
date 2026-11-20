@@ -130,6 +130,30 @@ describe("API bridge", () => {
     expect(new Uint8Array(await r.arrayBuffer())).toEqual(blob);
   });
 
+  it("accepts a streamed upload of exactly 16,418 bytes and answers 413 for one byte more", async () => {
+    const streamed = (total: number) => {
+      let sent = 0;
+      const stream = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          const n = Math.min(1000, total - sent);
+          if (n === 0) return controller.close();
+          sent += n;
+          controller.enqueue(new Uint8Array(n).fill(7));
+        },
+      });
+      return fetch(`${base}/api/secrets?ttl=3600`, {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: stream,
+        duplex: "half",
+      } as RequestInit);
+    };
+    expect((await streamed(16_418)).status).toBe(201);
+    const over = await streamed(16_419);
+    expect(over.status).toBe(413);
+    expect(await over.json()).toEqual({ error: "Secret is too large" });
+  });
+
   it("accepts a chunked upload within the limit", async () => {
     const r = await sendChunked("/api/secrets?ttl=3600", 4096);
     expect(r.status).toBe(201);
