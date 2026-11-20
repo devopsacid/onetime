@@ -178,7 +178,7 @@
                 "name": "Can I send a file?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Yes, one file of up to 256 KB, or less if the operator of this instance set a lower limit. Its name, type and contents are encrypted in your browser. A file link lasts 1 hour and works once, like any other link. The page never shows a file; it only offers it to save. Files are not checked for viruses, because the service cannot see them, and the page warns about kinds of files that can run code. On the command line, use onetime send --file."
+                  "text": "Yes, one file, up to the limit of this instance (256 KB unless the operator changed it, at most 5 MB; the operator can also turn files off). Its name, type and contents are encrypted in your browser. A file link lasts 1 hour, unless the operator of this instance allows longer, and works once, like any other link. The page never shows a file; it only offers it to save. Files are not checked for viruses, because the service cannot see them, and the page warns about kinds of files that can run code. On the command line, use onetime send --file."
                 }
               },
               {
@@ -218,7 +218,7 @@
                 "name": "How large can a secret be?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Texts up to 16 KB, files up to 256 KB, or less if the operator of this instance set a lower limit. The service stores a limited number of secrets at once (20,000 unless the operator of this instance changed it), counting every secret not yet revealed. Expired secrets count until they are removed on the next request. When it is full, creating a new link fails until space frees up. While more than 80 % of that limit is in use, new links can last at most 1 day. The total stored size is limited too, and files larger than 16 KB have their own share of it; when it is used up, sending such a file fails until space frees up."
+                  "text": "Texts up to 16 KB, files up to the limit of this instance (256 KB unless the operator changed it, at most 5 MB). The service stores a limited number of secrets at once (20,000 unless the operator of this instance changed it), counting every secret not yet revealed. Expired secrets count until they are removed on the next request. When it is full, creating a new link fails until space frees up. While more than 80 % of that limit is in use, new links can last at most 1 day. The total stored size is limited too, and files larger than 16 KB have their own share of it; when it is used up, sending such a file fails until space frees up."
                 }
               },
               {
@@ -451,8 +451,14 @@
             </p>
             <p class="hint">
               The stored size shows only a size class. For a text: up to about 250 bytes, 1 KB, 4 KB or 16 KB. For a
-              file: up to 1 KB, 4 KB, 16 KB, 64 KB, 128 KB or 256 KB. The flags byte shows whether a passphrase is needed and
-              whether the data is a file or a text. A file’s name, type and contents are never stored readable. Older
+              <!-- site:onetimepass -->
+              file: up to 1 KB, 4 KB, 16 KB, 64 KB, 128 KB or 256 KB. The flags byte
+              <!-- /site:onetimepass -->
+              <!-- site:selfhost
+              file: up to 1 KB, 4 KB, 16 KB, 64 KB, 128 KB, 256 KB, and larger classes up to 5 MB if the operator allows
+              bigger files. The flags byte
+              site:selfhost -->
+              shows whether a passphrase is needed and whether the data is a file or a text. A file’s name, type and contents are never stored readable. Older
               links without a format part (made by earlier versions of the page, or by older command-line
               copies from before this update) are not padded, so their stored size shows the exact length.
             </p>
@@ -514,7 +520,13 @@
           <li>
             <h3>If nobody opens the link</h3>
             <p>
-              The sender picks 1 hour, 1 day or 7 days; a file lasts 1 hour. An expired secret is never handed out; this is checked on every
+              <!-- site:onetimepass -->
+              The sender picks 1 hour, 1 day or 7 days; a file lasts 1 hour.
+              <!-- /site:onetimepass -->
+              <!-- site:selfhost
+              The sender picks 1 hour, 1 day or 7 days; a file lasts 1 hour, unless the operator of this instance allows longer.
+              site:selfhost -->
+              An expired secret is never handed out; this is checked on every
               read. Its encrypted data is removed on the next request to the service’s API after expiry (creating, checking
               or revealing any secret), not by a timer and not by merely viewing a page. On an idle site it can stay stored
               until then, still unreadable without the key.
@@ -677,7 +689,7 @@
               Yes, one file of up to 256 KB. Its name, type and contents are encrypted in your browser. A file link lasts 1 hour and works once, like any other link. The page never shows a file; it only offers it to save. Files are not checked for viruses, because the service cannot see them, and the page warns about kinds of files that can run code. On the command line, use <code>onetime send --file</code>.
               <!-- /site:onetimepass -->
               <!-- site:selfhost
-              Yes, one file of up to 256 KB, or less if the operator of this instance set a lower limit. Its name, type and contents are encrypted in your browser. A file link lasts 1 hour and works once, like any other link. The page never shows a file; it only offers it to save. Files are not checked for viruses, because the service cannot see them, and the page warns about kinds of files that can run code. On the command line, use <code>onetime send --file</code>.
+              Yes, one file, up to the limit of this instance (256 KB unless the operator changed it, at most 5 MB; the operator can also turn files off). Its name, type and contents are encrypted in your browser. A file link lasts 1 hour, unless the operator of this instance allows longer, and works once, like any other link. The page never shows a file; it only offers it to save. Files are not checked for viruses, because the service cannot see them, and the page warns about kinds of files that can run code. On the command line, use <code>onetime send --file</code>.
               site:selfhost -->
             </p>
           </details>
@@ -712,7 +724,7 @@
               Texts up to 16 KB, files up to 256 KB. The secret site stores at most 20,000 secrets at once, counting every secret not yet revealed. Expired secrets count until they are removed on the next request. When it is full, creating a new link fails until space frees up. While more than 80 % of that is in use (16,000 secrets), new links can last at most 1 day. Files larger than 16 KB also have their own share of the storage; when it is used up, sending such a file fails until space frees up.
               <!-- /site:onetimepass -->
               <!-- site:selfhost
-              Texts up to 16 KB, files up to 256 KB, or less if the operator of this instance set a lower limit. The service stores a limited number of secrets at once (20,000 unless the operator of this instance changed it), counting every secret not yet revealed. Expired secrets count until they are removed on the next request. When it is full, creating a new link fails until space frees up. While more than 80 % of that limit is in use, new links can last at most 1 day. The total stored size is limited too, and files larger than 16 KB have their own share of it; when it is used up, sending such a file fails until space frees up.
+              Texts up to 16 KB, files up to the limit of this instance (256 KB unless the operator changed it, at most 5 MB). The service stores a limited number of secrets at once (20,000 unless the operator of this instance changed it), counting every secret not yet revealed. Expired secrets count until they are removed on the next request. When it is full, creating a new link fails until space frees up. While more than 80 % of that limit is in use, new links can last at most 1 day. The total stored size is limited too, and files larger than 16 KB have their own share of it; when it is used up, sending such a file fails until space frees up.
               site:selfhost -->
             </p>
           </details>

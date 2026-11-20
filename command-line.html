@@ -124,8 +124,8 @@
             <dd>
               Encrypts one file of up to 256 KB, its name included, and prints only the link. <code>--name NAME</code>
               sets the name the recipient sees; <code>--file -</code> reads the file from a pipe. A file link lasts
-              1 hour. The tool asks the server for its file limit first; a self-hosted server may set another one, up
-              to 5 MB.
+              1 hour. The tool asks the server for its limits first; a self-hosted server may set another file size, up
+              to 5 MB, and a longer file life.
             </dd>
           </div>
           <div>
@@ -151,14 +151,15 @@
         <p>Run <code>onetime --help</code> or <code>onetime gen --help</code> for all options.</p>
         <!-- site:onetimepass -->
         <p>
-          Links made since 20 November 2026 need version 0.3.0 or newer; older versions report them as damaged without
-          using them up. <code>onetime --version</code> shows your version.
+          The current version is 0.4.0. Links made since 20 November 2026 need at least 0.3.0; older versions report
+          them as damaged without using them up. <code>onetime --version</code> shows your version.
         </p>
         <!-- /site:onetimepass -->
         <!-- site:selfhost
         <p>
-          Links made with this version of the site need version 0.3.0 or newer of the command-line tool; older versions
-          report them as damaged without using them up. <code>onetime --version</code> shows your version.
+          The current version of the command-line tool is 0.4.0. Links made with this version of the site need at least
+          0.3.0, and files over 1 MB need 0.4.0; older versions report such links as damaged without using them up.
+          <code>onetime --version</code> shows your version.
         </p>
         site:selfhost -->
       </section>
