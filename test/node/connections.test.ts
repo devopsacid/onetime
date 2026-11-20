@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Config } from "../../server/config";
 import { startServer, type Running } from "../../server/start";
-import { makeDist, MIGRATIONS_DIR, tempDir } from "./helpers";
+import { makeDist, MIGRATIONS_DIR, tempDir, waitFor } from "./helpers";
 
 describe("connection limit", () => {
   let tmp: ReturnType<typeof tempDir>;
@@ -34,31 +34,36 @@ describe("connection limit", () => {
       sockets.push(s);
     });
 
-  const closedByServer = (s: Socket): Promise<boolean> =>
-    new Promise((resolve) => {
-      s.once("close", () => resolve(true));
-      setTimeout(() => resolve(false), 600);
-    });
+  const closedByServer = (s: Socket) => waitFor(() => s.destroyed, 5000, "the server to close the extra connection");
 
   it("drops connections beyond ONETIME_MAX_CONNECTIONS and accepts again once one closes", async () => {
     running = await startServer(config(2));
     const a = await open(running.port);
     const b = await open(running.port);
-    await new Promise((r) => setTimeout(r, 50));
+    await waitFor(() => a.readyState === "open" && b.readyState === "open", 5000, "both sockets open");
     const c = await open(running.port);
-    expect(await closedByServer(c)).toBe(true);
+    await closedByServer(c);
     expect(a.destroyed).toBe(false);
     expect(b.destroyed).toBe(false);
 
     a.destroy();
-    await new Promise((r) => setTimeout(r, 100));
-    const d = await open(running.port);
-    d.write("GET /healthz HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
-    const reply = await new Promise<string>((resolve) => {
-      let text = "";
-      d.on("data", (chunk) => (text += chunk));
-      d.once("close", () => resolve(text));
-    });
+    // The server notices the freed slot a moment later: retry, bounded, until a new connection is served.
+    const port = running.port;
+    const request = async (): Promise<string> => {
+      const d = await open(port);
+      d.write("GET /healthz HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
+      return new Promise<string>((resolve) => {
+        let text = "";
+        d.on("data", (chunk) => (text += chunk));
+        d.once("close", () => resolve(text));
+      });
+    };
+    let reply = "";
+    const end = Date.now() + 5000;
+    while (!reply.startsWith("HTTP/1.1 200") && Date.now() < end) {
+      reply = await request();
+      if (!reply) await new Promise((r) => setTimeout(r, 20));
+    }
     expect(reply).toMatch(/^HTTP\/1\.1 200/);
   });
 });

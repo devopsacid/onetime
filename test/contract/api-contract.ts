@@ -11,6 +11,9 @@ export interface ApiHarness {
   rowCount(): Promise<number>;
   /** The counter row, `SELECT stored FROM stats WHERE id = 1`. */
   storedCounter(): Promise<number>;
+  /** Test only: deletes the counter row (a damaged database). `restoreCounter` puts it back, seeded from COUNT(*). */
+  removeCounter(): Promise<void>;
+  restoreCounter(): Promise<void>;
   expiresAt(id: string): Promise<number | null>;
   setExpiresAt(id: string, ms: number): Promise<void>;
   ids(): Promise<string[]>;
@@ -338,6 +341,29 @@ export function defineApiContract(h: ApiHarness): void {
       const stored = await rowCount();
       expect((await create(blobOf(64), { options: { maxStored: stored } })).status).toBe(503);
       expect(await h.storedCounter()).toBe(stored);
+    });
+
+    it("fails loudly with 500, stores nothing and never fails open when the counter row is missing", async () => {
+      const before = await rowCount();
+      await h.removeCounter();
+      try {
+        const response = await create(blobOf(64));
+        expect(response.status).toBe(500);
+        expect(((await response.json()) as { error: string }).error).toMatch(/internal|error/i);
+        expect(await rowCount()).toBe(before);
+        // Even a huge cap must not let anything in without the counter.
+        expect((await create(blobOf(64), { options: { maxStored: 10_000_000 } })).status).toBe(500);
+        expect(await rowCount()).toBe(before);
+      } finally {
+        await h.restoreCounter();
+      }
+      expect(await h.storedCounter()).toBe(await rowCount());
+      expect((await create(blobOf(64))).status).toBe(201);
+    });
+
+    it("a full table still answers 503, not 500, while the counter row exists", async () => {
+      await createOk();
+      expect((await create(blobOf(64), { options: { maxStored: await rowCount() } })).status).toBe(503);
     });
 
     it("does not count expired secrets towards the cap", async () => {

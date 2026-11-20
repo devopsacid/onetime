@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { build } from "esbuild";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { readMigrations } from "../../server/migrate";
+import { CounterMissingError } from "../../src/worker/store";
 import { openSqliteStore, StoreLockedError, type SqliteStore } from "../../server/store-sqlite";
 import { expectAtomicSql, type IssuedSql } from "../contract/api-contract";
 import { MIGRATIONS_DIR, migrations, tempDir, trackChild } from "./helpers";
@@ -82,6 +83,27 @@ describe("SqliteStore", () => {
     await store.purgeExpired(T0 + 1000);
     const ids = (store.db.prepare("SELECT id FROM secrets").all() as { id: string }[]).map((r) => r.id);
     expect(ids).toEqual(["b".repeat(22)]);
+  });
+
+  it("insertIfBelowCap throws CounterMissingError instead of reporting full when the counter row is gone", async () => {
+    store.db.prepare("DELETE FROM stats WHERE id = 1").run();
+    await expect(store.insertIfBelowCap("a".repeat(22), blobOf(40), T0 + 1000, 10)).rejects.toThrow(CounterMissingError);
+    expect(store.db.prepare("SELECT COUNT(*) AS n FROM secrets").get()).toEqual({ n: 0 });
+  });
+
+  it("ping fails when the counter row is missing and works when it is back", async () => {
+    await store.ping();
+    store.db.prepare("DELETE FROM stats WHERE id = 1").run();
+    await expect(store.ping()).rejects.toThrow(CounterMissingError);
+    store.db.prepare("INSERT INTO stats (id, stored) SELECT 1, COUNT(*) FROM secrets").run();
+    await store.ping();
+  });
+
+  it("the documented repair statement fixes a drifted counter", async () => {
+    await store.insertIfBelowCap("a".repeat(22), blobOf(40), T0 + 1000, 10);
+    store.db.prepare("UPDATE stats SET stored = 99 WHERE id = 1").run();
+    store.db.prepare("UPDATE stats SET stored = (SELECT COUNT(*) FROM secrets) WHERE id = 1").run();
+    expect(store.db.prepare("SELECT stored FROM stats WHERE id = 1").get()).toEqual({ stored: 1 });
   });
 
   it("ping works and close is idempotent", async () => {

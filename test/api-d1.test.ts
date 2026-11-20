@@ -52,6 +52,9 @@ describe("API contract on D1", () => {
     },
     rowCount: async () => (await env.DB.prepare("SELECT COUNT(*) AS n FROM secrets").first<{ n: number }>())!.n,
     storedCounter: async () => (await env.DB.prepare("SELECT stored FROM stats WHERE id = 1").first<{ stored: number }>())!.stored,
+    removeCounter: async () => void (await env.DB.prepare("DELETE FROM stats WHERE id = 1").run()),
+    restoreCounter: async () =>
+      void (await env.DB.prepare("INSERT OR REPLACE INTO stats (id, stored) SELECT 1, COUNT(*) FROM secrets").run()),
     expiresAt: async (id) =>
       (await env.DB.prepare("SELECT expires_at FROM secrets WHERE id = ?").bind(id).first<{ expires_at: number }>())?.expires_at ?? null,
     setExpiresAt: async (id, ms) => {
