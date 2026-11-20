@@ -28,7 +28,6 @@ ingress:
     issuerName: letsencrypt
   annotations:
     nginx.ingress.kubernetes.io/enable-access-log: "false"
-    nginx.ingress.kubernetes.io/proxy-body-size: "64k"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "15"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "15"

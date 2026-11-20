@@ -6,10 +6,14 @@ metadata:
   name: {{ $fullname }}
   labels:
     {{- include "onetime.labels" . | nindent 4 }}
-  {{- if or .Values.ingress.annotations .Values.ingress.certManager.enabled .Values.gke.managedCertificate.enabled .Values.gke.frontendConfig.enabled }}
+  {{- $nginx := eq (include "onetime.ingressIsNginx" .) "true" }}
+  {{- if or .Values.ingress.annotations .Values.ingress.certManager.enabled .Values.gke.managedCertificate.enabled .Values.gke.frontendConfig.enabled $nginx }}
   annotations:
     {{- with .Values.ingress.annotations }}
     {{- include "onetime.stringMap" . | nindent 4 }}
+    {{- end }}
+    {{- if and $nginx (not (hasKey .Values.ingress.annotations "nginx.ingress.kubernetes.io/proxy-body-size")) }}
+    nginx.ingress.kubernetes.io/proxy-body-size: {{ printf "%d" (int .Values.ingress.maxBodyBytes) | quote }}
     {{- end }}
     {{- if .Values.ingress.certManager.enabled }}
     {{- if eq .Values.ingress.certManager.issuerKind "Issuer" }}

@@ -94,3 +94,9 @@ app.kubernetes.io/component: server
 {{- end -}}
 {{- join "\n" $lines -}}
 {{- end }}
+
+{{/* True when the Ingress class is served by ingress-nginx (community controller or the AKS application routing add-on). */}}
+{{- define "onetime.ingressIsNginx" -}}
+{{- $class := toString .Values.ingress.className -}}
+{{- if or (contains "nginx" $class) (eq $class "webapprouting.kubernetes.azure.com") -}}true{{- end -}}
+{{- end }}

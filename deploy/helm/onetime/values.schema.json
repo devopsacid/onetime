@@ -86,6 +86,7 @@
         "path": { "type": "string" },
         "pathType": { "type": "string", "enum": ["Prefix", "ImplementationSpecific", "Exact"] },
         "tlsSecretName": { "type": "string" },
+        "maxBodyBytes": { "type": "integer", "minimum": 1024, "maximum": 104857600 },
         "certManager": {
           "type": "object",
           "additionalProperties": false,

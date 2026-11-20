@@ -33,12 +33,14 @@ networkPolicy:
           app.kubernetes.io/name: traefik
 
 extraObjects:
-  # Refuse bodies over 64 KB at the proxy (the app also refuses anything over 16 KB + 28 bytes with 413).
-  - apiVersion: traefik.io/v1alpha1
+  # Refuse bodies over ingress.maxBodyBytes at the proxy (the app also refuses anything over its own limit with 413).
+  # A string, so the value is rendered as a number after tpl.
+  - |
+    apiVersion: traefik.io/v1alpha1
     kind: Middleware
     metadata:
       name: onetime-body-limit
-      namespace: "{{ .Release.Namespace }}"
+      namespace: {{ .Release.Namespace }}
     spec:
       buffering:
-        maxRequestBodyBytes: 65536
+        maxRequestBodyBytes: {{ .Values.ingress.maxBodyBytes }}

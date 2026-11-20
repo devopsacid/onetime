@@ -15,6 +15,17 @@ Check it:
   helm test {{ .Release.Name }} -n {{ .Release.Namespace }}
 {{- end }}
 
+{{- if and .Values.ingress.enabled (eq (include "onetime.ingressIsNginx" .) "true") }}
+
+WARNING: ingress class "{{ .Values.ingress.className }}" looks like ingress-nginx. This chart can only switch off the access log
+for its own Ingress. The controller itself MUST run with these ConfigMap settings (Helm chart: controller.config):
+    disable-access-log: "true"
+    error-log-level: "crit"
+Otherwise every restart of onetime writes lines like
+    connect() failed ... client: <IP> ... request: "POST /api/secrets/<id>/reveal HTTP/2.0"
+to the controller log (seen in the project's kind test). See docs/deploy-helm.md.
+{{- end }}
+
 Rules:
   - One replica only. Never scale the StatefulSet; a second pod on the same volume exits with code 3.
   - Every upgrade or node drain is a short outage: the old pod stops before the new one starts.
