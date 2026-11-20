@@ -122,12 +122,30 @@ describe("link", () => {
   const id = "A".repeat(22);
   const key = "b".repeat(43);
 
-  it("builds and parses a link, keeping id and key in the fragment", () => {
-    const link = buildLink("https://example.test", { id, key });
+  it("builds and parses a v1 link, keeping id and key in the fragment", () => {
+    const link = buildLink("https://example.test", { id, key, format: 1, passphrase: false });
+    expect(link).toBe(`https://example.test/#${id}.${key}`);
     const url = new URL(link);
     expect(url.pathname).toBe("/");
     expect(url.search).toBe("");
-    expect(parseFragment(url.hash)).toEqual({ id, key });
+    expect(parseFragment(url.hash)).toEqual({ id, key, format: 1, passphrase: false });
+  });
+
+  it("builds and parses the two v2 forms", () => {
+    const plain = buildLink("https://example.test", { id, key, format: 2, passphrase: false });
+    expect(plain).toBe(`https://example.test/#2.${id}.${key}`);
+    expect(parseFragment(new URL(plain).hash)).toEqual({ id, key, format: 2, passphrase: false });
+    const protectedLink = buildLink("https://example.test", { id, key, format: 2, passphrase: true });
+    expect(protectedLink).toBe(`https://example.test/#2p.${id}.${key}`);
+    expect(parseFragment(new URL(protectedLink).hash)).toEqual({ id, key, format: 2, passphrase: true });
+  });
+
+  it("never builds a passphrase link in format 1", () => {
+    expect(buildLink("https://example.test", { id, key, format: 1, passphrase: true })).toBe(`https://example.test/#${id}.${key}`);
+  });
+
+  it("accepts the fragment without the leading #", () => {
+    expect(parseFragment(`2p.${id}.${key}`)).toEqual({ id, key, format: 2, passphrase: true });
   });
 
   it("treats an empty fragment as no link", () => {
@@ -141,6 +159,18 @@ describe("link", () => {
     `#${id}.${key.slice(1)}`,
     `#${id.slice(1)}.${key}`,
     `#${id}.${key}.x`,
+    `#${id}.${key}.2`,
+    `#${id}.${key}.2p`,
+    `#3.${id}.${key}`,
+    `#1.${id}.${key}`,
+    `#2P.${id}.${key}`,
+    `#2pp.${id}.${key}`,
+    `#.${id}.${key}`,
+    `#2.${id}.${key}.x`,
+    `#2.${id}.${key.slice(1)}`,
+    `#2p.${id}`,
+    `#2.${id}.`,
+    `#2.${id.slice(1)}.${key}`,
     `#${id}.${key}=`,
     "#hello",
   ])("flags a damaged fragment: %s", (hash) => {
@@ -185,5 +215,13 @@ describe("ApiError.maxTtl", () => {
     expect((await failWith({ error: "x", maxTtl: 59 })).maxTtl).toBeUndefined();
     expect((await failWith({ error: "x", maxTtl: 604801 })).maxTtl).toBeUndefined();
     expect((await failWith("not json")).maxTtl).toBeUndefined();
+  });
+});
+
+describe("FORMAT_PATTERN", () => {
+  it("matches exactly 2 and 2p", async () => {
+    const { FORMAT_PATTERN } = await import("../src/shared/limits");
+    for (const ok of ["2", "2p"]) expect(FORMAT_PATTERN.test(ok)).toBe(true);
+    for (const bad of ["", "1", "3", "2P", "2pp", "p2", " 2", "2\n"]) expect(FORMAT_PATTERN.test(bad)).toBe(false);
   });
 });
