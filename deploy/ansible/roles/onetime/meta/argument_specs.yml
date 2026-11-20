@@ -1,0 +1,122 @@
+---
+argument_specs:
+  main:
+    short_description: Deploy onetime on one Linux host (one instance only), with an optional reverse proxy that keeps no request logs.
+    options:
+      onetime_mode:
+        type: str
+        choices: [docker, systemd]
+        default: docker
+        description: docker runs your image under a systemd unit; systemd runs Node on the host with deploy/onetime.service.
+      onetime_listen_host:
+        type: str
+        default: 127.0.0.1
+        description: Address the app listens on. Keep 127.0.0.1; the proxy on the same host connects there.
+      onetime_port:
+        type: int
+        default: 8080
+        description: Port the app listens on.
+      onetime_max_stored:
+        type: str
+        default: ""
+        description: ONETIME_MAX_STORED (1..10000000); empty for the server default.
+      onetime_env:
+        type: dict
+        default: {}
+        description: More environment variables for the server. HOST, PORT and ONETIME_DB are reserved.
+      onetime_image:
+        type: str
+        default: ""
+        description: Docker mode, required. Your own image reference, preferably pinned by digest.
+      onetime_image_archive:
+        type: str
+        default: ""
+        description: Docker mode. Path on the controller to a "docker save" archive that contains onetime_image.
+      onetime_image_pull:
+        type: str
+        choices: [missing, always]
+        default: missing
+        description: Pull only when the image is missing, or on every run.
+      onetime_registry:
+        type: str
+        default: ""
+        description: Registry host to log in to before pulling.
+      onetime_registry_username:
+        type: str
+        default: ""
+        description: Registry user name.
+      onetime_registry_password:
+        type: str
+        default: ""
+        no_log: true
+        description: Registry password or token. Use a vault.
+      onetime_docker_install:
+        type: bool
+        default: true
+        description: Install Docker.
+      onetime_data_dir:
+        type: path
+        default: /var/lib/onetime
+        description: Docker mode. Host folder with the database (mode 0700). Local or block storage only, never NFS/SMB.
+      onetime_user:
+        type: str
+        default: onetime
+        description: Docker mode. System user the container runs as.
+      onetime_docker_extra_args:
+        type: list
+        elements: str
+        default: []
+        description: Extra docker run arguments.
+      onetime_bundle_archive:
+        type: str
+        default: ""
+        description: systemd mode, required. Path on the controller to a .tar.gz with dist-server/, dist-selfhost/ and migrations/.
+      onetime_install_dir:
+        type: path
+        default: /opt/onetime
+        description: systemd mode. Releases go to <dir>/releases/<checksum>, <dir>/current points to the active one.
+      onetime_systemd_unit_src:
+        type: path
+        description: systemd mode. The unit file copied unchanged (default deploy/onetime.service of this repository).
+      onetime_node_install:
+        type: str
+        choices: [nodesource, distro, none]
+        default: nodesource
+        description: How Node 22.13+ gets onto the host.
+      onetime_node_major:
+        type: int
+        default: 24
+        description: NodeSource major version (22 or newer).
+      onetime_node_bin:
+        type: path
+        default: /usr/bin/node
+        description: Path of node used in ExecStart.
+      onetime_proxy:
+        type: str
+        choices: [caddy, nginx, none]
+        default: caddy
+        description: Reverse proxy with TLS in front of the app. Both are configured without request logs.
+      onetime_domain:
+        type: str
+        default: ""
+        description: Public host name (the host of ONETIME_ORIGIN). Required with a proxy.
+      onetime_caddy_tls_internal:
+        type: bool
+        default: false
+        description: Use Caddy's local CA.
+      onetime_nginx_certificate:
+        type: path
+        default: /etc/ssl/onetime/fullchain.pem
+        description: nginx certificate chain on the host.
+      onetime_nginx_certificate_key:
+        type: path
+        default: /etc/ssl/onetime/privkey.pem
+        description: nginx private key on the host.
+      onetime_nginx_selfsigned:
+        type: bool
+        default: false
+        description: Create a self-signed certificate at the paths above if none exists (tests only).
+      onetime_nginx_remove_default_site:
+        type: bool
+        default: true
+        description: Remove the distribution's default nginx site, which logs requests.

@@ -1,0 +1,162 @@
+---
+# Docker mode: the operator's image, run by systemd with the hardening of compose.yaml
+# (read-only root, no capabilities, no-new-privileges, port on loopback, small local log).
+
+- name: Install Docker from the distribution (Debian, Ubuntu)
+  ansible.builtin.apt:
+    name: docker.io
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: onetime_docker_install and ansible_facts["os_family"] == "Debian"
+
+- name: Add the Docker CE repository (RHEL family)
+  ansible.builtin.yum_repository:
+    name: docker-ce-stable
+    description: Docker CE stable
+    baseurl: "https://download.docker.com/linux/rhel/$releasever/$basearch/stable"
+    gpgkey: https://download.docker.com/linux/rhel/gpg
+    gpgcheck: true
+    enabled: true
+  when: onetime_docker_install and ansible_facts["os_family"] == "RedHat"
+
+- name: Install Docker CE (RHEL family)
+  ansible.builtin.dnf:
+    name: [docker-ce, docker-ce-cli, containerd.io]
+    state: present
+  when: onetime_docker_install and ansible_facts["os_family"] == "RedHat"
+
+- name: Start Docker
+  ansible.builtin.systemd_service:
+    name: docker.service
+    state: started
+    enabled: true
+  # In check mode on a fresh host Docker is not installed yet.
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Create the system user the container runs as
+  ansible.builtin.user:
+    name: "{{ onetime_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+    home: "{{ onetime_data_dir }}"
+
+- name: Look up the user's uid and gid
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ onetime_user }}"
+  failed_when: false
+  check_mode: false
+
+- name: Remember uid and gid
+  ansible.builtin.set_fact:
+    onetime_uid: "{{ (ansible_facts['getent_passwd'] | default({}))[onetime_user][1] | default('UNKNOWN-IN-CHECK-MODE') }}"
+    onetime_gid: "{{ (ansible_facts['getent_passwd'] | default({}))[onetime_user][2] | default('UNKNOWN-IN-CHECK-MODE') }}"
+
+- name: Create the data folder (database lives here; mode 0700)
+  ansible.builtin.file:
+    path: "{{ onetime_data_dir }}"
+    state: directory
+    owner: "{{ onetime_user }}"
+    group: "{{ onetime_user }}"
+    mode: "0700"
+
+- name: Create /etc/onetime
+  ansible.builtin.file:
+    path: /etc/onetime
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Write the environment file
+  ansible.builtin.template:
+    src: env.j2
+    dest: /etc/onetime/env
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart onetime
+
+# --- image: from an archive, or pulled ---
+- name: Find the current image id
+  ansible.builtin.command:
+    argv: [docker, image, inspect, --format, "{{ '{{' }}.Id{{ '}}' }}", "{{ onetime_image }}"]
+  register: onetime_image_before
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Copy the image archive
+  ansible.builtin.copy:
+    src: "{{ onetime_image_archive }}"
+    dest: /var/cache/onetime-image.tar
+    owner: root
+    group: root
+    mode: "0600"
+  register: onetime_archive_copy
+  when: onetime_image_archive | length > 0
+
+- name: Load the image archive
+  ansible.builtin.command:
+    argv: [docker, image, load, --quiet, --input, /var/cache/onetime-image.tar]
+  register: onetime_image_load
+  changed_when: true
+  when:
+    - onetime_image_archive | length > 0
+    - onetime_archive_copy is changed or onetime_image_before.rc != 0
+
+- name: Log in to the registry
+  ansible.builtin.command:
+    argv: [docker, login, --username, "{{ onetime_registry_username }}", --password-stdin, "{{ onetime_registry }}"]
+    stdin: "{{ onetime_registry_password }}"
+  no_log: true
+  changed_when: false
+  when:
+    - onetime_image_archive | length == 0
+    - onetime_registry | length > 0
+    - onetime_image_before.rc != 0 or onetime_image_pull == "always"
+
+- name: Pull the image
+  ansible.builtin.shell:
+    cmd: docker pull --quiet "$IMAGE" >/dev/null && docker image inspect --format '{{ "{{" }}.Id{{ "}}" }}' "$IMAGE"
+  environment:
+    IMAGE: "{{ onetime_image }}"
+  register: onetime_image_pull_result
+  changed_when: onetime_image_pull_result.stdout != onetime_image_before.stdout
+  when:
+    - onetime_image_archive | length == 0
+    - onetime_image_before.rc != 0 or onetime_image_pull == "always"
+
+- name: Find the image id after loading or pulling
+  ansible.builtin.command:
+    argv: [docker, image, inspect, --format, "{{ '{{' }}.Id{{ '}}' }}", "{{ onetime_image }}"]
+  register: onetime_image_after
+  changed_when: onetime_image_after.stdout != onetime_image_before.stdout
+  failed_when: onetime_image_after.rc != 0 and not ansible_check_mode
+  check_mode: false
+  notify: Restart onetime
+
+- name: Remove a systemd-mode drop-in left from an earlier run
+  ansible.builtin.file:
+    path: /etc/systemd/system/onetime.service.d
+    state: absent
+  notify: Restart onetime
+
+- name: Install the systemd unit that runs the container
+  ansible.builtin.template:
+    src: onetime-container.service.j2
+    dest: /etc/systemd/system/onetime.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart onetime
+
+- name: Enable and start onetime
+  ansible.builtin.systemd_service:
+    name: onetime.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  ignore_errors: "{{ ansible_check_mode }}"

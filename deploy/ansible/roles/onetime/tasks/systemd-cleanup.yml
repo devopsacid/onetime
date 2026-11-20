@@ -1,0 +1,17 @@
+---
+# After the new release answered /healthz: remove the other release folders.
+
+- name: Find old releases
+  ansible.builtin.find:
+    paths: "{{ onetime_install_dir }}/releases"
+    file_type: directory
+    excludes: "{{ onetime_release_dir | basename }}"
+  register: onetime_old_releases
+
+- name: Remove old releases
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ onetime_old_releases.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"

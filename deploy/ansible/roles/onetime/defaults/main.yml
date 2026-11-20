@@ -1,0 +1,61 @@
+---
+# onetime role defaults. Every variable is described in meta/argument_specs.yml and docs/deploy-ansible.md.
+
+# "docker": the image you built, run by a systemd unit with the hardening of compose.yaml.
+# "systemd": Node on the host, deploy/onetime.service plus a drop-in.
+onetime_mode: docker
+
+# The app listens here; the proxy on the same host connects to it. Keep 127.0.0.1.
+onetime_listen_host: 127.0.0.1
+onetime_port: 8080
+
+# ONETIME_MAX_STORED; empty = server default (20000).
+onetime_max_stored: ""
+# More environment variables (name: value), for example ONETIME_MAX_CONNECTIONS: "200". HOST, PORT, ONETIME_DB are reserved.
+onetime_env: {}
+
+# --- docker mode ---
+# Required in docker mode: your own image (there is no published one). Prefer a digest: registry/onetime@sha256:...
+onetime_image: ""
+# Optional: a "docker save" archive on the controller. Loaded instead of pulling, so the host needs no registry access.
+onetime_image_archive: ""
+# "missing": pull only when the image is not on the host (right for digests). "always": pull on every run (moving tags).
+onetime_image_pull: missing
+# Optional registry login (docker mode, pull only). Pass the password from a vault or the environment, never in a file in git.
+onetime_registry: ""
+onetime_registry_username: ""
+onetime_registry_password: ""
+# Install Docker (Debian/Ubuntu: docker.io from the distribution; RHEL family: docker-ce from download.docker.com).
+onetime_docker_install: true
+# Host folder mounted at /data. Owned by the onetime system user, mode 0700. Mount a data disk here if you have one.
+onetime_data_dir: /var/lib/onetime
+# The container runs as this host system user (not uid 1000, which is often the cloud image's login user).
+onetime_user: onetime
+# Extra "docker run" arguments, for example ["--memory", "256m", "--pids-limit", "256"].
+onetime_docker_extra_args: []
+
+# --- systemd mode ---
+# Required in systemd mode: a .tar.gz on the controller with dist-server/, dist-selfhost/ and migrations/ at the top,
+# made after "ONETIME_ORIGIN=https://... pnpm build:selfhost" with: tar -czf onetime-bundle.tgz dist-server dist-selfhost migrations
+onetime_bundle_archive: ""
+onetime_install_dir: /opt/onetime
+# The unit file from the repository, copied unchanged; the role adds a drop-in for paths and environment.
+onetime_systemd_unit_src: "{{ role_path }}/../../../onetime.service"
+# "nodesource": Node from deb/rpm.nodesource.com; "distro": the distribution's nodejs package; "none": already installed.
+onetime_node_install: nodesource
+onetime_node_major: 24
+onetime_node_bin: /usr/bin/node
+
+# --- reverse proxy ---
+# "caddy" (automatic HTTPS), "nginx" (bring your certificate) or "none".
+onetime_proxy: caddy
+# Public host name; must equal the host of the ONETIME_ORIGIN the image or bundle was built with.
+onetime_domain: ""
+# Caddy: use Caddy's local CA instead of a public certificate (tests, or hosts without public DNS).
+onetime_caddy_tls_internal: false
+# nginx: certificate and key paths on the host. With onetime_nginx_selfsigned the role creates a self-signed pair there.
+onetime_nginx_certificate: /etc/ssl/onetime/fullchain.pem
+onetime_nginx_certificate_key: /etc/ssl/onetime/privkey.pem
+onetime_nginx_selfsigned: false
+# nginx: remove the distribution's default site (it logs requests for unknown hosts).
+onetime_nginx_remove_default_site: true

@@ -1,0 +1,49 @@
+---
+- name: Check the supported OS family
+  ansible.builtin.assert:
+    that: ansible_facts["os_family"] in ["Debian", "RedHat"]
+    fail_msg: "Supported: Debian, Ubuntu and the RHEL family (got {{ ansible_facts['os_family'] }})."
+    quiet: true
+
+- name: Check the docker mode input
+  ansible.builtin.assert:
+    that: onetime_image | length > 0
+    fail_msg: >-
+      onetime_image is required in docker mode. There is no published image: build your own with
+      ONETIME_ORIGIN and push it, or save it with docker save and set onetime_image_archive too.
+    quiet: true
+  when: onetime_mode == "docker"
+
+- name: Check the systemd mode input
+  ansible.builtin.assert:
+    that: onetime_bundle_archive | length > 0
+    fail_msg: >-
+      onetime_bundle_archive is required in systemd mode: a .tar.gz with dist-server/, dist-selfhost/ and migrations/
+      from "ONETIME_ORIGIN=https://... pnpm build:selfhost".
+    quiet: true
+  when: onetime_mode == "systemd"
+
+- name: Check the proxy input
+  ansible.builtin.assert:
+    that: onetime_domain is match('^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$')
+    fail_msg: "onetime_domain (the host of ONETIME_ORIGIN, e.g. onetime.example.com) is required when onetime_proxy is {{ onetime_proxy }}."
+    quiet: true
+  when: onetime_proxy != "none"
+
+- name: Check the environment variables
+  ansible.builtin.assert:
+    that:
+      - onetime_env.keys() | intersect(["HOST", "PORT", "ONETIME_DB"]) | length == 0
+      - onetime_env.keys() | reject("match", "^[A-Za-z_][A-Za-z0-9_]*$") | list | length == 0
+      - onetime_env.values() | map("string") | select("search", "[\\r\\n]") | list | length == 0
+      - onetime_max_stored | string is match("^([1-9][0-9]{0,7})?$")
+    fail_msg: >-
+      onetime_env must not set HOST, PORT or ONETIME_DB, names must be shell-style, values must be one line;
+      onetime_max_stored must be empty or a whole number from 1 to 10000000.
+    quiet: true
+
+- name: Check the listen address
+  ansible.builtin.assert:
+    that: onetime_listen_host in ["127.0.0.1", "::1", "localhost"] or onetime_proxy == "none"
+    fail_msg: "With a proxy on the host, keep onetime_listen_host on loopback: the app speaks plain HTTP."
+    quiet: true

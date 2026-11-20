@@ -1,0 +1,30 @@
+---
+# Caddy writes access logs only when a "log" directive exists. The template has none.
+
+- name: Install EPEL for Caddy (RHEL family)
+  ansible.builtin.dnf:
+    name: epel-release
+    state: present
+  when: ansible_facts["os_family"] == "RedHat"
+
+- name: Install Caddy
+  ansible.builtin.package:
+    name: caddy
+    state: present
+
+- name: Write the Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: /etc/caddy/Caddyfile
+    owner: root
+    group: root
+    mode: "0644"
+    validate: caddy validate --adapter caddyfile --config %s
+  notify: Reload caddy
+
+- name: Enable and start Caddy
+  ansible.builtin.systemd_service:
+    name: caddy.service
+    enabled: true
+    state: started
+  ignore_errors: "{{ ansible_check_mode }}"

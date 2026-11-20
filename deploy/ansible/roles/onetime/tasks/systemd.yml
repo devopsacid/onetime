@@ -1,0 +1,129 @@
+---
+# systemd mode: Node on the host, the repository's deploy/onetime.service unchanged, plus a drop-in.
+# Releases are unpacked to <install_dir>/releases/<checksum>/ and <install_dir>/current points to the active one,
+# so files of an old build never stay behind.
+
+- name: Install Node
+  ansible.builtin.import_tasks: node.yml
+
+- name: Checksum the bundle on the controller
+  ansible.builtin.stat:
+    path: "{{ onetime_bundle_archive }}"
+    checksum_algorithm: sha256
+  delegate_to: localhost
+  become: false
+  register: onetime_bundle_stat
+
+- name: Check the bundle exists
+  ansible.builtin.assert:
+    that: onetime_bundle_stat.stat.exists
+    fail_msg: "onetime_bundle_archive {{ onetime_bundle_archive }} does not exist on the controller."
+    quiet: true
+
+- name: Set the release folder
+  ansible.builtin.set_fact:
+    onetime_release_dir: "{{ onetime_install_dir }}/releases/{{ onetime_bundle_stat.stat.checksum[:16] }}"
+
+- name: Create the release folder
+  ansible.builtin.file:
+    path: "{{ onetime_release_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  register: onetime_release_created
+
+- name: Unpack the bundle
+  ansible.builtin.unarchive:
+    src: "{{ onetime_bundle_archive }}"
+    dest: "{{ onetime_release_dir }}"
+    creates: "{{ onetime_release_dir }}/dist-server/server.mjs"
+    extra_opts: [--no-same-owner]
+  register: onetime_unpack
+  # In check mode the new release folder does not exist yet, and unarchive needs it.
+  when: not (ansible_check_mode and onetime_release_created is changed)
+
+- name: Make the release readable for the service's dynamic user
+  ansible.builtin.file:
+    path: "{{ onetime_release_dir }}"
+    recurse: true
+    owner: root
+    group: root
+    mode: "u=rwX,go=rX"
+
+- name: Check the bundle layout
+  ansible.builtin.stat:
+    path: "{{ onetime_release_dir }}/{{ item }}"
+  loop: [dist-server/server.mjs, dist-selfhost/_selfhost.json, migrations]
+  register: onetime_bundle_layout
+  when: not (ansible_check_mode and (onetime_release_created is changed or onetime_unpack is changed))
+
+- name: Refuse a bundle without the self-host layout
+  ansible.builtin.assert:
+    that: onetime_bundle_layout.results | rejectattr('skipped', 'defined') | selectattr('stat.exists', 'false') | list | length == 0
+    fail_msg: >-
+      The bundle must contain dist-server/server.mjs, dist-selfhost/_selfhost.json and migrations/ at the top level
+      (build with pnpm build:selfhost, not pnpm build).
+    quiet: true
+  when: not (ansible_check_mode and (onetime_release_created is changed or onetime_unpack is changed))
+
+- name: Point current at the release
+  ansible.builtin.file:
+    src: "{{ onetime_release_dir }}"
+    dest: "{{ onetime_install_dir }}/current"
+    state: link
+    force: true
+    owner: root
+    group: root
+  notify: Restart onetime
+
+- name: Install the unit from the repository unchanged
+  ansible.builtin.copy:
+    src: "{{ onetime_systemd_unit_src }}"
+    dest: /etc/systemd/system/onetime.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart onetime
+
+- name: Create the drop-in folder
+  ansible.builtin.file:
+    path: /etc/systemd/system/onetime.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create /etc/onetime
+  ansible.builtin.file:
+    path: /etc/onetime
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Write the environment file
+  ansible.builtin.template:
+    src: env.j2
+    dest: /etc/onetime/env
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart onetime
+
+- name: Write the drop-in (paths, listen address, environment file)
+  ansible.builtin.template:
+    src: onetime-override.conf.j2
+    dest: /etc/systemd/system/onetime.service.d/10-ansible.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart onetime
+
+- name: Enable and start onetime
+  ansible.builtin.systemd_service:
+    name: onetime.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  ignore_errors: "{{ ansible_check_mode }}"

@@ -1,0 +1,20 @@
+---
+- name: Restart onetime
+  ansible.builtin.systemd_service:
+    name: onetime.service
+    state: restarted
+    daemon_reload: true
+  # In check mode on a fresh host the unit does not exist yet.
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Reload caddy
+  ansible.builtin.systemd_service:
+    name: caddy.service
+    state: reloaded
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Reload nginx
+  ansible.builtin.systemd_service:
+    name: nginx.service
+    state: reloaded
+  ignore_errors: "{{ ansible_check_mode }}"

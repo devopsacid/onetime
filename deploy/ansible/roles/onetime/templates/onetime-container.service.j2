@@ -1,0 +1,32 @@
+# Managed by Ansible (onetime role, docker mode). One instance only: never run a second copy on {{ onetime_data_dir }}.
+[Unit]
+Description=onetime (Docker container), one-time secret links
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStartPre=-/usr/bin/docker rm --force onetime
+# Same hardening as compose.yaml. Runs as the host system user {{ onetime_user }} instead of the image's uid 1000.
+ExecStart=/usr/bin/docker run --rm --name onetime \
+  --read-only --cap-drop ALL --security-opt no-new-privileges \
+  --user {{ onetime_uid }}:{{ onetime_gid }} \
+  --publish {{ onetime_listen_host }}:{{ onetime_port }}:8080 \
+  --volume {{ onetime_data_dir }}:/data{{ ':Z' if (ansible_facts['selinux']['status'] | default('disabled')) == 'enabled' else '' }} \
+  --env-file /etc/onetime/env \
+  --log-driver local --log-opt max-size=1m --log-opt max-file=2 \
+  --stop-timeout 10 \
+{% for arg in onetime_docker_extra_args %}
+  {{ arg }} \
+{% endfor %}
+  {{ onetime_image }}
+ExecStop=/usr/bin/docker stop --time 10 onetime
+TimeoutStopSec=20
+# docker run exits with the container's code: 2 = bad configuration, 3 = database locked. Do not loop on those.
+Restart=on-failure
+RestartSec=2
+RestartPreventExitStatus=2 3
+
+[Install]
+WantedBy=multi-user.target

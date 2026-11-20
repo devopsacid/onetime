@@ -1,0 +1,59 @@
+# Managed by Ansible (onetime role). Based on deploy/nginx.conf.example.
+# Logging is OFF on purpose: the request paths contain secret ids.
+
+# http context: also covers server blocks that set no access_log of their own (for example a default server in nginx.conf).
+access_log off;
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name {{ onetime_domain }};
+    access_log off;
+    error_log /var/log/nginx/onetime-error.log crit;
+    server_tokens off;
+    return 301 https://$host$request_uri;
+}
+
+server {
+{% if onetime_nginx_http2_directive | bool %}
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+{% else %}
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+{% endif %}
+    server_name {{ onetime_domain }};
+
+    ssl_certificate     {{ onetime_nginx_certificate }};
+    ssl_certificate_key {{ onetime_nginx_certificate_key }};
+    ssl_protocols       TLSv1.2 TLSv1.3;
+
+    access_log off;
+    error_log /var/log/nginx/onetime-error.log crit;
+    server_tokens off;
+
+    # A secret is at most 16 KB plus 28 bytes.
+    client_max_body_size 64k;
+    client_header_timeout 10s;
+    client_body_timeout 10s;
+    send_timeout 15s;
+    keepalive_timeout 5s;
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+
+    location / {
+        proxy_pass http://{{ '[' ~ onetime_listen_host ~ ']' if ':' in onetime_listen_host else onetime_listen_host }}:{{ onetime_port }};
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        # The app never reads client IPs or forwarding headers, so none are sent.
+        proxy_set_header X-Forwarded-For "";
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 15s;
+        proxy_send_timeout 15s;
+        proxy_buffering on;
+        proxy_cache off;
+    }
+}

@@ -1,0 +1,32 @@
+---
+# Example inventory. Copy it, replace the host and the values, keep secrets in a vault.
+all:
+  children:
+    onetime:
+      hosts:
+        onetime-1:
+          ansible_host: 203.0.113.10
+          ansible_user: debian
+      vars:
+        # The public host name; the image or bundle must have been built with ONETIME_ORIGIN=https://<this>.
+        onetime_domain: onetime.example.com
+        onetime_proxy: caddy
+
+        # Docker mode (default): your own image, pinned by digest.
+        onetime_mode: docker
+        onetime_image: registry.example.com/onetime@sha256:0000000000000000000000000000000000000000000000000000000000000000
+        # Either let the host pull (with a login if needed) ...
+        # onetime_registry: registry.example.com
+        # onetime_registry_username: deploy
+        # onetime_registry_password: "{{ vault_onetime_registry_password }}"
+        # ... or ship the image without a registry:
+        #   docker save registry.example.com/onetime@sha256:... -o onetime-image.tar
+        # onetime_image_archive: ./onetime-image.tar
+
+        # systemd mode instead: Node from NodeSource and a bundle built on your machine.
+        # onetime_mode: systemd
+        # onetime_bundle_archive: ./onetime-bundle.tgz
+
+        # onetime_max_stored: "20000"
+        # onetime_env:
+        #   ONETIME_MAX_CONNECTIONS: "200"

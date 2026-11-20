@@ -1,0 +1,9 @@
+# Managed by Ansible (onetime role, systemd mode). Changes deploy/onetime.service only where the role needs to.
+[Service]
+WorkingDirectory={{ onetime_install_dir }}/current
+ExecStart=
+ExecStart={{ onetime_node_bin }} {{ onetime_install_dir }}/current/dist-server/server.mjs
+Environment=HOST={{ onetime_listen_host }}
+Environment=PORT={{ onetime_port }}
+# ONETIME_MAX_STORED and extra variables. The database stays in /var/lib/onetime (StateDirectory of the unit).
+EnvironmentFile=/etc/onetime/env

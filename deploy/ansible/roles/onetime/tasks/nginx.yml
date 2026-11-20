@@ -1,0 +1,123 @@
+---
+# nginx logs every request by default. The role turns access logs off in the http context and in the site,
+# sets error_log to crit (lower levels write the request line, with the secret id), and removes the default site.
+
+- name: Install nginx and openssl
+  ansible.builtin.package:
+    name: [nginx, openssl]
+    state: present
+
+- name: Look for nginx.conf (absent in check mode on a fresh host)
+  ansible.builtin.stat:
+    path: /etc/nginx/nginx.conf
+  register: onetime_nginx_conf
+
+- name: Turn off access logs in nginx.conf (http context)
+  ansible.builtin.replace:
+    path: /etc/nginx/nginx.conf
+    regexp: '^(\s*)access_log\s+(?!off;)[^;]*;'
+    replace: '\1access_log off;'
+  when: onetime_nginx_conf.stat.exists or not ansible_check_mode
+  notify: Reload nginx
+
+- name: Set the global error log to crit in nginx.conf
+  ansible.builtin.replace:
+    path: /etc/nginx/nginx.conf
+    regexp: '^(\s*)error_log\s+([^\s;]+)[^;]*;'
+    replace: '\1error_log \2 crit;'
+  when: onetime_nginx_conf.stat.exists or not ansible_check_mode
+  notify: Reload nginx
+
+- name: Remove the default site (Debian, Ubuntu)
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  when: onetime_nginx_remove_default_site
+  notify: Reload nginx
+
+- name: Create the certificate folder
+  ansible.builtin.file:
+    path: "{{ onetime_nginx_certificate_key | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when: onetime_nginx_selfsigned
+
+- name: Create a self-signed certificate (tests only)
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - req
+      - -x509
+      - -newkey
+      - ec
+      - -pkeyopt
+      - ec_paramgen_curve:prime256v1
+      - -nodes
+      - -days
+      - "30"
+      - -subj
+      - "/CN={{ onetime_domain }}"
+      - -addext
+      - "subjectAltName=DNS:{{ onetime_domain }}"
+      - -keyout
+      - "{{ onetime_nginx_certificate_key }}"
+      - -out
+      - "{{ onetime_nginx_certificate }}"
+    creates: "{{ onetime_nginx_certificate }}"
+  when: onetime_nginx_selfsigned
+  notify: Reload nginx
+
+- name: Read the SELinux boolean that lets nginx connect to the app
+  ansible.builtin.command:
+    argv: [getsebool, httpd_can_network_connect]
+  register: onetime_sebool
+  changed_when: false
+  check_mode: false
+  when: (ansible_facts['selinux']['status'] | default('disabled')) == 'enabled'
+
+- name: Allow nginx to connect to the app (SELinux)
+  ansible.builtin.command:
+    argv: [setsebool, -P, httpd_can_network_connect, "1"]
+  changed_when: true
+  when:
+    - (ansible_facts['selinux']['status'] | default('disabled')) == 'enabled'
+    - onetime_sebool.stdout is not search('--> on')
+
+- name: Read the nginx version
+  ansible.builtin.command:
+    argv: [nginx, -v]
+  register: onetime_nginx_v
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Remember whether nginx knows "http2 on" (1.25.1 and newer)
+  ansible.builtin.set_fact:
+    onetime_nginx_http2_directive: >-
+      {{ ((onetime_nginx_v.stderr | default('') ~ ' ' ~ onetime_nginx_v.stdout | default(''))
+          | regex_search('nginx/[0-9.]+') | default('nginx/0', true) | regex_replace('^nginx/', ''))
+         is version('1.25.1', '>=') }}
+
+- name: Write the onetime site
+  ansible.builtin.template:
+    src: nginx-onetime.conf.j2
+    dest: /etc/nginx/conf.d/onetime.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Test the nginx configuration
+  ansible.builtin.command:
+    argv: [nginx, -t, -q]
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Enable and start nginx
+  ansible.builtin.systemd_service:
+    name: nginx.service
+    enabled: true
+    state: started
+  ignore_errors: "{{ ansible_check_mode }}"

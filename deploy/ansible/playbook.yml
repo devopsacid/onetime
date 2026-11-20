@@ -1,0 +1,20 @@
+---
+# Example: deploy onetime to the hosts in the "onetime" group.
+#   ansible-playbook -i inventory.example.yml playbook.yml --check --diff   # dry run
+#   ansible-playbook -i inventory.example.yml playbook.yml
+# One instance only: put exactly one host in the group per database. See docs/deploy-ansible.md.
+- name: Deploy onetime
+  hosts: onetime
+  become: true
+  gather_facts: true
+  pre_tasks:
+    - name: Refuse more than one host per play (one instance only)
+      ansible.builtin.assert:
+        that: ansible_play_hosts_all | length == 1 or onetime_allow_multiple_independent_instances | default(false)
+        fail_msg: >-
+          The play targets {{ ansible_play_hosts_all | length }} hosts. Each host would run its own independent instance with
+          its own database and links. If that is what you want (for example staging and production in one inventory),
+          set onetime_allow_multiple_independent_instances=true.
+        quiet: true
+  roles:
+    - role: onetime

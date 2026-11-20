@@ -1,0 +1,37 @@
+---
+- name: Check the input
+  ansible.builtin.import_tasks: assert.yml
+
+- name: Install and run onetime with Docker
+  ansible.builtin.include_tasks: docker.yml
+  when: onetime_mode == "docker"
+
+- name: Install and run onetime under systemd with Node on the host
+  ansible.builtin.include_tasks: systemd.yml
+  when: onetime_mode == "systemd"
+
+- name: Configure Caddy
+  ansible.builtin.include_tasks: caddy.yml
+  when: onetime_proxy == "caddy"
+
+- name: Configure nginx
+  ansible.builtin.include_tasks: nginx.yml
+  when: onetime_proxy == "nginx"
+
+- name: Start onetime and the proxy now, so the health check below sees the new state
+  ansible.builtin.meta: flush_handlers
+
+- name: Check /healthz on the app
+  ansible.builtin.uri:
+    url: "http://{{ onetime_listen_host }}:{{ onetime_port }}/healthz"
+    return_content: true
+  register: onetime_health
+  until: onetime_health.status == 200
+  retries: 15
+  delay: 2
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Remove old systemd-mode releases
+  ansible.builtin.include_tasks: systemd-cleanup.yml
+  when: onetime_mode == "systemd"

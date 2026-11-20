@@ -1,0 +1,29 @@
+# Managed by Ansible (onetime role). Same content as deploy/Caddyfile.example.
+#
+# NO `log` directive on purpose: Caddy writes access logs only when `log` is present, and the request
+# paths contain secret ids. Do not add it.
+#
+# The global block matters too: without a `log` directive Caddy still writes handler errors (logger http.log.error,
+# for example "upstream refused" while the app restarts) with the full request URI and the client IP. Tested: a reveal
+# request during a restart put /api/secrets/<id>/reveal into the journal. http.stdlib (TLS handshake errors) carries
+# client IPs. Both are excluded; certificate and start-up messages stay.
+{
+	log default {
+		exclude http.log.error http.stdlib
+	}
+}
+
+{{ onetime_domain }} {
+{% if onetime_caddy_tls_internal %}
+	tls internal
+{% endif %}
+	reverse_proxy {{ '[' ~ onetime_listen_host ~ ']' if ':' in onetime_listen_host else onetime_listen_host }}:{{ onetime_port }}
+
+	# A secret is at most 16 KB plus 28 bytes; refuse anything bigger before it reaches the app.
+	request_body {
+		max_size 64KB
+	}
+
+	encode zstd gzip
+	header -Server
+}
