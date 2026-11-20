@@ -1,0 +1,21 @@
+# onetime in Docker, written by cloud-init (deploy/terraform/modules/vm-bootstrap). One instance only.
+[Unit]
+Description=onetime (Docker container), one-time secret links
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+RequiresMountsFor=/var/lib/onetime
+
+[Service]
+Type=simple
+ExecStartPre=-/usr/bin/docker rm --force onetime
+ExecStart=/usr/local/sbin/onetime-run
+ExecStop=/usr/bin/docker stop --time 10 onetime
+TimeoutStopSec=20
+# docker run exits with the container's code: 2 = bad configuration, 3 = database locked. Do not loop on those.
+Restart=on-failure
+RestartSec=2
+RestartPreventExitStatus=2 3
+
+[Install]
+WantedBy=multi-user.target

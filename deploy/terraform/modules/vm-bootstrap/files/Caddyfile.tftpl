@@ -1,0 +1,26 @@
+# Written by cloud-init (deploy/terraform/modules/vm-bootstrap). Same content as the Ansible role's template.
+#
+# NO `log` directive on purpose: Caddy writes access logs only when `log` is present, and the request
+# paths contain secret ids. Without it Caddy still writes handler errors (logger http.log.error, e.g. "upstream refused"
+# while the app restarts) with the full request URI and the client IP, and TLS handshake errors (http.stdlib) with
+# client IPs. Both are excluded below.
+{
+	log default {
+		exclude http.log.error http.stdlib
+	}
+}
+
+${domain} {
+%{ if tls_internal ~}
+	tls internal
+%{ endif ~}
+	reverse_proxy 127.0.0.1:8080
+
+	# A secret is at most 16 KB plus 28 bytes; refuse anything bigger before it reaches the app.
+	request_body {
+		max_size 64KB
+	}
+
+	encode zstd gzip
+	header -Server
+}

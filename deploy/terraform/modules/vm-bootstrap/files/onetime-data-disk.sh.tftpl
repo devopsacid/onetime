@@ -1,0 +1,33 @@
+#!/bin/sh
+# Finds the data disk, formats it only when it is blank, and mounts it at ${mount_path} (fstab by UUID, nofail).
+# A disk with any filesystem or partition table is never formatted. Rendered by deploy/terraform/modules/vm-bootstrap.
+set -eu
+MNT='${mount_path}'
+DEV=''
+i=0
+while [ "$i" -lt 120 ]; do
+  # shellcheck disable=SC2043 # one device on some clouds
+  for d in ${devices}; do
+    if [ -b "$d" ]; then DEV=$(readlink -f "$d"); break 2; fi
+  done
+  i=$((i + 1))
+  sleep 5
+done
+if [ -z "$DEV" ]; then
+  echo "onetime-data-disk: no data disk found (tried: ${devices})" >&2
+  exit 1
+fi
+if ! blkid -p "$DEV" >/dev/null 2>&1; then
+  mkfs.ext4 -q -L onetime-data "$DEV"
+fi
+UUID=$(blkid -s UUID -o value "$DEV")
+if [ -z "$UUID" ]; then
+  echo "onetime-data-disk: $DEV has no filesystem UUID (partitioned or foreign disk?); not touching it" >&2
+  exit 1
+fi
+mkdir -p "$MNT"
+if ! grep -q "UUID=$UUID " /etc/fstab; then
+  echo "UUID=$UUID $MNT ext4 defaults,nofail,noatime 0 2" >> /etc/fstab
+fi
+systemctl daemon-reload
+mountpoint -q "$MNT" || mount "$MNT"

@@ -1,0 +1,53 @@
+#!/bin/sh
+# Pulls the onetime image with the VM's own cloud identity (no stored secret). Rendered by vm-bootstrap.
+set -eu
+IMAGE=$(cat /etc/onetime/image)
+# shellcheck disable=SC2034 # not used for a public image
+REGISTRY='${registry_host}'
+
+# One attempt: log in (if needed) and pull. Retried below, because a new VM identity or role assignment can take
+# a few minutes to work.
+pull_once() {
+%{ if registry_auth == "ecr" ~}
+  # Instance profile + amazon-ecr-credential-helper.
+  mkdir -p /root/.docker
+  printf '{"credHelpers": {"%s": "ecr-login"}}\n' "$REGISTRY" > /root/.docker/config.json
+  chmod 0600 /root/.docker/config.json
+  docker pull --quiet "$IMAGE"
+%{ endif ~}
+%{ if registry_auth == "gar" ~}
+  # Access token of the VM's service account from the metadata server; logged out right after the pull.
+  TOKEN=$(curl -fsS -H 'Metadata-Flavor: Google' \
+    'http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token' |
+    python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
+  printf '%s' "$TOKEN" | docker login --username oauth2accesstoken --password-stdin "https://$REGISTRY" >/dev/null
+  docker pull --quiet "$IMAGE" || { docker logout "https://$REGISTRY" >/dev/null; return 1; }
+  docker logout "https://$REGISTRY" >/dev/null
+%{ endif ~}
+%{ if registry_auth == "acr" ~}
+  # Managed identity token from IMDS, exchanged at the registry for an ACR refresh token; logged out right after the pull.
+  AAD=$(curl -fsS -H 'Metadata: true' \
+    'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fmanagement.azure.com%2F' |
+    python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
+  REFRESH=$(curl -fsS -X POST -H 'Content-Type: application/x-www-form-urlencoded' \
+    --data-urlencode 'grant_type=access_token' --data-urlencode "service=$REGISTRY" --data-urlencode "access_token=$AAD" \
+    "https://$REGISTRY/oauth2/exchange" |
+    python3 -c 'import json,sys; print(json.load(sys.stdin)["refresh_token"])')
+  printf '%s' "$REFRESH" | docker login --username 00000000-0000-0000-0000-000000000000 --password-stdin "$REGISTRY" >/dev/null
+  docker pull --quiet "$IMAGE" || { docker logout "$REGISTRY" >/dev/null; return 1; }
+  docker logout "$REGISTRY" >/dev/null
+%{ endif ~}
+%{ if registry_auth == "none" ~}
+  docker pull --quiet "$IMAGE"
+%{ endif ~}
+}
+
+i=0
+while ! pull_once; do
+  i=$((i + 1))
+  if [ "$i" -ge 60 ]; then
+    echo "onetime-pull: could not pull $IMAGE" >&2
+    exit 1
+  fi
+  sleep 10
+done

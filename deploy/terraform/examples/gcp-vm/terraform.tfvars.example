@@ -1,0 +1,6 @@
+project                      = "my-project"
+zone                         = "europe-west3-a"
+image                        = "europe-west3-docker.pkg.dev/my-project/onetime/onetime@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+artifact_registry_location   = "europe-west3"
+artifact_registry_repository = "onetime"
+domain                       = "onetime.example.com"

@@ -1,0 +1,9 @@
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+.terraform.tfstate.lock.info
+# Reusable modules carry no lock file; the examples (root modules) do.
+modules/**/.terraform.lock.hcl
