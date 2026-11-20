@@ -111,6 +111,7 @@ function checkFile(path) {
   const text = readFileSync(path, "utf8");
   const file = relative(process.cwd(), path);
   const report = (index, message) => problems.push(`${file}:${lineOf(text, index)}: ${message}`);
+  const ldBlocks = [];
 
   TOKEN.lastIndex = 0;
   let match;
@@ -154,7 +155,7 @@ function checkFile(path) {
       const type = (attrs.get("type") ?? "").trim().toLowerCase();
       if (type === "application/ld+json") {
         try {
-          JSON.parse(content);
+          ldBlocks.push({ index: match.index, data: JSON.parse(content) });
         } catch (error) {
           report(match.index, `JSON-LD does not parse: ${error instanceof Error ? error.message : String(error)}`);
         }
@@ -162,6 +163,50 @@ function checkFile(path) {
         report(match.index, `inline script content (type "${type || "classic"}")`);
       }
       TOKEN.lastIndex = contentEnd;
+    }
+  }
+  checkFaq(text, ldBlocks, report);
+}
+
+const plainText = (html) => decodeEntities(html.replace(/<!--[\s\S]*?-->/g, "").replace(/<[^>]*>/g, "")).replace(/\s+/g, " ").trim();
+
+/** Every FAQPage object inside parsed JSON-LD, as [question, answer] lists. */
+function faqPages(node, out = []) {
+  if (Array.isArray(node)) for (const item of node) faqPages(item, out);
+  else if (node !== null && typeof node === "object") {
+    if (node["@type"] === "FAQPage") {
+      const entities = Array.isArray(node.mainEntity) ? node.mainEntity : [node.mainEntity];
+      out.push(entities.map((q) => [String(q?.name ?? ""), String(q?.acceptedAnswer?.text ?? "")]));
+    }
+    for (const value of Object.values(node)) if (typeof value === "object") faqPages(value, out);
+  }
+  return out;
+}
+
+/** The questions and answers shown in <section id="faq"> (<details><summary>question</summary><p>answer</p>). */
+function visibleFaq(html) {
+  const start = html.search(/<section\b[^>]*\bid\s*=\s*["']faq["']/i);
+  if (start === -1) return null;
+  const end = html.indexOf("</section", start);
+  const section = html.slice(start, end === -1 ? html.length : end);
+  return [...section.matchAll(/<summary\b[^>]*>([\s\S]*?)<\/summary>([\s\S]*?)<\/details>/gi)].map((m) => [plainText(m[1]), plainText(m[2])]);
+}
+
+/** Each FAQPage JSON-LD block must equal the visible FAQ (questions and answers, whitespace normalised). */
+function checkFaq(html, blocks, report) {
+  for (const block of blocks) {
+    for (const faq of faqPages(block.data)) {
+      const visible = visibleFaq(html);
+      if (visible === null) {
+        report(block.index, "FAQPage JSON-LD but no visible <section id=\"faq\">");
+        continue;
+      }
+      const ld = faq.map(([q, a]) => [plainText(q), plainText(a)]);
+      if (ld.length !== visible.length) report(block.index, `FAQ JSON-LD has ${ld.length} questions, the page shows ${visible.length}`);
+      for (let i = 0; i < Math.min(ld.length, visible.length); i++) {
+        if (ld[i][0] !== visible[i][0]) report(block.index, `FAQ JSON-LD question ${i + 1} differs from the page: ${JSON.stringify(ld[i][0])}`);
+        else if (ld[i][1] !== visible[i][1]) report(block.index, `FAQ JSON-LD answer ${i + 1} differs from the page: ${JSON.stringify(ld[i][0])}`);
+      }
     }
   }
 }
