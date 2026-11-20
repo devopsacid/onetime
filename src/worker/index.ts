@@ -86,7 +86,7 @@ async function createSecret(request: Request, store: SecretStore, url: URL, now:
   await store.purgeExpired(now);
 
   const id = newId();
-  const stored = await store.insertIfBelowCap(id, blob, now + ttl * 1000, now, maxStored);
+  const stored = await store.insertIfBelowCap(id, blob, now + ttl * 1000, maxStored);
   if (!stored) return error(503, "The service is full right now, try again later", { "Retry-After": "300" });
   return json(201, { id });
 }

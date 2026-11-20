@@ -9,13 +9,13 @@ function toBytes(value: unknown): Uint8Array<ArrayBuffer> {
 
 export function d1Store(db: D1Database): SecretStore {
   return {
-    async insertIfBelowCap(id, blob, expiresAt, now, maxStored) {
-      // One statement checks the cap and inserts, so concurrent creates cannot overshoot it.
+    async insertIfBelowCap(id, blob, expiresAt, maxStored) {
+      // One statement checks the cap (the counter row that migration 0002's triggers maintain) and inserts, so concurrent creates cannot overshoot it.
       const result = await db
         .prepare(
-          "INSERT INTO secrets (id, blob, expires_at) SELECT ?1, ?2, ?3 WHERE (SELECT COUNT(*) FROM secrets WHERE expires_at > ?4) < ?5",
+          "INSERT INTO secrets (id, blob, expires_at) SELECT ?1, ?2, ?3 WHERE (SELECT stored FROM stats WHERE id = 1) < ?4",
         )
-        .bind(id, blob.buffer, expiresAt, now, maxStored)
+        .bind(id, blob.buffer, expiresAt, maxStored)
         .run();
       return result.meta.changes !== 0;
     },

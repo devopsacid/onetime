@@ -89,7 +89,7 @@ Security notes:
 
 API: `POST /api/secrets?ttl=<seconds>` (body: blob) → `{ id }`; `GET /api/secrets/<id>` → exists or 404; `POST /api/secrets/<id>/reveal` → blob, then deleted.
 
-Limits: 16 KB per secret. There is no per-IP rate limit (IPs are never stored). Instead, creating returns 503 while 20,000 unexpired secrets are stored.
+Limits: 16 KB per secret. There is no per-IP rate limit (IPs are never stored). Instead, creating returns 503 while 20,000 secrets are stored (expired ones not yet purged count, but every create purges them first).
 
 ## Commands
 

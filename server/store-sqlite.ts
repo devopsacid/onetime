@@ -81,7 +81,7 @@ export function openSqliteStore(path: string, migrations: Migration[]): SqliteSt
     return () => (statement ??= db.prepare(sql));
   };
   const insert = lazy(
-    "INSERT INTO secrets (id, blob, expires_at) SELECT ?1, ?2, ?3 WHERE (SELECT COUNT(*) FROM secrets WHERE expires_at > ?4) < ?5",
+    "INSERT INTO secrets (id, blob, expires_at) SELECT ?1, ?2, ?3 WHERE (SELECT stored FROM stats WHERE id = 1) < ?4",
   );
   const take = lazy("DELETE FROM secrets WHERE id = ? AND expires_at > ? RETURNING blob");
   const exists = lazy("SELECT 1 AS found FROM secrets WHERE id = ? AND expires_at > ?");
@@ -91,8 +91,8 @@ export function openSqliteStore(path: string, migrations: Migration[]): SqliteSt
 
   return {
     db,
-    async insertIfBelowCap(id, blob, expiresAt, now, maxStored) {
-      return Number(insert().run(id, blob, expiresAt, now, maxStored).changes) !== 0;
+    async insertIfBelowCap(id, blob, expiresAt, maxStored) {
+      return Number(insert().run(id, blob, expiresAt, maxStored).changes) !== 0;
     },
     async take(id, now) {
       const row = take().get(id, now) as { blob: unknown } | undefined;

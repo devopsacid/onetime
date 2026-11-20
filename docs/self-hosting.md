@@ -287,7 +287,7 @@ Set these in the server's environment.
 | `PORT` | `8080` | Port. |
 | `ONETIME_DIST` | `dist-selfhost` next to `dist-server/` (image: `/app/dist-selfhost`, systemd layout: `/opt/onetime/dist-selfhost`) | Folder with the built site (`pnpm build:selfhost`). The server refuses to start if it has no `_selfhost.json`, for example the Pages `dist/`. Relative paths are resolved against the working directory. |
 | `ONETIME_DB` | `./data/onetime.db` (image: `/data/onetime.db`, systemd unit: `/var/lib/onetime/onetime.db`) | Database file. Its folder is created with mode 0700. |
-| `ONETIME_MAX_STORED` | `20000` | Most unexpired secrets stored at once. Creating a secret answers 503 when full. |
+| `ONETIME_MAX_STORED` | `20000` | Most secrets stored at once (expired ones not yet purged count; they are purged on the next create). Creating a secret answers 503 when full. |
 
 ## Troubleshooting
 
