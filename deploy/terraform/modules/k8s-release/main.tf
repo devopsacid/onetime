@@ -2,6 +2,12 @@
 # One replica only; the chart refuses anything else. Every upgrade is a short outage by design.
 
 locals {
+  # Only the file inputs that are set; with both null, "config" is left out so values files and the chart defaults apply.
+  file_config = merge(
+    var.max_file_bytes == null ? {} : { maxFileBytes = var.max_file_bytes },
+    var.max_file_ttl == null ? {} : { maxFileTtl = var.max_file_ttl },
+  )
+
   chart_path = coalesce(var.chart_path, abspath("${path.module}/../../../helm/onetime"))
 
   overrides = merge(
@@ -12,7 +18,7 @@ locals {
         var.image_tag != "" ? { tag = var.image_tag } : {},
       )
     },
-    { config = { maxFileBytes = var.max_file_bytes, maxFileTtl = var.max_file_ttl } },
+    length(local.file_config) == 0 ? {} : { config = local.file_config },
     var.host == null ? {} : { ingress = { enabled = true, host = var.host } },
     var.storage_class == null ? {} : { persistence = { storageClass = var.storage_class } },
   )
