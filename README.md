@@ -15,7 +15,7 @@ What the server holds: the encrypted blob and its expiry time, until first read,
 
 The reveal is one atomic SQL statement (`DELETE ... RETURNING`), so of many simultaneous attempts exactly one gets the blob.
 
-Deleted is not the same as gone everywhere. On the hosted site, Cloudflare D1 keeps its own point-in-time recovery history (Time Travel) for up to 30 days, depending on the plan, and it cannot be turned off. It holds only encrypted blobs, never keys, but someone with access to the database account and the full old link could recover an opened secret during that window. A self-hosted instance deletes rows with SQLite's `secure_delete`, but copies can survive in the WAL file and in the operator's backups or disk snapshots. Either way, treat a sent link as sensitive even after it was opened. Until Reveal is pressed, the full link is also in the recipient's browser history, which browser sync may copy to the vendor's servers.
+Deleted is not the same as gone everywhere. On the hosted site, Cloudflare D1 keeps its own point-in-time recovery history (Time Travel) for 7 days, and it cannot be turned off. It holds only encrypted blobs, never keys, but someone with access to the database account and the full old link could recover an opened secret during that window. A self-hosted instance deletes rows with SQLite's `secure_delete`, but copies can survive in the WAL file and in the operator's backups or disk snapshots. Either way, treat a sent link as sensitive even after it was opened. Until Reveal is pressed, the full link is also in the recipient's browser history, which browser sync may copy to the vendor's servers.
 
 Opening the link does not use it up; only the Reveal button does. This keeps link previews in chat apps from destroying the secret.
 
@@ -91,7 +91,7 @@ Security notes:
 
 API: `POST /api/secrets?ttl=<seconds>` (body: blob) → `{ id }`; `GET /api/secrets/<id>` → exists or 404; `POST /api/secrets/<id>/reveal` → blob, then deleted.
 
-Limits: 16 KB per secret. There is no per-IP rate limit (IPs are never stored). Instead, creating returns 503 while 20,000 secrets are stored, counting every secret not yet revealed (expired ones not yet purged count, but every create purges them first).
+Limits: 16 KB per secret. There is no per-IP rate limit (IPs are never stored). Instead, creating returns 503 while 20,000 secrets are stored, counting every secret not yet revealed (expired ones not yet purged count, but every create purges them first). While more than 80 % of that is in use (16,000), creating a link that lasts longer than 1 day is refused with `409` and `{"error": ..., "maxTtl": 86400}`; the web page and the CLI tell the sender and ask for a shorter expiry. The same rule applies against the operator's `ONETIME_MAX_STORED` when self-hosting.
 
 ## Commands
 

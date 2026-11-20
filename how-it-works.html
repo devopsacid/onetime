@@ -108,7 +108,7 @@
                 "name": "How large can a secret be?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Up to 16 KB. The service stores at most 20,000 secrets at once, counting every secret not yet revealed. Expired secrets count until they are removed on the next request. When it is full, creating a new link fails until space frees up."
+                  "text": "Up to 16 KB. The service stores at most 20,000 secrets at once, counting every secret not yet revealed. Expired secrets count until they are removed on the next request. When it is full, creating a new link fails until space frees up. While more than 80 % of that is in use (16,000 on this site), new links can last at most 1 day."
                 }
               },
               {
@@ -203,7 +203,7 @@
                 "name": "How large can a secret be?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Up to 16 KB. The service stores a limited number of secrets at once (20,000 unless the operator of this instance changed it), counting every secret not yet revealed. Expired secrets count until they are removed on the next request. When it is full, creating a new link fails until space frees up."
+                  "text": "Up to 16 KB. The service stores a limited number of secrets at once (20,000 unless the operator of this instance changed it), counting every secret not yet revealed. Expired secrets count until they are removed on the next request. When it is full, creating a new link fails until space frees up. While more than 80 % of that limit is in use, new links can last at most 1 day."
                 }
               },
               {
@@ -488,7 +488,7 @@
             <h3>Cloudflare’s recovery copy</h3>
             <p>
               Reveal deletes the row at once, but Cloudflare D1 keeps its own point-in-time recovery history (Time Travel)
-              for up to 30 days, depending on the plan. That history holds only the encrypted data, never the key. So
+              for 7 days. That history holds only the encrypted data, never the key. So
               someone with access to the database account and the full old link could recover an opened secret during
               that time. After you send a secret, treat the link itself as sensitive.
             </p>
@@ -622,12 +622,14 @@
               <!-- site:onetimepass -->
               Up to 16 KB. The service stores at most 20,000 secrets at once, counting every secret not yet revealed.
               Expired secrets count until they are removed on the next request. When it is full, creating a new link fails
-              until space frees up.
+              until space frees up. While more than 80 % of that is in use (16,000 on this site), new links can last at most
+              1 day.
               <!-- /site:onetimepass -->
               <!-- site:selfhost
               Up to 16 KB. The service stores a limited number of secrets at once (20,000 unless the operator of this
               instance changed it), counting every secret not yet revealed. Expired secrets count until they are removed on
-              the next request. When it is full, creating a new link fails until space frees up.
+              the next request. When it is full, creating a new link fails until space frees up. While more than 80 % of that
+              limit is in use, new links can last at most 1 day.
               site:selfhost -->
             </p>
           </details>

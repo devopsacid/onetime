@@ -92,7 +92,7 @@ ONETIME_ORIGIN=https://host pnpm build:selfhost   # self-host site + CLI + dist-
 
 ## Known open points
 
-- No per-IP rate limit (the Workers rate-limit binding is not available on Pages, and WAF rules need a custom domain). A global cap of 20,000 stored secrets returns 503 when full, so the cap can be filled by an attacker.
+- No per-IP rate limit (the Workers rate-limit binding is not available on Pages, and WAF rules need a custom domain). A global cap of 20,000 stored secrets returns 503 when full, so the cap can be filled by an attacker. Near-full rule: while more than 80 % of the cap is in use (`longTtlCap`, 16,000), `POST /api/secrets` with a TTL over 1 day is refused with 409 and `maxTtl: 86400` (never clamped; same single capped insert with a smaller cap; the web page switches the expiry to 1 day and waits for a second Create, the CLI exits 5 with a `--ttl 1d` hint). The account is on the D1 free plan (5 million rows read, 100,000 rows written per day; past either, queries fail until 00:00 UTC, reveals included): the counter row removes the read amplification, but the daily write quota stays an open denial-of-service path that only a rate limit (custom domain + WAF) or a paid plan closes. D1 Time Travel is 7 days on the free plan, as the page and README say.
 - The Back-button (bfcache) clearing of the revealed secret is implemented but was not proven in a real bfcache restore.
 - There is no browser e2e test in the repo; UI flows were checked with throwaway Playwright scripts.
 - Some Node tests start real servers and can time out when the machine is very loaded (load average 40+); a rerun passes.

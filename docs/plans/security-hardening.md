@@ -19,6 +19,8 @@ Status: proposed. Nothing here is implemented yet. Items marked **owner** need a
 ## Phase 1: no owner decisions needed (one branch per item, `code-reviewer` before each merge)
 
 1. **Counter row instead of `COUNT(*)`** (`developer`)
+   - Plan facts (owner, 2026-11-20): the Cloudflare account is on the D1 **free plan**: 5 million rows read and 100,000 rows written per day. Past either, queries fail until 00:00 UTC, reveals included. The counter row removes the read amplification (a `COUNT(*)` per insert scans every row). The daily write quota stays an open denial-of-service path (each create and reveal writes rows); only a rate limit (custom domain + WAF) or a paid plan closes it. Time Travel on the free plan keeps 7 days, which the pages and README now state.
+   - Near-full rule (implemented, `docs/plans/near-full-ttl.md`): above 80 % of the cap, links longer than 1 day are refused with 409 and `maxTtl`.
    - New migration `0002_counter.sql`: table `stats(id INTEGER PRIMARY KEY CHECK (id = 1), stored INTEGER NOT NULL)`, seeded from the current row count, kept exact by `AFTER INSERT` and `AFTER DELETE` triggers on `secrets`.
    - Insert becomes `INSERT ... SELECT ?1, ?2, ?3 WHERE (SELECT stored FROM stats WHERE id = 1) < ?4`. Still one statement, so the cap cannot overshoot. It counts stored rows (expired rows not yet purged included), which is stricter than today; the purge already runs before every insert.
    - Same SQL in `store-d1.ts` and `store-sqlite.ts`; the contract suite gets a test that the counter equals `COUNT(*)` after mixed concurrent create, reveal and purge.

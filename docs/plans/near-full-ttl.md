@@ -1,6 +1,6 @@
 # ADR: shorter maximum expiry when the store is nearly full (replaces security plan item 7)
 
-Status: accepted by the owner on 2026-11-20 (no custom domain, so no WAF rate limit; this measure only). Not implemented yet.
+Status: accepted by the owner on 2026-11-20 (no custom domain, so no WAF rate limit; this measure only). Implemented on branch `sec/near-full-ttl`.
 
 ## Recommendation
 

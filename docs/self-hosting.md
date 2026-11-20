@@ -289,7 +289,7 @@ Set these in the server's environment.
 | `PORT` | `8080` | Port. |
 | `ONETIME_DIST` | `dist-selfhost` next to `dist-server/` (image: `/app/dist-selfhost`, systemd layout: `/opt/onetime/dist-selfhost`) | Folder with the built site (`pnpm build:selfhost`). The server refuses to start if it has no `_selfhost.json`, for example the Pages `dist/`. Relative paths are resolved against the working directory. |
 | `ONETIME_DB` | `./data/onetime.db` (image: `/data/onetime.db`, systemd unit: `/var/lib/onetime/onetime.db`) | Database file. Its folder is created with mode 0700. |
-| `ONETIME_MAX_STORED` | `20000` | Most secrets stored at once (expired ones not yet purged count; they are purged on the next create). Creating a secret answers 503 when full. |
+| `ONETIME_MAX_STORED` | `20000` | Most secrets stored at once (expired ones not yet purged count; they are purged on the next create). Creating a secret answers 503 when full. While more than 80 % of it is in use, a link that lasts longer than 1 day is refused with 409 and `maxTtl`. |
 | `ONETIME_MAX_CONNECTIONS` | `1000` | Most open connections (1 to 100000). Further connections are closed on arrival until some close, so idle sockets cannot exhaust the process. Keep it above the number your reverse proxy keeps open. |
 
 ## Troubleshooting
