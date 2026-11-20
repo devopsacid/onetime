@@ -1,5 +1,5 @@
-import { ApiError } from "./api";
-import type { AesKey, LinkKey } from "./crypto";
+import { ApiError, BodyReadError } from "./api";
+import type { AesKey, LinkKey, OpenedPayload } from "./crypto";
 import { validatePassphrase, type PassphraseProblem } from "./passphrase";
 
 export type OpenPhase = "preparing" | "revealing" | "revealed";
@@ -7,13 +7,15 @@ export type OpenPhase = "preparing" | "revealing" | "revealed";
 export interface OpenDeps {
   deriveKey(link: LinkKey, passphrase?: string): Promise<AesKey>;
   revealSecret(id: string): Promise<Uint8Array<ArrayBuffer>>;
-  openBlob(blob: Uint8Array<ArrayBuffer>, aesKey: AesKey, link: LinkKey): Promise<string>;
+  openBlob(blob: Uint8Array<ArrayBuffer>, aesKey: AesKey, link: LinkKey): Promise<OpenedPayload>;
 }
 
 export type OpenOutcome =
-  /** A file link, and this build has no file UI: nothing was derived or requested. Removed when the file UI lands. */
-  | { kind: "unsupported" }
   | { kind: "revealed"; text: string }
+  /** A file; name and type are already sanitised by openPayload. */
+  | { kind: "file"; name: string; type: string; bytes: Uint8Array }
+  /** The row was deleted but the body did not arrive complete, or a file did not decrypt: nothing can be retried. */
+  | { kind: "lost"; file: boolean }
   /** The entry cannot be right, so nothing was derived and no request was sent. */
   | { kind: "invalid"; problem: PassphraseProblem }
   /** The server says it is gone (404). */
@@ -28,7 +30,7 @@ export type OpenOutcome =
 /**
  * The slow key step runs before the reveal request, so a slow device never burns the secret while
  * still hashing, and an entry that fails validation never reaches the network.
- * `onPhase("revealed")` fires as soon as the secret is handed over: the caller drops the key from the address bar.
+ * `onPhase("revealed")` fires as soon as the secret is handed over (or lost after the delete): the caller drops the key from the address bar.
  */
 export async function openSecret(
   link: LinkKey & { id: string },
@@ -36,7 +38,6 @@ export async function openSecret(
   deps: OpenDeps,
   onPhase: (phase: OpenPhase) => void = () => {},
 ): Promise<OpenOutcome> {
-  if (link.file) return { kind: "unsupported" };
   const passphrase = link.passphrase ? entry : undefined;
   if (passphrase !== undefined) {
     const problem = validatePassphrase(passphrase);
@@ -55,12 +56,18 @@ export async function openSecret(
     blob = await deps.revealSecret(link.id);
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) return { kind: "gone" };
+    if (error instanceof BodyReadError) {
+      onPhase("revealed");
+      return { kind: "lost", file: link.file };
+    }
     return { kind: "network", error };
   }
   onPhase("revealed");
   try {
-    return { kind: "revealed", text: await deps.openBlob(blob, aesKey, link) };
+    const opened = await deps.openBlob(blob, aesKey, link);
+    return opened.kind === "text" ? { kind: "revealed", text: opened.text } : opened;
   } catch {
+    if (link.file && !link.passphrase) return { kind: "lost", file: true };
     return { kind: "undecryptable", passphrase: link.passphrase };
   }
 }
