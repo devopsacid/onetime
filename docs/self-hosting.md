@@ -139,8 +139,22 @@ The proxy must:
 
 - terminate TLS (HTTPS) and forward to `127.0.0.1:8080`;
 - **keep no access log**, because request paths contain secret ids;
-- limit request bodies to about 140 KiB (143,360 bytes). The largest body is a 128 KiB file, whose encrypted blob is 131,490 bytes; a proxy limit below that refuses the largest allowed file, and a secret text is at most 16 KB. The app enforces 131,490 bytes (413) by itself and allows an upload 60 seconds, so give the proxy a body timeout of at least 30 seconds between reads (nginx `client_body_timeout 30s`; Caddy needs none).
-- Files can be at most 128 KiB on every instance, hosted or self-hosted: the page and the CLI refuse more, and the server limit is the same, so a self-hosted server never stores a file that a client could not open. (Clients can still open the format's larger files, up to 1 MiB, in case a later version allows them.)
+- limit request bodies to the blob size of your largest file, plus a little slack. The default `ONETIME_MAX_FILE_BYTES` (262,144) gives blobs of at most 262,562 bytes, so about 270 KB (`client_max_body_size 270k` in nginx); a proxy limit below the blob size refuses the largest allowed file, and a secret text is at most 16 KB. The blob size is the file's size class plus 30 bytes, so it jumps at class boundaries:
+
+  | `ONETIME_MAX_FILE_BYTES` up to | Largest body (bytes) |
+  |---|---|
+  | 16,000 | 16,418 |
+  | 65,000 | 65,954 |
+  | 131,000 | 131,490 |
+  | 262,144 (default) | 262,562 |
+  | 524,000 | 524,706 |
+  | 1,048,576 | 1,048,994 |
+  | 2,097,152 | 2,097,570 |
+  | 4,194,304 | 4,194,722 |
+  | 5,242,880 (ceiling) | 5,243,298 |
+
+  (Exact boundaries: the file plus up to 388 bytes of name and type must fit the class, so a file just below a round number may take the next class; the app answers 413 above its own limit either way, and `GET /api/limits` shows the setting.) With the ceiling, use 5.3 MB (`client_max_body_size 5300k`). The app allows an upload 60 seconds plus one second per 32 KiB of blob above a text blob (68 s at the default, 220 s at 5 MiB), so give the proxy a body timeout of at least 30 seconds between reads (nginx `client_body_timeout 30s`; Caddy needs none).
+- Files can be at most `ONETIME_MAX_FILE_BYTES` on a self-hosted server (default 256 KiB, ceiling 5 MiB; the hosted service uses 256 KiB). The page and the CLI ask the server for its limit (`GET /api/limits`) and refuse a larger file before uploading, so a client never sends what the server would refuse. Readers (page and CLI) open files up to 5 MiB from any server.
 
 The app never reads `Host` or `X-Forwarded-*` headers, so the proxy needs no forwarding setup.
 
@@ -278,19 +292,23 @@ curl -fsSL https://onetime.example/cli/onetime.mjs.sha256 -o onetime.mjs.sha256
 
 The README explains how to check the download with `sha256sum`.
 
-Links from any instance open with any CLI copy, because `get` uses the origin in the link. The CLI needs Node 22 or newer; the server needs Node 22.13 or newer. Links made with this version (formats `2`, `2p`, `2f`, `2fp`) need CLI version 0.3.0 or newer; older copies report them as damaged without using them up.
+Links from any instance open with any CLI copy, because `get` uses the origin in the link. The CLI needs Node 22 or newer; the server needs Node 22.13 or newer. Links made with this version (formats `2`, `2p`, `2f`, `2fp`) need CLI version 0.3.0 or newer; older copies report them as damaged without using them up. A file above 1 MiB needs 0.4.0: 0.3.0 refuses the reply as too large only after the link is used up, so raise `ONETIME_MAX_FILE_BYTES` above 1 MiB only for people who have updated.
 
 ## Files
 
-People can send one file per link, up to 128 KiB, from the page or with `onetime send --file`. The file's name, type and contents are encrypted in the browser or the CLI; the database sees only that a blob is a file and its padded size class. A file link lasts 1 hour or 1 day: the clients offer nothing longer, and the server refuses blobs over 16,418 bytes with a longer expiry (409 with `maxTtl`). The page never displays a file; it only offers it as a download.
+People can send one file per link, from the page or with `onetime send --file`, up to `ONETIME_MAX_FILE_BYTES` (default 256 KiB, at most 5 MiB). The file's name, type and contents are encrypted in the browser or the CLI; the database sees only that a blob is a file and its padded size class. A file link lasts at most `ONETIME_MAX_FILE_TTL` seconds (default 1 day here; the hosted service uses 1 hour): the server refuses blobs over 16,418 bytes with a longer expiry (409 with `maxTtl`). The page never displays a file; it only offers it as a download.
 
-Three run-time settings control files (see [Run-time settings](#run-time-settings)):
+Clients learn both values from `GET /api/limits`, which answers `{"maxFileBytes": 262144, "maxFileTtl": 86400, "maxTextBytes": 16384}` with your settings (`maxFileBytes` is 0 when files are off). Older clients without that call keep to the hosted limits (256 KiB, 1 hour), so they cannot use more than that.
 
+Five run-time settings control files (see [Run-time settings](#run-time-settings)):
+
+- `ONETIME_MAX_FILE_BYTES` is the largest file in bytes (default 262,144, ceiling 5,242,880; a larger value stops the server with exit code 2). `0` turns files off.
+- `ONETIME_MAX_FILE_TTL` is the longest life of a file in seconds (60 to 604,800, default 86,400).
 - `ONETIME_MAX_STORED_BYTES` caps the bytes of all stored blobs together (default 400,000,000).
-- `ONETIME_MAX_LARGE_BYTES` lets blobs over 16,418 bytes (files over about 16 KB) in only while the total stays at or below this value (default 200,000,000), so they cannot take the room texts need. `0` turns them off: such bodies get 413 straight away, and files up to about 16 KB still work.
+- `ONETIME_MAX_LARGE_BYTES` lets blobs over 16,418 bytes (files over about 16 KB) in only while the total stays at or below this value (default 200,000,000), so they cannot take the room texts need. It must hold at least one blob of the largest file (5,243,298 bytes at the ceiling), or the server stops with exit code 2. `0` turns files off, like `ONETIME_MAX_FILE_BYTES=0`: the two settings are one switch, and if either is `0` the server reports `maxFileBytes: 0`, answers 413 for bodies over 16,418 bytes, and files up to about 16 KB (which fit a text-sized blob) still work.
 - `ONETIME_MAX_UPLOADS` limits uploads handled at once (default 16); more get 503 with `Retry-After: 5`.
 
-Memory: each upload in progress is held a few times in memory (well under 1 MB at the 128 KiB limit), so `ONETIME_MAX_UPLOADS` bounds upload memory. On a small VM, lower `ONETIME_MAX_LARGE_BYTES` as well. The proxy body limit has to allow the largest blob, see [Reverse proxy and HTTPS](#reverse-proxy-and-https).
+Memory: each upload in progress is held about three times in memory (under 1 MB at the 256 KiB default, about 16 MB at 5 MiB), so `ONETIME_MAX_UPLOADS` bounds upload memory: 16 uploads at 5 MiB can take about 250 MB. On a small VM with a high file limit, lower `ONETIME_MAX_UPLOADS` (for example to 4) and `ONETIME_MAX_LARGE_BYTES`. The proxy body limit has to allow the largest blob, see [Reverse proxy and HTTPS](#reverse-proxy-and-https).
 
 Without a rate limit, anyone can fill the file budget with one-day uploads; files over about 16 KB are then refused (503) until some expire or are opened. Texts keep working.
 
@@ -333,7 +351,9 @@ Set these in the server's environment.
 | `ONETIME_DB` | `./data/onetime.db` (image: `/data/onetime.db`, systemd unit: `/var/lib/onetime/onetime.db`) | Database file. Its folder is created with mode 0700. |
 | `ONETIME_MAX_STORED` | `20000` | Most secrets stored at once (expired ones not yet purged count; they are purged on the next create). Creating a secret answers 503 when full. While more than 80 % of it is in use, a link that lasts longer than 1 day is refused with 409 and `maxTtl`. |
 | `ONETIME_MAX_STORED_BYTES` | `400000000` | Most bytes of all stored blobs together (1000000 to 1000000000000). Creating answers 503 when a new blob would go over it. |
-| `ONETIME_MAX_LARGE_BYTES` | `200000000` (or `ONETIME_MAX_STORED_BYTES`, if that is lower) | Blobs over 16,418 bytes are stored only while all blobs together stay at or below this (0 to `ONETIME_MAX_STORED_BYTES`). `0` turns them off: those bodies get 413, files up to about 16 KB still work. |
+| `ONETIME_MAX_LARGE_BYTES` | `200000000` (or `ONETIME_MAX_STORED_BYTES`, if that is lower) | Blobs over 16,418 bytes are stored only while all blobs together stay at or below this (0 to `ONETIME_MAX_STORED_BYTES`, and at least one blob of `ONETIME_MAX_FILE_BYTES`). `0` turns files off (as does `ONETIME_MAX_FILE_BYTES=0`): those bodies get 413, files up to about 16 KB still work. |
+| `ONETIME_MAX_FILE_BYTES` | `262144` | Largest file in bytes (0 to 5242880). Above 5 MiB the server refuses to start (exit code 2). `0` turns files off. The body limit and the request timeout follow from it; set the proxy body limit to match (see Reverse proxy). Reported by `GET /api/limits`. |
+| `ONETIME_MAX_FILE_TTL` | `86400` | Longest life of a file (a blob over 16,418 bytes) in seconds (60 to 604800). Longer requests get 409 with `maxTtl`. The hosted service uses 3600. |
 | `ONETIME_MAX_UPLOADS` | `16` | Uploads (`POST /api/secrets`) handled at once (1 to 1000). More get 503 with `Retry-After: 5`. |
 | `ONETIME_MAX_CONNECTIONS` | `1000` | Most open connections (1 to 100000). Further connections are closed on arrival until some close, so idle sockets cannot exhaust the process. Keep it above the number your reverse proxy keeps open. |
 
