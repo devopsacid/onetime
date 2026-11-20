@@ -291,12 +291,24 @@ export function defineApiContract(h: ApiHarness): void {
       expect((await create(blobOf(16_419), { options })).status).toBe(413);
     });
 
-    it("takes exactly 131,490 bytes (the largest hosted file blob, 128 KiB) and refuses 131,491 with 413", async () => {
-      expect(MAX_BLOB_BYTES).toBe(131_490);
-      expect((await create(blobOf(131_490), { ttl: "86400" })).status).toBe(201);
+    it("takes exactly 262,562 bytes (the largest hosted file blob, 256 KiB) and refuses 262,563 with 413", async () => {
+      expect(MAX_BLOB_BYTES).toBe(262_562);
+      expect((await create(blobOf(262_562), { ttl: "3600" })).status).toBe(201);
       const before = await rowCount();
-      expect((await create(blobOf(131_491), { ttl: "86400" })).status).toBe(413);
+      expect((await create(blobOf(262_563), { ttl: "3600" })).status).toBe(413);
       expect(await rowCount()).toBe(before);
+    });
+
+    it("takes a larger file blob when the router is told a higher file limit (self-host), up to that limit's blob size", async () => {
+      const options = { maxFileBytes: 1024 * 1024 };
+      expect((await create(blobOf(1_048_994), { ttl: "3600", options })).status).toBe(201);
+      expect((await create(blobOf(1_048_995), { ttl: "3600", options })).status).toBe(413);
+    });
+
+    it("with files off (maxFileBytes 0) takes 16,418 bytes and answers 413 for 16,419", async () => {
+      const options = { maxFileBytes: 0 };
+      expect((await create(blobOf(16_418), { options })).status).toBe(201);
+      expect((await create(blobOf(16_419), { options })).status).toBe(413);
     });
 
     it("rejects a blob too small to hold any ciphertext", async () => {
@@ -322,6 +334,40 @@ export function defineApiContract(h: ApiHarness): void {
     });
   });
 
+  describe("GET /api/limits", () => {
+    it("answers the hosted limits as small JSON with the API headers", async () => {
+      const response = await call("/api/limits");
+      expect(response.status).toBe(200);
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+      expect(response.headers.get("X-Robots-Tag")).toBe("noindex");
+      expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+      expect(response.headers.get("Content-Type")).toMatch(/^application\/json/);
+      expect(await response.json()).toEqual({ maxFileBytes: 262_144, maxFileTtl: 3600, maxTextBytes: 16_384 });
+    });
+
+    it("is built from the router options", async () => {
+      const response = await call("/api/limits", {}, { maxFileBytes: 5_242_880, maxFileTtl: 86_400 });
+      expect(await response.json()).toEqual({ maxFileBytes: 5_242_880, maxFileTtl: 86_400, maxTextBytes: 16_384 });
+    });
+
+    it("reports maxFileBytes 0 when files are off, by either setting", async () => {
+      expect(((await (await call("/api/limits", {}, { maxFileBytes: 0 })).json()) as { maxFileBytes: number }).maxFileBytes).toBe(0);
+      expect(((await (await call("/api/limits", {}, { maxLargeBytes: 0 })).json()) as { maxFileBytes: number }).maxFileBytes).toBe(0);
+    });
+
+    it("takes only GET, touches nothing and does not depend on the store", async () => {
+      const before = await rowCount();
+      for (const method of ["POST", "DELETE", "PUT"]) {
+        const response = await call("/api/limits", { method });
+        expect(response.status).toBe(405);
+        expect(response.headers.get("Allow")).toBe("GET");
+        await response.arrayBuffer();
+      }
+      expect((await call("/api/limits/extra")).status).toBe(404);
+      expect(await rowCount()).toBe(before);
+    });
+  });
+
   describe("byte budget and large blobs", () => {
     const WEEK = String(MAX_TTL_SECONDS);
     const LARGE = MAX_TEXT_BLOB_BYTES + 1; // 16,419: the smallest large blob
@@ -335,24 +381,36 @@ export function defineApiContract(h: ApiHarness): void {
       expect(MAX_TEXT_BLOB_BYTES).toBe(16_418);
       expect(MAX_STORED_BYTES).toBe(400_000_000);
       expect(MAX_LARGE_STORED_BYTES).toBe(200_000_000);
-      expect(LARGE_MAX_TTL_SECONDS).toBe(86_400);
+      expect(LARGE_MAX_TTL_SECONDS).toBe(3600);
     });
 
-    it("answers 409 with maxTtl 86400 for a large blob that would last longer than a day, and stores nothing", async () => {
+    it("answers 409 with maxTtl 3600 for a large blob that would last longer than an hour, and stores nothing", async () => {
       await empty();
-      for (const ttl of [WEEK, "86401"]) {
+      for (const ttl of [WEEK, "86400", "3601"]) {
         const response = await create(blobOf(LARGE), { ttl });
         expect(response.status).toBe(409);
         expect(response.headers.get("Retry-After")).toBeNull();
         const body = (await response.json()) as { error: string; maxTtl: number };
-        expect(body.maxTtl).toBe(86_400);
-        expect(body.error).toBe("Secrets larger than 16 KB can last at most 1 day.");
+        expect(body.maxTtl).toBe(3600);
+        expect(body.error).toBe("Secrets larger than 16 KB can last at most 1 hour.");
       }
       expect(await rowCount()).toBe(0);
-      // One day and one hour are fine, and so is a 7-day blob of exactly 16,418 bytes (not large).
-      expect((await create(blobOf(LARGE), { ttl: "86400" })).status).toBe(201);
+      // One hour is fine, and so is a 7-day blob of exactly 16,418 bytes (not large).
       expect((await create(blobOf(LARGE), { ttl: "3600" })).status).toBe(201);
+      expect((await create(blobOf(LARGE), { ttl: "60" })).status).toBe(201);
       expect((await create(blobOf(MAX_TEXT_BLOB_BYTES), { ttl: WEEK })).status).toBe(201);
+      await empty();
+    });
+
+    it("lets a router with maxFileTtl 86400 (self-host) keep large blobs for a day and answers 409 with that value above it", async () => {
+      await empty();
+      const options = { maxFileTtl: 86_400 };
+      expect((await create(blobOf(LARGE), { ttl: "86400", options })).status).toBe(201);
+      const response = await create(blobOf(LARGE), { ttl: "86401", options });
+      expect(response.status).toBe(409);
+      const body = (await response.json()) as { error: string; maxTtl: number };
+      expect(body.maxTtl).toBe(86_400);
+      expect(body.error).toBe("Secrets larger than 16 KB can last at most 1 day.");
       await empty();
     });
 
