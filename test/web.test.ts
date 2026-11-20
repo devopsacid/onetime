@@ -252,6 +252,29 @@ describe("ApiError.maxTtl", () => {
   });
 });
 
+describe("interop: parsers before format 2 reject the new links before anything is revealed", () => {
+  // The parsing rule of the code before format 2 (src/web/link.ts and the CLI's parseLinkInput), copied verbatim.
+  function oldParseFragment(hash: string): { id: string; key: string } | "invalid" | null {
+    const fragment = hash.replace(/^#/, "");
+    if (fragment === "") return null;
+    const [id, key, ...rest] = fragment.split(".");
+    if (rest.length > 0 || !id || !key || !/^[A-Za-z0-9_-]{22}$/.test(id) || !/^[A-Za-z0-9_-]{43}$/.test(key)) return "invalid";
+    return { id, key };
+  }
+  const id = "A".repeat(22);
+  const key = "b".repeat(43);
+
+  it("old readers call 2. and 2p. links invalid (nothing is burnt), and still read v1", () => {
+    expect(oldParseFragment(`#2.${id}.${key}`)).toBe("invalid");
+    expect(oldParseFragment(`#2p.${id}.${key}`)).toBe("invalid");
+    expect(oldParseFragment(`#${id}.${key}`)).toEqual({ id, key });
+  });
+
+  it("new readers read what old writers made, and old writers' links parse identically", () => {
+    expect(parseFragment(`#${id}.${key}`)).toMatchObject({ id, key, format: 1, passphrase: false });
+  });
+});
+
 describe("FORMAT_PATTERN", () => {
   it("matches exactly 2 and 2p", async () => {
     const { FORMAT_PATTERN } = await import("../src/shared/limits");
