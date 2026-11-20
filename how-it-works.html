@@ -81,6 +81,14 @@
               },
               {
                 "@type": "Question",
+                "name": "Can I check whether my link was opened?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes, without using it up. Open your own link and do not press “Reveal”, or run onetime status - and paste the link. If the secret is still waiting, you see the Reveal button; “no longer available” means it was revealed or has expired."
+                }
+              },
+              {
+                "@type": "Question",
                 "name": "What happens if the link is cut off or changed?",
                 "acceptedAnswer": {
                   "@type": "Answer",
@@ -100,7 +108,7 @@
                 "name": "How large can a secret be?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Up to 16 KB. The service holds at most 20,000 unopened secrets at once; when it is full, creating a new link fails until space frees up."
+                  "text": "Up to 16 KB. The service stores at most 20,000 secrets at once, counting every secret not yet revealed. Expired secrets count until they are removed on the next request. When it is full, creating a new link fails until space frees up."
                 }
               },
               {
@@ -168,6 +176,14 @@
               },
               {
                 "@type": "Question",
+                "name": "Can I check whether my link was opened?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes, without using it up. Open your own link and do not press “Reveal”, or run onetime status - and paste the link. If the secret is still waiting, you see the Reveal button; “no longer available” means it was revealed or has expired."
+                }
+              },
+              {
+                "@type": "Question",
                 "name": "What happens if the link is cut off or changed?",
                 "acceptedAnswer": {
                   "@type": "Answer",
@@ -187,7 +203,7 @@
                 "name": "How large can a secret be?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Up to 16 KB. The service holds a limited number of unopened secrets at once (20,000 unless the operator of this instance changed it); when it is full, creating a new link fails until space frees up."
+                  "text": "Up to 16 KB. The service stores a limited number of secrets at once (20,000 unless the operator of this instance changed it), counting every secret not yet revealed. Expired secrets count until they are removed on the next request. When it is full, creating a new link fails until space frees up."
                 }
               },
               {
@@ -471,9 +487,10 @@
           <li>
             <h3>Cloudflare’s recovery copy</h3>
             <p>
-              Cloudflare D1 keeps its own point-in-time recovery history (Time Travel) for a limited period, so a deleted
-              row can remain in Cloudflare’s internal recovery copy for a while. That copy holds only the encrypted data.
-              Without the key in the link it cannot be read.
+              Reveal deletes the row at once, but Cloudflare D1 keeps its own point-in-time recovery history (Time Travel)
+              for up to 30 days, depending on the plan. That history holds only the encrypted data, never the key. So
+              someone with access to the database account and the full old link could recover an opened secret during
+              that time. After you send a secret, treat the link itself as sensitive.
             </p>
           </li>
           <!-- /site:onetimepass -->
@@ -481,9 +498,12 @@
           <li>
             <h3>Database files and backups</h3>
             <p>
-              This instance keeps secrets in an SQLite database. A deleted row can remain for a while in the database’s
-              write-ahead log or in unused space in its files, and in any backups or disk snapshots the operator of this
-              instance makes. Those copies hold only the encrypted data. Without the key in the link they cannot be read.
+              This instance keeps secrets in an SQLite database on the operator’s disk. A deleted row is overwritten with
+              zeros in the main database file (<code>secure_delete</code>). Copies can remain for a while in the database’s
+              write-ahead log, and in any backups or disk snapshots the operator of this instance makes, for as long as
+              the operator keeps them. Those copies hold only the encrypted data, never the key. So someone with access to
+              them and the full old link could recover an opened secret. After you send a secret, treat the link itself as
+              sensitive.
             </p>
           </li>
           site:selfhost -->
@@ -511,8 +531,17 @@
           <li>
             <h3>The link stays in chat history</h3>
             <p>
-              The link remains wherever you sent it. That is harmless once it has been opened or has expired, because the
-              data is gone.
+              The link remains wherever you sent it. Once it has been opened or has expired, the secret is gone from the
+              database; only the leftover copies described under “When the data is deleted” could still be decrypted with
+              it.
+            </p>
+          </li>
+          <li>
+            <h3>An unopened link is in browser history</h3>
+            <p>
+              Until Reveal is pressed, the full link, key included, is in the recipient’s browser history, and history
+              sync can copy it to the browser maker’s servers. After Reveal the page removes the key from the address bar,
+              but history entries made before that stay.
             </p>
           </li>
           <li>
@@ -567,6 +596,14 @@
             </p>
           </details>
           <details>
+            <summary>Can I check whether my link was opened?</summary>
+            <p>
+              Yes, without using it up. Open your own link and do not press “Reveal”, or run
+              <code>onetime status -</code> and paste the link. If the secret is still waiting, you see the Reveal button;
+              “no longer available” means it was revealed or has expired.
+            </p>
+          </details>
+          <details>
             <summary>What happens if the link is cut off or changed?</summary>
             <p>
               If the link is incomplete, the page says so before anything is used up. If the key was changed, decryption
@@ -583,12 +620,14 @@
             <summary>How large can a secret be?</summary>
             <p>
               <!-- site:onetimepass -->
-              Up to 16 KB. The service holds at most 20,000 unopened secrets at once; when it is full, creating a new link
-              fails until space frees up.
+              Up to 16 KB. The service stores at most 20,000 secrets at once, counting every secret not yet revealed.
+              Expired secrets count until they are removed on the next request. When it is full, creating a new link fails
+              until space frees up.
               <!-- /site:onetimepass -->
               <!-- site:selfhost
-              Up to 16 KB. The service holds a limited number of unopened secrets at once (20,000 unless the operator of
-              this instance changed it); when it is full, creating a new link fails until space frees up.
+              Up to 16 KB. The service stores a limited number of secrets at once (20,000 unless the operator of this
+              instance changed it), counting every secret not yet revealed. Expired secrets count until they are removed on
+              the next request. When it is full, creating a new link fails until space frees up.
               site:selfhost -->
             </p>
           </details>

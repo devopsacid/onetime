@@ -196,6 +196,8 @@ You do not need backups. A lost database only loses links that nobody has opened
 
 A backup has a cost: it keeps encrypted blobs for as long as you keep the backup, including secrets already revealed or expired. The keys and the plaintext are never in the database, so a backup cannot be read without the links. But it does extend how long encrypted data exists. Keep backups short-lived and protected, or skip them, and say on your privacy page what you do.
 
+This also applies to secrets that were already revealed ("burnt"): the row is deleted with `secure_delete` in the live database, but every backup or disk snapshot taken while it was stored still holds its encrypted blob. How long that lasts depends only on your retention: a burnt blob exists until the last backup or snapshot that contains it is deleted. Anyone who has such a backup and the full old link can recover the secret.
+
 If you back up, **stop the server first.** While it runs it holds the database locked and recent changes can sit in the WAL file next to it, so copying the files is not safe.
 
 Plain Docker volume **(tested)**:

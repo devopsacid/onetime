@@ -6,7 +6,7 @@ Share a password, token or other secret with a link that works once. Anyone can 
 
 1. The browser encrypts the secret with a new random AES-256-GCM key.
 2. Only the encrypted blob is sent to the server. The link is `https://<host>/#<id>.<key>`; the part after `#` is never sent by browsers, so the server cannot read the secret.
-3. The recipient opens the link and presses **Reveal**. The server returns the blob and deletes it in the same step. A second attempt gets "no longer available".
+3. The recipient opens the link and presses **Reveal**. The server returns the blob and deletes it in the same step. A second attempt gets "no longer available". The sender can check whether a link is still waiting without using it up: open it and do not press Reveal, or run `onetime status -`.
 4. A secret nobody opens expires after 1 hour, 1 day or 7 days. Expired secrets are never handed out (checked on every read). Their encrypted data is removed on the next request to the API, not by a timer, so on an idle site it can stay stored, still unreadable without the key, until then.
 
 The page can also generate passwords, random tokens (hex or base64url) and UUIDs, all in the browser.
@@ -14,6 +14,8 @@ The page can also generate passwords, random tokens (hex or base64url) and UUIDs
 What the server holds: the encrypted blob and its expiry time, until first read, or until the first API request after expiry. No plaintext, keys, IP addresses, accounts, cookies or request logs. The page where secrets are created and opened loads nothing from other sites and has no analytics or cookies. The information pages (`/how-it-works`, `/command-line`, `/privacy`) use Google Analytics 4 only after an explicit Accept in a consent banner (see `/privacy`); a separate, path-scoped CSP in `public/_headers` allows Google hosts only on those paths. After Accept, Google’s script runs on the origin of the information pages, which is the same origin as the app, but it never runs on the secret page, and only the theme choice and the consent record are kept in local storage.
 
 The reveal is one atomic SQL statement (`DELETE ... RETURNING`), so of many simultaneous attempts exactly one gets the blob.
+
+Deleted is not the same as gone everywhere. On the hosted site, Cloudflare D1 keeps its own point-in-time recovery history (Time Travel) for up to 30 days, depending on the plan, and it cannot be turned off. It holds only encrypted blobs, never keys, but someone with access to the database account and the full old link could recover an opened secret during that window. A self-hosted instance deletes rows with SQLite's `secure_delete`, but copies can survive in the WAL file and in the operator's backups or disk snapshots. Either way, treat a sent link as sensitive even after it was opened. Until Reveal is pressed, the full link is also in the recipient's browser history, which browser sync may copy to the vendor's servers.
 
 Opening the link does not use it up; only the Reveal button does. This keeps link previews in chat apps from destroying the secret.
 
@@ -89,7 +91,7 @@ Security notes:
 
 API: `POST /api/secrets?ttl=<seconds>` (body: blob) → `{ id }`; `GET /api/secrets/<id>` → exists or 404; `POST /api/secrets/<id>/reveal` → blob, then deleted.
 
-Limits: 16 KB per secret. There is no per-IP rate limit (IPs are never stored). Instead, creating returns 503 while 20,000 secrets are stored (expired ones not yet purged count, but every create purges them first).
+Limits: 16 KB per secret. There is no per-IP rate limit (IPs are never stored). Instead, creating returns 503 while 20,000 secrets are stored, counting every secret not yet revealed (expired ones not yet purged count, but every create purges them first).
 
 ## Commands
 
