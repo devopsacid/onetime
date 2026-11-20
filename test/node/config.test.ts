@@ -15,17 +15,23 @@ describe("parseConfig", () => {
       distDir: "/opt/onetime/dist-selfhost",
       migrationsDir: "/opt/onetime/migrations",
       maxStored: 20_000,
+      maxConnections: 1000,
     });
   });
 
   it("reads every variable and resolves relative paths against the working directory", () => {
-    const c = parseConfig({ HOST: "0.0.0.0", PORT: "9090", ONETIME_DB: "x/y.db", ONETIME_DIST: "site", ONETIME_MAX_STORED: "5" }, BASE, "/work");
-    expect(c).toMatchObject({ host: "0.0.0.0", port: 9090, dbPath: "/work/x/y.db", distDir: "/work/site", maxStored: 5 });
+    const c = parseConfig({ HOST: "0.0.0.0", PORT: "9090", ONETIME_DB: "x/y.db", ONETIME_DIST: "site", ONETIME_MAX_STORED: "5", ONETIME_MAX_CONNECTIONS: "50" }, BASE, "/work");
+    expect(c).toMatchObject({ host: "0.0.0.0", port: 9090, dbPath: "/work/x/y.db", distDir: "/work/site", maxStored: 5, maxConnections: 50 });
     expect(parseConfig({ ONETIME_DB: "/data/o.db" }, BASE, "/work").dbPath).toBe("/data/o.db");
   });
 
   it("treats empty values as unset", () => {
     expect(parseConfig({ HOST: "", PORT: "", ONETIME_MAX_STORED: "" }, BASE, "/w")).toMatchObject({ host: "127.0.0.1", port: 8080, maxStored: 20_000 });
+  });
+
+  it("accepts the limits of ONETIME_MAX_CONNECTIONS", () => {
+    expect(parseConfig({ ONETIME_MAX_CONNECTIONS: "1" }, BASE, "/w").maxConnections).toBe(1);
+    expect(parseConfig({ ONETIME_MAX_CONNECTIONS: "100000" }, BASE, "/w").maxConnections).toBe(100_000);
   });
 
   it("accepts port 0 (any free port), IPv6 and names as host", () => {
@@ -41,6 +47,11 @@ describe("parseConfig", () => {
     ["PORT", "80.5"],
     ["PORT", " 80"],
     ["PORT", "0x50"],
+    ["ONETIME_MAX_CONNECTIONS", "0"],
+    ["ONETIME_MAX_CONNECTIONS", "100001"],
+    ["ONETIME_MAX_CONNECTIONS", "1e3"],
+    ["ONETIME_MAX_CONNECTIONS", "-1"],
+    ["ONETIME_MAX_CONNECTIONS", "lots"],
     ["ONETIME_MAX_STORED", "0"],
     ["ONETIME_MAX_STORED", "10000001"],
     ["ONETIME_MAX_STORED", "1e3"],
