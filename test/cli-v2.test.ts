@@ -29,6 +29,7 @@ describe("parseLinkInput with v2 links", () => {
       key: KEY,
       format: 2,
       passphrase: false,
+      file: false,
     });
     expect(parseLinkInput(`2p.${ID}.${KEY}`, "https://d.example")).toEqual({
       origin: "https://d.example",
@@ -36,6 +37,7 @@ describe("parseLinkInput with v2 links", () => {
       key: KEY,
       format: 2,
       passphrase: true,
+      file: false,
     });
     expect(parseLinkInput(`${ID}.${KEY}`, "https://d.example")).toMatchObject({ format: 1, passphrase: false });
   });

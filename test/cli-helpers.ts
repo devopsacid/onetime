@@ -28,6 +28,11 @@ export interface TestIo extends Io {
   out: string;
   err: string;
   prompts: string[];
+  /** Raw bytes written with stdout.writeBytes, in order. */
+  outBytes: Uint8Array[];
+  /** The in-memory file system: existing and written files by path. */
+  files: Map<string, Uint8Array>;
+  removed: string[];
 }
 
 export function makeIo(opts: {
@@ -41,21 +46,44 @@ export function makeIo(opts: {
   promptQueue?: string[];
   /** Files readFile can see, by path. */
   files?: Record<string, string | Uint8Array>;
+  /** Existing directories. */
+  dirs?: string[];
   writeFormat?: 1 | 2;
+  writeFiles?: boolean;
+  /** writeFileExclusive creates the file, then fails (a full disk): the rejection says the file was created. */
+  failWrite?: boolean;
+  /** writeFileExclusive fails with EEXIST although stat said the path was free (a race). */
+  raceExists?: boolean;
 } = {}): TestIo {
+  const bytesOf = (file: string | Uint8Array): Uint8Array => (typeof file === "string" ? new TextEncoder().encode(file) : file);
+  const vfs = new Map<string, Uint8Array>(Object.entries(opts.files ?? {}).map(([path, file]) => [path, bytesOf(file)]));
+  const dirs = new Set(opts.dirs ?? []);
   const io: TestIo = {
     out: "",
     err: "",
     prompts: [],
+    outBytes: [],
+    files: vfs,
+    removed: [],
     version: "9.9.9",
     // workerd refuses the real 600,000 iterations; format 2 with a passphrase is proven against node:crypto in test/node.
     pbkdf2Iterations: 1000,
     ...(opts.writeFormat === undefined ? {} : { writeFormat: opts.writeFormat }),
+    ...(opts.writeFiles === undefined ? {} : { writeFiles: opts.writeFiles }),
     readFile: async (path, max) => {
-      const file = opts.files?.[path];
+      const file = vfs.get(path);
       if (file === undefined) throw new Error("ENOENT");
-      const raw = typeof file === "string" ? new TextEncoder().encode(file) : file;
-      return raw.subarray(0, max + 1);
+      return file.subarray(0, max + 1);
+    },
+    stat: async (path) => (dirs.has(path) ? "dir" : vfs.has(path) ? "file" : "missing"),
+    writeFileExclusive: async (path, bytes) => {
+      if (opts.raceExists || dirs.has(path) || vfs.has(path)) throw Object.assign(new Error("EEXIST"), { code: "EEXIST" });
+      vfs.set(path, new Uint8Array(bytes));
+      if (opts.failWrite) throw Object.assign(new Error("ENOSPC"), { code: "ENOSPC", partial: true });
+    },
+    removeFile: async (path) => {
+      io.removed.push(path);
+      vfs.delete(path);
     },
     env: opts.env ?? {},
     fetch:
@@ -74,7 +102,11 @@ export function makeIo(opts: {
       io.prompts.push(label);
       return opts.promptQueue?.shift() ?? opts.prompt ?? "";
     },
-    stdout: { isTTY: opts.stdoutTty ?? false, write: opts.writeStdout ?? ((s) => void (io.out += s)) },
+    stdout: {
+      isTTY: opts.stdoutTty ?? false,
+      write: opts.writeStdout ?? ((s) => void (io.out += s)),
+      writeBytes: (bytes) => void io.outBytes.push(new Uint8Array(bytes)),
+    },
     stderr: { write: (s) => void (io.err += s) },
   };
   return io;

@@ -69,6 +69,7 @@ describe("parseLinkInput", () => {
       key: KEY,
       format: 1,
       passphrase: false,
+      file: false,
     });
     expect(parseLinkInput(`  ${ID}.${KEY}\n`, "https://d.example")).toEqual({
       origin: "https://d.example",
@@ -76,6 +77,7 @@ describe("parseLinkInput", () => {
       key: KEY,
       format: 1,
       passphrase: false,
+      file: false,
     });
   });
   it("flags damaged links", () => {
@@ -94,6 +96,7 @@ describe("parseLinkInput", () => {
       key: KEY,
       format: 1,
       passphrase: false,
+      file: false,
     });
     expect(() => parseLinkInput(link, "https://d.example")).toThrow(UsageError);
     expect(() => parseLinkInput(link, "https://d.example", "http://localhost:9999")).toThrow(UsageError);
