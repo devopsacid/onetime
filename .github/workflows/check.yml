@@ -1,0 +1,90 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Full gate. Linux x64 only: the workerd tests (@cloudflare/vitest-plugin) and the node:sqlite
+  # tests need it and Node >= 22.13. Some Node process tests are load-sensitive; a rerun of the
+  # job is the first thing to try before suspecting the code.
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Enable pnpm from packageManager
+        run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+
+  # Threshold: fail on high and critical advisories in any dependency (dev included, because
+  # the build chain produces what is deployed). Moderate and low are listed in the second step
+  # for review but do not fail the job; Dependabot opens the update PRs.
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: corepack enable
+      - name: Fail on high or critical
+        run: pnpm audit --audit-level=high
+      - name: List everything else (informational)
+        run: pnpm audit || true
+
+  # The CLI is plain Node, so it is built once per runner and only run offline here:
+  # no request goes to any server.
+  cli-smoke:
+    name: cli-smoke (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:cli
+      - name: version and help
+        shell: bash
+        run: |
+          node dist/cli/onetime.mjs --version
+          node dist/cli/onetime.mjs --help
+      - name: gen --print-only prints a secret and nothing else
+        shell: bash
+        run: |
+          out=$(node dist/cli/onetime.mjs gen --print-only)
+          echo "length: ${#out}"
+          test "${#out}" -ge 16
+      - name: Windows cmd shim
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          dist\cli\onetime.cmd --version
+          dist\cli\onetime.cmd gen --print-only --type uuid
