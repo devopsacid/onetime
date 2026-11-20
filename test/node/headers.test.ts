@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { headersFor, HeadersFileError, parseHeaders } from "../../server/headers";
+import { headersForInfo, INFO_CSP } from "../../tools/site-profile-core.mjs";
 import { PUBLIC_HEADERS } from "./helpers";
 
 const get = (list: [string, string][], name: string) => list.find(([n]) => n.toLowerCase() === name.toLowerCase())?.[1];
@@ -88,22 +89,20 @@ describe("the real public/_headers", () => {
   const csp = (path: string) => get(headersFor(rules, path), "Content-Security-Policy");
   const STRICT = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
-  it.each(["/", "/index.html", "/404", "/404.html", "/assets/main-abc.js", "/cli/onetime.mjs", "/robots.txt", "/nope"])(
+  it.each(["/", "/index.html", "/404", "/404.html", "/command-line", "/command-line.html", "/how-it-works", "/privacy.html", "/assets/main-abc.js", "/cli/onetime.mjs", "/robots.txt", "/nope"])(
     "serves the strict CSP exactly once on %s",
     (path) => {
       expect(csp(path)).toBe(STRICT);
     },
   );
 
-  it.each(["/how-it-works", "/how-it-works.html", "/command-line", "/command-line.html", "/privacy", "/privacy.html"])(
-    "serves the Google CSP once, and only it, on %s",
-    (path) => {
-      const value = csp(path)!;
-      expect(value).toContain("https://www.googletagmanager.com");
-      expect(value).not.toContain(", default-src");
-      expect(value.match(/default-src/g)).toHaveLength(1);
-    },
-  );
+  it("has exactly one CSP line, in /*, no detach lines and no Google host anywhere", () => {
+    const text = readFileSync(PUBLIC_HEADERS, "utf8");
+    expect(text.match(/Content-Security-Policy/gi)).toHaveLength(1);
+    expect(text).not.toMatch(/^\s*!/m);
+    expect(text).not.toMatch(/google|gtag|analytics/i);
+    expect(parseHeaders(text).find((r) => r.pattern === "/*")).toBeDefined();
+  });
 
   it("sets no-store on the HTML paths", () => {
     for (const path of ["/", "/index.html", "/how-it-works", "/command-line", "/privacy", "/404", "/privacy.html"]) {
@@ -139,5 +138,24 @@ describe("the real public/_headers", () => {
     for (const name of ["Referrer-Policy", "X-Content-Type-Options", "X-Frame-Options", "Cross-Origin-Opener-Policy", "Strict-Transport-Security"]) {
       expect(get(headersFor(rules, "/privacy"), name)).toBeDefined();
     }
+  });
+});
+
+describe("headers of the info site (headersForInfo of the real file)", () => {
+  const rules = parseHeaders(headersForInfo(readFileSync(PUBLIC_HEADERS, "utf8")));
+  it.each(["/how-it-works", "/how-it-works.html", "/privacy", "/privacy.html", "/404", "/assets/x.js", "/og-image.png"])("serves INFO_CSP once on %s", (path) => {
+    const list = headersFor(rules, path).filter(([n]) => n.toLowerCase() === "content-security-policy");
+    expect(list).toEqual([["Content-Security-Policy", INFO_CSP]]);
+  });
+  it("sets no-store on its pages and keeps the shared security headers", () => {
+    for (const path of ["/how-it-works", "/privacy", "/404"]) {
+      expect(get(headersFor(rules, path), "Cache-Control")).toBe("no-store");
+      expect(get(headersFor(rules, path), "Cross-Origin-Resource-Policy")).toBe("same-origin");
+      expect(get(headersFor(rules, path), "Permissions-Policy")).toContain("clipboard-write=(self)");
+    }
+  });
+  it("has no rules for the app-only paths", () => {
+    expect(rules.map((r) => r.pattern)).not.toEqual(expect.arrayContaining(["/cli/*"]));
+    expect(get(headersFor(rules, "/cli/onetime.mjs"), "X-Robots-Tag")).toBeUndefined();
   });
 });
