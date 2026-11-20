@@ -11,13 +11,15 @@
   "description": "One-time links for secrets, encrypted in the browser, deleted on first read",
   "scripts": {
     "dev": "pnpm build && wrangler pages dev",
-    "build": "vite build && pnpm build:cli",
+    "build": "vite build && pnpm build:cli && pnpm build:info",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.worker.json --noEmit && tsc -p tsconfig.cli.json --noEmit && tsc -p tsconfig.server.json --noEmit",
     "test": "vitest run && vitest run -c vitest.node.config.ts",
-    "check": "pnpm typecheck && pnpm test && pnpm build && node tools/check-dist.mjs && ONETIME_ORIGIN=https://onetime.example pnpm build:selfhost && node tools/check-dist.mjs dist-selfhost && node tools/check-selfhost.mjs",
+    "check": "pnpm typecheck && pnpm test && pnpm build && node tools/check-dist.mjs && node tools/check-dist.mjs dist-info --profile info && ONETIME_ORIGIN=https://onetime.example pnpm build:selfhost && node tools/check-dist.mjs dist-selfhost && node tools/check-selfhost.mjs",
     "db:migrate:local": "wrangler d1 migrations apply onetime --local",
     "db:migrate:remote": "wrangler d1 migrations apply onetime --remote",
     "deploy": "pnpm build && wrangler pages deploy",
+    "deploy:info": "pnpm build && node tools/deploy-info.mjs",
+    "build:info": "ONETIME_SITE=info vite build",
     "build:cli": "node tools/build-cli.mjs",
     "build:server": "node tools/build-server.mjs",
     "build:selfhost": "ONETIME_SITE=selfhost vite build && ONETIME_SITE=selfhost node tools/build-cli.mjs && node tools/build-server.mjs"
