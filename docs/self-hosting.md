@@ -296,14 +296,14 @@ Links from any instance open with any CLI copy, because `get` uses the origin in
 
 ## Files
 
-People can send one file per link, from the page or with `onetime send --file`, up to `ONETIME_MAX_FILE_BYTES` (default 256 KiB, at most 5 MiB). The file's name, type and contents are encrypted in the browser or the CLI; the database sees only that a blob is a file and its padded size class. A file link lasts at most `ONETIME_MAX_FILE_TTL` seconds (default 1 day here; the hosted service uses 1 hour): the server refuses blobs over 16,418 bytes with a longer expiry (409 with `maxTtl`). The page never displays a file; it only offers it as a download.
+People can send one file per link, from the page or with `onetime send --file`, up to `ONETIME_MAX_FILE_BYTES` (default 256 KiB, at most 5 MiB). The file's name, type and contents are encrypted in the browser or the CLI; the database sees only that a blob is a file and its padded size class. A file link lasts at most `ONETIME_MAX_FILE_TTL` seconds (default 1 hour, like the hosted service): the server refuses blobs over 16,418 bytes with a longer expiry (409 with `maxTtl`). The page never displays a file; it only offers it as a download.
 
-Clients learn both values from `GET /api/limits`, which answers `{"maxFileBytes": 262144, "maxFileTtl": 86400, "maxTextBytes": 16384}` with your settings (`maxFileBytes` is 0 when files are off). Older clients without that call keep to the hosted limits (256 KiB, 1 hour), so they cannot use more than that.
+Clients learn both values from `GET /api/limits`, which answers `{"maxFileBytes": 262144, "maxFileTtl": 3600, "maxTextBytes": 16384}` with your settings (`maxFileBytes` is 0 when files are off). Older clients without that call keep to the hosted limits (256 KiB, 1 hour), so they cannot use more than that.
 
 Five run-time settings control files (see [Run-time settings](#run-time-settings)):
 
 - `ONETIME_MAX_FILE_BYTES` is the largest file in bytes (default 262,144, ceiling 5,242,880; a larger value stops the server with exit code 2). `0` turns files off.
-- `ONETIME_MAX_FILE_TTL` is the longest life of a file in seconds (60 to 604,800, default 86,400).
+- `ONETIME_MAX_FILE_TTL` is the longest life of a file in seconds (60 to 604,800, default 3,600).
 - `ONETIME_MAX_STORED_BYTES` caps the bytes of all stored blobs together (default 400,000,000).
 - `ONETIME_MAX_LARGE_BYTES` lets blobs over 16,418 bytes (files over about 16 KB) in only while the total stays at or below this value (default 200,000,000), so they cannot take the room texts need. It must hold at least one blob of the largest file (5,243,298 bytes at the ceiling), or the server stops with exit code 2. `0` turns files off, like `ONETIME_MAX_FILE_BYTES=0`: the two settings are one switch, and if either is `0` the server reports `maxFileBytes: 0`, answers 413 for bodies over 16,418 bytes, and files up to about 16 KB (which fit a text-sized blob) still work.
 - `ONETIME_MAX_UPLOADS` limits uploads handled at once (default 16); more get 503 with `Retry-After: 5`.
@@ -353,7 +353,7 @@ Set these in the server's environment.
 | `ONETIME_MAX_STORED_BYTES` | `400000000` | Most bytes of all stored blobs together (1000000 to 1000000000000). Creating answers 503 when a new blob would go over it. |
 | `ONETIME_MAX_LARGE_BYTES` | `200000000` (or `ONETIME_MAX_STORED_BYTES`, if that is lower) | Blobs over 16,418 bytes are stored only while all blobs together stay at or below this (0 to `ONETIME_MAX_STORED_BYTES`, and at least one blob of `ONETIME_MAX_FILE_BYTES`). `0` turns files off (as does `ONETIME_MAX_FILE_BYTES=0`): those bodies get 413, files up to about 16 KB still work. |
 | `ONETIME_MAX_FILE_BYTES` | `262144` | Largest file in bytes (0 to 5242880). Above 5 MiB the server refuses to start (exit code 2). `0` turns files off. The body limit and the request timeout follow from it; set the proxy body limit to match (see Reverse proxy). Reported by `GET /api/limits`. |
-| `ONETIME_MAX_FILE_TTL` | `86400` | Longest life of a file (a blob over 16,418 bytes) in seconds (60 to 604800). Longer requests get 409 with `maxTtl`. The hosted service uses 3600. |
+| `ONETIME_MAX_FILE_TTL` | `3600` | Longest life of a file (a blob over 16,418 bytes) in seconds (60 to 604800). Longer requests get 409 with `maxTtl`. The hosted service uses the same 3600. |
 | `ONETIME_MAX_UPLOADS` | `16` | Uploads (`POST /api/secrets`) handled at once (1 to 1000). More get 503 with `Retry-After: 5`. |
 | `ONETIME_MAX_CONNECTIONS` | `1000` | Most open connections (1 to 100000). Further connections are closed on arrival until some close, so idle sockets cannot exhaust the process. Keep it above the number your reverse proxy keeps open. |
 

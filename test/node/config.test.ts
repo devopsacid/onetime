@@ -19,9 +19,14 @@ describe("parseConfig", () => {
       maxStoredBytes: 400_000_000,
       maxLargeBytes: 200_000_000,
       maxFileBytes: 262_144,
-      maxFileTtl: 86_400,
+      maxFileTtl: 3600,
       maxUploads: 16,
     });
+  });
+
+  it("defaults the file lifetime to 1 hour and lets ONETIME_MAX_FILE_TTL raise it", () => {
+    expect(parseConfig({}, BASE, "/w").maxFileTtl).toBe(3600);
+    expect(parseConfig({ ONETIME_MAX_FILE_TTL: "86400" }, BASE, "/w").maxFileTtl).toBe(86_400);
   });
 
   it("reads ONETIME_MAX_FILE_BYTES up to the 5 MiB ceiling and ONETIME_MAX_FILE_TTL", () => {

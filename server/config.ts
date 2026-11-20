@@ -1,6 +1,7 @@
 import { isAbsolute, join, resolve } from "node:path";
 import {
   FORMAT_MAX_FILE_BYTES,
+  LARGE_MAX_TTL_SECONDS,
     MAX_FILE_BYTES,
   MAX_LARGE_STORED_BYTES,
   MAX_STORED_BYTES,
@@ -10,8 +11,8 @@ import {
   fileBlobBytes,
 } from "../src/shared/limits";
 
-/** Longest life of a file on a self-hosted server unless ONETIME_MAX_FILE_TTL says otherwise (the hosted service uses 1 hour). */
-export const SELFHOST_FILE_TTL_SECONDS = 24 * 60 * 60;
+/** Longest life of a file on a self-hosted server unless ONETIME_MAX_FILE_TTL says otherwise: 1 hour, as on the hosted service. */
+export const SELFHOST_FILE_TTL_SECONDS = LARGE_MAX_TTL_SECONDS;
 
 export interface Config {
   host: string;
