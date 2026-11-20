@@ -15,8 +15,9 @@ ingress:
     issuerName: letsencrypt
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
-    # The middleware below; the name is <namespace>-<middleware>@kubernetescrd.
-    traefik.ingress.kubernetes.io/router.middlewares: onetime-onetime-body-limit@kubernetescrd
+    # The middleware below; Traefik names it <namespace>-<middleware>@kubernetescrd. The chart passes annotation values
+    # through tpl, so the release namespace is filled in.
+    traefik.ingress.kubernetes.io/router.middlewares: "{{ .Release.Namespace }}-onetime-body-limit@kubernetescrd"
 
 persistence:
   # The local-path provisioner that ships with k3s: a folder on one node; the pod stays on that node.

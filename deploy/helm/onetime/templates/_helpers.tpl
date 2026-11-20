@@ -81,6 +81,9 @@ app.kubernetes.io/component: server
 {{- if and .Values.ingress.certManager.enabled (eq (toString .Values.ingress.tlsSecretName) "") -}}
 {{- fail "ingress.tlsSecretName is required when ingress.certManager.enabled is true (cert-manager stores the certificate there)." -}}
 {{- end -}}
+{{- if and .Values.networkPolicy.enabled (empty .Values.networkPolicy.ingressFrom) -}}
+{{- fail "networkPolicy.enabled needs networkPolicy.ingressFrom (who may reach port 8080, e.g. the ingress controller's namespace). An empty list would allow everyone." -}}
+{{- end -}}
 {{- if and .Values.gke.managedCertificate.enabled (not .Values.ingress.enabled) -}}
 {{- fail "gke.managedCertificate needs ingress.enabled and ingress.host." -}}
 {{- end -}}
@@ -98,5 +101,9 @@ app.kubernetes.io/component: server
 {{/* True when the Ingress class is served by ingress-nginx (community controller or the AKS application routing add-on). */}}
 {{- define "onetime.ingressIsNginx" -}}
 {{- $class := toString .Values.ingress.className -}}
-{{- if or (contains "nginx" $class) (eq $class "webapprouting.kubernetes.azure.com") -}}true{{- end -}}
+{{- $annotated := false -}}
+{{- range $k, $_ := .Values.ingress.annotations -}}
+{{- if hasPrefix "nginx.ingress.kubernetes.io/" $k -}}{{- $annotated = true -}}{{- end -}}
+{{- end -}}
+{{- if or (contains "nginx" $class) (eq $class "webapprouting.kubernetes.azure.com") $annotated -}}true{{- end -}}
 {{- end }}

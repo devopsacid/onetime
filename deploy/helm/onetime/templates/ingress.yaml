@@ -9,8 +9,9 @@ metadata:
   {{- $nginx := eq (include "onetime.ingressIsNginx" .) "true" }}
   {{- if or .Values.ingress.annotations .Values.ingress.certManager.enabled .Values.gke.managedCertificate.enabled .Values.gke.frontendConfig.enabled $nginx }}
   annotations:
-    {{- with .Values.ingress.annotations }}
-    {{- include "onetime.stringMap" . | nindent 4 }}
+    {{- /* Values go through tpl, so an annotation can name the release namespace (Traefik middleware references). */}}
+    {{- range $k, $v := .Values.ingress.annotations }}
+    {{ $k }}: {{ tpl ($v | toString) $ | quote }}
     {{- end }}
     {{- if and $nginx (not (hasKey .Values.ingress.annotations "nginx.ingress.kubernetes.io/proxy-body-size")) }}
     nginx.ingress.kubernetes.io/proxy-body-size: {{ printf "%d" (int .Values.ingress.maxBodyBytes) | quote }}

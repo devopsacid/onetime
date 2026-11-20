@@ -17,13 +17,17 @@ Check it:
 
 {{- if and .Values.ingress.enabled (eq (include "onetime.ingressIsNginx" .) "true") }}
 
-WARNING: ingress class "{{ .Values.ingress.className }}" looks like ingress-nginx. This chart can only switch off the access log
-for its own Ingress. The controller itself MUST run with these ConfigMap settings (Helm chart: controller.config):
+WARNING: this Ingress is served by ingress-nginx (class "{{ .Values.ingress.className }}" or nginx.ingress.kubernetes.io/ annotations).
+The chart can only switch off the access log for its own Ingress. The controller itself MUST run with these ConfigMap
+settings (ingress-nginx Helm chart: controller.config):
     disable-access-log: "true"
     error-log-level: "crit"
 Otherwise every restart of onetime writes lines like
     connect() failed ... client: <IP> ... request: "POST /api/secrets/<id>/reveal HTTP/2.0"
-to the controller log (seen in the project's kind test). See docs/deploy-helm.md.
+to the controller log (seen in the project's kind test). Verify:
+    kubectl -n ingress-nginx get configmap ingress-nginx-controller -o jsonpath='{.data}'
+    kubectl -n ingress-nginx exec deploy/ingress-nginx-controller -- grep -E '^\s*(access_log|error_log)' /etc/nginx/nginx.conf
+  (expect "access_log off;" and "error_log ... crit;"; namespace and names depend on your installation). See docs/deploy-helm.md.
 {{- end }}
 
 Rules:
