@@ -106,8 +106,8 @@ for (const { name, browser } of browsers) {
         }
       });
 
-      // Known WebKit finding: after Back the hidden #link input holds the whole link again (form state restore). todo = reported, not failing.
-      it("a typed secret and the created link are cleared after Back", { todo: name === "webkit" ? "WebKit restores the hidden #link input value after Back (see report)" : false }, async () => {
+      // WebKit restores form state (the hidden #link input) after Back even though pagehide cleared it: the fields are autocomplete=off and pageshow clears them again.
+      it("a typed secret and the created link are cleared after Back", async () => {
         const s = await session(browser, { secrets: [SECRET], origin });
         try {
           const page = await prepare(s);
