@@ -33,7 +33,7 @@ describe("D1 store statements", () => {
     const store = d1Store(spy);
     const id = "b".repeat(22);
     const now = 1_800_000_000_000;
-    await store.insertIfBelowCap(id, new Uint8Array(40), now + 60_000, 10);
+    await store.insertIfBelowCap(id, new Uint8Array(40), now + 60_000, 10, 1000);
     const issued: IssuedSql = { reveal: [], insert: into };
     into = [];
     expect(await store.take(id, now)).not.toBeNull();
@@ -51,10 +51,13 @@ describe("API contract on D1", () => {
       return response;
     },
     rowCount: async () => (await env.DB.prepare("SELECT COUNT(*) AS n FROM secrets").first<{ n: number }>())!.n,
+    storedBytes: async () => (await env.DB.prepare("SELECT bytes FROM stats WHERE id = 1").first<{ bytes: number }>())!.bytes,
+    sumBlobBytes: async () =>
+      (await env.DB.prepare("SELECT COALESCE(SUM(length(blob)), 0) AS n FROM secrets").first<{ n: number }>())!.n,
     storedCounter: async () => (await env.DB.prepare("SELECT stored FROM stats WHERE id = 1").first<{ stored: number }>())!.stored,
     removeCounter: async () => void (await env.DB.prepare("DELETE FROM stats WHERE id = 1").run()),
     restoreCounter: async () =>
-      void (await env.DB.prepare("INSERT OR REPLACE INTO stats (id, stored) SELECT 1, COUNT(*) FROM secrets").run()),
+      void (await env.DB.prepare("INSERT OR REPLACE INTO stats (id, stored, bytes) SELECT 1, COUNT(*), COALESCE(SUM(length(blob)), 0) FROM secrets").run()),
     expiresAt: async (id) =>
       (await env.DB.prepare("SELECT expires_at FROM secrets WHERE id = ?").bind(id).first<{ expires_at: number }>())?.expires_at ?? null,
     setExpiresAt: async (id, ms) => {

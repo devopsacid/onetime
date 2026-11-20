@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { ID_PATTERN, MAX_BLOB_BYTES, MAX_STORED_SECRETS, MAX_TTL_SECONDS, NEAR_FULL_MAX_TTL_SECONDS, longTtlCap } from "../../src/shared/limits";
+import {
+  ID_PATTERN,
+  LARGE_MAX_TTL_SECONDS,
+  MAX_BLOB_BYTES,
+  MAX_LARGE_STORED_BYTES,
+  MAX_STORED_BYTES,
+  MAX_STORED_SECRETS,
+  MAX_TEXT_BLOB_BYTES,
+  MAX_TTL_SECONDS,
+  NEAR_FULL_MAX_TTL_SECONDS,
+  longTtlCap,
+} from "../../src/shared/limits";
 import type { Options } from "../../src/worker/index";
 
 type BodyInit = NonNullable<RequestInit["body"]>;
@@ -11,6 +22,10 @@ export interface ApiHarness {
   rowCount(): Promise<number>;
   /** The counter row, `SELECT stored FROM stats WHERE id = 1`. */
   storedCounter(): Promise<number>;
+  /** The byte counter, `SELECT bytes FROM stats WHERE id = 1`. */
+  storedBytes(): Promise<number>;
+  /** `SELECT COALESCE(SUM(length(blob)), 0) FROM secrets`. */
+  sumBlobBytes(): Promise<number>;
   /** Test only: deletes the counter row (a damaged database). `restoreCounter` puts it back, seeded from COUNT(*). */
   removeCounter(): Promise<void>;
   restoreCounter(): Promise<void>;
@@ -273,6 +288,14 @@ export function defineApiContract(h: ApiHarness): void {
       expect((await create(blobOf(16_419))).status).toBe(413);
     });
 
+    it("takes exactly 1,048,994 bytes (the largest file blob) and refuses 1,048,995 with 413", async () => {
+      expect(MAX_BLOB_BYTES).toBe(1_048_994);
+      expect((await create(blobOf(1_048_994), { ttl: "86400" })).status).toBe(201);
+      const before = await rowCount();
+      expect((await create(blobOf(1_048_995), { ttl: "86400" })).status).toBe(413);
+      expect(await rowCount()).toBe(before);
+    });
+
     it("rejects a blob too small to hold any ciphertext", async () => {
       expect((await create(blobOf(28))).status).toBe(400);
     });
@@ -293,6 +316,172 @@ export function defineApiContract(h: ApiHarness): void {
       expect((await call("/api/secrets")).status).toBe(405);
       const id = await createOk();
       expect((await call(`/api/secrets/${id}`, { method: "DELETE" })).status).toBe(405);
+    });
+  });
+
+  describe("byte budget and large blobs", () => {
+    const WEEK = String(MAX_TTL_SECONDS);
+    const LARGE = MAX_TEXT_BLOB_BYTES + 1; // 16,419: the smallest large blob
+
+    async function empty(): Promise<void> {
+      for (const id of await h.ids()) await reveal(id);
+      expect(await rowCount()).toBe(0);
+    }
+
+    it("has the documented budgets", () => {
+      expect(MAX_TEXT_BLOB_BYTES).toBe(16_418);
+      expect(MAX_STORED_BYTES).toBe(400_000_000);
+      expect(MAX_LARGE_STORED_BYTES).toBe(200_000_000);
+      expect(LARGE_MAX_TTL_SECONDS).toBe(86_400);
+    });
+
+    it("answers 409 with maxTtl 86400 for a large blob that would last longer than a day, and stores nothing", async () => {
+      await empty();
+      for (const ttl of [WEEK, "86401"]) {
+        const response = await create(blobOf(LARGE), { ttl });
+        expect(response.status).toBe(409);
+        expect(response.headers.get("Retry-After")).toBeNull();
+        const body = (await response.json()) as { error: string; maxTtl: number };
+        expect(body.maxTtl).toBe(86_400);
+        expect(body.error).toBe("Secrets larger than 16 KB can last at most 1 day.");
+      }
+      expect(await rowCount()).toBe(0);
+      // One day and one hour are fine, and so is a 7-day blob of exactly 16,418 bytes (not large).
+      expect((await create(blobOf(LARGE), { ttl: "86400" })).status).toBe(201);
+      expect((await create(blobOf(LARGE), { ttl: "3600" })).status).toBe(201);
+      expect((await create(blobOf(MAX_TEXT_BLOB_BYTES), { ttl: WEEK })).status).toBe(201);
+      await empty();
+    });
+
+    it("round trips a large blob byte for byte and keeps the byte counter exact", async () => {
+      await empty();
+      const blob = blobOf(70_000);
+      const id = await createOk(blob, "3600");
+      expect(await h.storedBytes()).toBe(70_000);
+      expect(new Uint8Array(await (await reveal(id)).arrayBuffer())).toEqual(blob);
+      expect(await h.storedBytes()).toBe(0);
+      expect(await h.storedCounter()).toBe(0);
+    });
+
+    it("refuses a large blob at the large cap with 503 while a small one still fits", async () => {
+      await empty();
+      const options = { maxStoredBytes: 100_000, maxLargeBytes: 30_000 };
+      expect((await create(blobOf(20_000), { ttl: "3600", options })).status).toBe(201);
+      const refused = await create(blobOf(20_000), { ttl: "3600", options });
+      expect(refused.status).toBe(503);
+      expect(refused.headers.get("Retry-After")).toBe("300");
+      await refused.arrayBuffer();
+      expect(await rowCount()).toBe(1);
+      expect((await create(blobOf(64), { ttl: "3600", options })).status).toBe(201);
+      expect(await h.storedBytes()).toBe(20_064);
+      // The large cap counts all bytes, so a large blob needs room including the small ones.
+      expect((await create(blobOf(LARGE), { ttl: "3600", options: { ...options, maxLargeBytes: 40_000 } })).status).toBe(201);
+      expect((await create(blobOf(LARGE), { ttl: "3600", options: { ...options, maxLargeBytes: 40_000 } })).status).toBe(503);
+      await empty();
+    });
+
+    it("keeps the rest of the budget for small blobs once large ones stop", async () => {
+      await empty();
+      const options = { maxStoredBytes: 60_000, maxLargeBytes: 20_000 };
+      expect((await create(blobOf(17_000), { ttl: "3600", options })).status).toBe(201);
+      expect((await create(blobOf(17_000), { ttl: "3600", options })).status).toBe(503);
+      for (let i = 0; i < 4; i++) expect((await create(blobOf(10_000), { ttl: "3600", options })).status).toBe(201);
+      // 17,000 + 40,000 = 57,000: another 10,000 would pass 60,000.
+      expect((await create(blobOf(10_000), { ttl: "3600", options })).status).toBe(503);
+      expect(await h.storedBytes()).toBe(57_000);
+      await empty();
+    });
+
+    it("lets exactly the budget of simultaneous large creates in", async () => {
+      await empty();
+      const options = { maxStoredBytes: 1_000_000, maxLargeBytes: 100_000 };
+      const responses = await Promise.all(Array.from({ length: 12 }, () => create(blobOf(20_000), { ttl: "3600", options })));
+      const codes = responses.map((r) => r.status).sort();
+      await Promise.all(responses.map((r) => r.arrayBuffer()));
+      expect(codes).toEqual([201, 201, 201, 201, 201, ...Array<number>(7).fill(503)]);
+      expect(await h.storedBytes()).toBe(100_000);
+      await empty();
+    });
+
+    it("refuses long TTLs with 409 above 80 % of the bytes, but not 1 day or shorter", async () => {
+      await empty();
+      const options = { maxStoredBytes: 1000 };
+      expect((await create(blobOf(300), { ttl: WEEK, options })).status).toBe(201);
+      expect((await create(blobOf(300), { ttl: WEEK, options })).status).toBe(201);
+      const refused = await create(blobOf(300), { ttl: WEEK, options });
+      expect(refused.status).toBe(409);
+      expect(((await refused.json()) as { maxTtl: number }).maxTtl).toBe(86_400);
+      expect((await create(blobOf(300), { ttl: "86400", options })).status).toBe(201);
+      const full = await create(blobOf(300), { ttl: "3600", options });
+      expect(full.status).toBe(503);
+      await full.arrayBuffer();
+      expect(await h.storedBytes()).toBe(900);
+      await empty();
+    });
+
+    it("with large blobs off (maxLargeBytes 0) takes 16,418 bytes and answers 413 for 16,419", async () => {
+      await empty();
+      const options = { maxLargeBytes: 0 };
+      expect((await create(blobOf(MAX_TEXT_BLOB_BYTES), { options })).status).toBe(201);
+      const response = await create(blobOf(LARGE), { options });
+      expect(response.status).toBe(413);
+      await response.arrayBuffer();
+      const declared = await call("/api/secrets?ttl=3600", {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream", "Content-Length": String(LARGE) },
+        body: blobOf(LARGE),
+      }, options);
+      expect(declared.status).toBe(413);
+      await empty();
+    });
+
+    it("enforces a lower hosted maximum independently of the format maximum", async () => {
+      await empty();
+      const options = { maxBlobBytes: 65_954 };
+      expect((await create(blobOf(65_954), { options })).status).toBe(201);
+      expect((await create(blobOf(65_955), { options })).status).toBe(413);
+      await empty();
+    });
+
+    it("keeps stats.stored and stats.bytes equal to COUNT(*) and SUM(length(blob)) after 30 concurrent mixed operations", async () => {
+      await empty();
+      const T0 = 1_800_000_000_000;
+      const old = await Promise.all(Array.from({ length: 4 }, (_, i) => createOk(blobOf(100 + i), "60", { now: T0 })));
+      const keep = await Promise.all(Array.from({ length: 6 }, (_, i) => createOk(blobOf(i % 2 === 0 ? 20_000 + i : 500 + i), "3600", { now: T0 })));
+      expect(await h.storedBytes()).toBe(await h.sumBlobBytes());
+
+      const later = { now: T0 + 61_000 };
+      const sizes = [64, 20_000, 300, 17_000, 5000];
+      const operations: Array<Promise<Response>> = [
+        // 12 creates, large and small, one of which purges the 60-second rows; some refused by the byte cap.
+        ...Array.from({ length: 12 }, (_, i) =>
+          create(blobOf(sizes[i % sizes.length]!), { ttl: "3600", options: { ...later, maxStoredBytes: 140_000, maxLargeBytes: 100_000 } }),
+        ),
+        // 12 reveals, six of them double reveals of the same row.
+        ...keep.slice(0, 6).flatMap((id) => [reveal(id, later), reveal(id, later)]),
+        // 6 reveals of expired rows (404) and status reads.
+        ...old.slice(0, 2).flatMap((id) => [reveal(id, later), status(id, later)]),
+        reveal("A".repeat(22), later),
+        reveal("B".repeat(22), later),
+      ];
+      expect(operations).toHaveLength(30);
+      for (const response of await Promise.all(operations)) await response.arrayBuffer();
+
+      expect(await h.storedCounter()).toBe(await rowCount());
+      expect(await h.storedBytes()).toBe(await h.sumBlobBytes());
+      expect(await h.storedBytes()).toBeLessThanOrEqual(140_000);
+      expect((await h.ids()).filter((id) => old.includes(id))).toEqual([]);
+      await empty();
+      expect(await h.storedBytes()).toBe(0);
+    });
+
+    it("does not move the byte counter for a refused create", async () => {
+      await empty();
+      await createOk(blobOf(500));
+      const before = await h.storedBytes();
+      expect((await create(blobOf(500), { options: { maxStoredBytes: before } })).status).toBe(503);
+      expect(await h.storedBytes()).toBe(before);
+      await empty();
     });
   });
 
@@ -407,6 +596,16 @@ export function defineApiContract(h: ApiHarness): void {
       expect(await h.storedCounter()).toBe(stored);
     });
 
+    it("fails loudly with 500 for a missing counter row, also for large blobs, and recovers", async () => {
+      await h.removeCounter();
+      try {
+        expect((await create(blobOf(MAX_TEXT_BLOB_BYTES + 1))).status).toBe(500);
+      } finally {
+        await h.restoreCounter();
+      }
+      expect(await h.storedBytes()).toBe(await h.sumBlobBytes());
+    });
+
     it("fails loudly with 500, stores nothing and never fails open when the counter row is missing", async () => {
       const before = await rowCount();
       await h.removeCounter();
@@ -453,5 +652,5 @@ export function expectAtomicSql({ reveal, insert }: IssuedSql): void {
   expect(reveal[0]).toMatch(/^DELETE FROM secrets WHERE id = \? AND expires_at > \? RETURNING blob$/i);
   expect(reveal.join(" ")).not.toMatch(/\bselect\b/i);
   expect(insert.map(squash)).toHaveLength(1);
-  expect(insert[0]).toMatch(/^INSERT INTO secrets \(id, blob, expires_at\) SELECT \S+, \S+, \S+ WHERE \(SELECT stored FROM stats WHERE id = 1\) < \S+$/i);
+  expect(insert[0]).toMatch(/^INSERT INTO secrets \(id, blob, expires_at\) SELECT \S+, \S+, \S+ WHERE \(SELECT stored < \S+ AND bytes \+ length\(\S+\) <= \S+ FROM stats WHERE id = 1\)$/i);
 }

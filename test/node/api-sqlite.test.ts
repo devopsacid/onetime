@@ -28,9 +28,11 @@ describe("API contract on SQLite", () => {
       return response;
     },
     rowCount: async () => (store.db.prepare("SELECT COUNT(*) AS n FROM secrets").get() as { n: number }).n,
+    storedBytes: async () => (store.db.prepare("SELECT bytes FROM stats WHERE id = 1").get() as { bytes: number }).bytes,
+    sumBlobBytes: async () => (store.db.prepare("SELECT COALESCE(SUM(length(blob)), 0) AS n FROM secrets").get() as { n: number }).n,
     storedCounter: async () => (store.db.prepare("SELECT stored FROM stats WHERE id = 1").get() as { stored: number }).stored,
     removeCounter: async () => void store.db.prepare("DELETE FROM stats WHERE id = 1").run(),
-    restoreCounter: async () => void store.db.prepare("INSERT OR REPLACE INTO stats (id, stored) SELECT 1, COUNT(*) FROM secrets").run(),
+    restoreCounter: async () => void store.db.prepare("INSERT OR REPLACE INTO stats (id, stored, bytes) SELECT 1, COUNT(*), COALESCE(SUM(length(blob)), 0) FROM secrets").run(),
     expiresAt: async (id) => (store.db.prepare("SELECT expires_at FROM secrets WHERE id = ?").get(id) as { expires_at: number } | undefined)?.expires_at ?? null,
     setExpiresAt: async (id, ms) => {
       store.db.prepare("UPDATE secrets SET expires_at = ? WHERE id = ?").run(ms, id);
