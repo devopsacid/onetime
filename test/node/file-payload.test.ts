@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_FILE_BYTES } from "../../src/shared/limits";
+import { FORMAT_MAX_FILE_BYTES, MAX_FILE_BYTES } from "../../src/shared/limits";
 import { decodeFilePayload, encodeFilePayload } from "../../src/web/file-payload";
 
 const enc = new TextEncoder();
@@ -72,8 +72,12 @@ describe("decodeFilePayload rejects", () => {
   it("empty content", () => {
     expect(() => decodeFilePayload(raw(ok, new Uint8Array(0), new Uint8Array(0)))).toThrow();
   });
-  it("content above MAX_FILE_BYTES", () => {
-    expect(() => decodeFilePayload(raw(ok, new Uint8Array(0), new Uint8Array(MAX_FILE_BYTES + 1)))).toThrow();
+  it("readers accept content up to the format maximum (1 MiB), above the 128 KiB writer limit, and refuse more", () => {
+    expect(MAX_FILE_BYTES).toBe(131_072);
+    expect(FORMAT_MAX_FILE_BYTES).toBe(1024 * 1024);
+    expect(() => decodeFilePayload(raw(ok, new Uint8Array(0), new Uint8Array(MAX_FILE_BYTES + 1)))).not.toThrow();
+    expect(() => decodeFilePayload(raw(ok, new Uint8Array(0), new Uint8Array(FORMAT_MAX_FILE_BYTES)))).not.toThrow();
+    expect(() => decodeFilePayload(raw(ok, new Uint8Array(0), new Uint8Array(FORMAT_MAX_FILE_BYTES + 1)))).toThrow();
   });
   it("a payload that ends inside the header", () => {
     expect(() => decodeFilePayload(new Uint8Array(0))).toThrow();

@@ -291,11 +291,11 @@ export function defineApiContract(h: ApiHarness): void {
       expect((await create(blobOf(16_419), { options })).status).toBe(413);
     });
 
-    it("takes exactly 1,048,994 bytes (the largest file blob) and refuses 1,048,995 with 413", async () => {
-      expect(MAX_BLOB_BYTES).toBe(1_048_994);
-      expect((await create(blobOf(1_048_994), { ttl: "86400" })).status).toBe(201);
+    it("takes exactly 131,490 bytes (the largest hosted file blob, 128 KiB) and refuses 131,491 with 413", async () => {
+      expect(MAX_BLOB_BYTES).toBe(131_490);
+      expect((await create(blobOf(131_490), { ttl: "86400" })).status).toBe(201);
       const before = await rowCount();
-      expect((await create(blobOf(1_048_995), { ttl: "86400" })).status).toBe(413);
+      expect((await create(blobOf(131_491), { ttl: "86400" })).status).toBe(413);
       expect(await rowCount()).toBe(before);
     });
 

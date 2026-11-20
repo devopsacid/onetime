@@ -5,6 +5,8 @@ import {
   FILE_META_MAX,
   FILE_MAX_TTL_SECONDS,
   LARGE_MAX_TTL_SECONDS,
+  FORMAT_MAX_BLOB_BYTES,
+  FORMAT_MAX_FILE_BYTES,
   MAX_BLOB_BYTES,
   MAX_FILE_BYTES,
   MAX_LARGE_STORED_BYTES,
@@ -34,17 +36,24 @@ describe("MAX_TEXT_BLOB_BYTES", () => {
 });
 
 describe("file limits", () => {
-  it("MAX_FILE_BYTES is 1 MiB and FILE_META_MAX is the 4-byte prefix plus 1 + 255 + 1 + 127", () => {
-    expect(MAX_FILE_BYTES).toBe(1_048_576);
+  it("MAX_FILE_BYTES is 128 KiB (spike A0), the format maximum for readers is 1 MiB, FILE_META_MAX is the 4-byte prefix plus 1 + 255 + 1 + 127", () => {
+    expect(MAX_FILE_BYTES).toBe(131_072);
+    expect(FORMAT_MAX_FILE_BYTES).toBe(1_048_576);
     expect(FILE_META_MAX).toBe(388);
   });
   it("FILE_BUCKETS are the three small text blocks, then doubling blocks that hold meta on top of the file", () => {
     expect([...FILE_BUCKETS]).toEqual([1024, 4096, 16_388, 65_924, 131_460, 262_532, 524_676, 1_048_964]);
   });
-  it("MAX_BLOB_BYTES is the largest file blob, 1,048,994, and equals fileBlobBytes(1 MiB)", () => {
-    expect(MAX_BLOB_BYTES).toBe(1_048_994);
-    expect(fileBlobBytes(1024 * 1024)).toBe(1_048_994);
-    expect(MAX_BLOB_BYTES).toBe(FILE_BUCKETS[FILE_BUCKETS.length - 1]! + 30);
+  it("MAX_BLOB_BYTES (what every router reads) is the hosted file blob, 131,490, and equals fileBlobBytes(MAX_FILE_BYTES)", () => {
+    expect(MAX_BLOB_BYTES).toBe(131_490);
+    expect(fileBlobBytes(MAX_FILE_BYTES)).toBe(131_490);
+    expect(MAX_BLOB_BYTES).toBe(FILE_BUCKETS[4]! + 30);
+  });
+  it("FORMAT_MAX_BLOB_BYTES (what readers accept) is the largest blob of the format, 1,048,994", () => {
+    expect(FORMAT_MAX_BLOB_BYTES).toBe(1_048_994);
+    expect(fileBlobBytes(FORMAT_MAX_FILE_BYTES)).toBe(1_048_994);
+    expect(FORMAT_MAX_BLOB_BYTES).toBe(FILE_BUCKETS[FILE_BUCKETS.length - 1]! + 30);
+    expect(FORMAT_MAX_BLOB_BYTES).toBeGreaterThanOrEqual(MAX_BLOB_BYTES);
   });
   it("fileBlobBytes gives the smallest blob whose block holds the file plus the meta", () => {
     expect(fileBlobBytes(1)).toBe(1054);

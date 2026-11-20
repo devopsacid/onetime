@@ -16,7 +16,7 @@ describe("checkFileSize", () => {
     expect(checkFileSize(1)).toBeNull();
     expect(checkFileSize(MAX_FILE_BYTES)).toBeNull();
     expect(checkFileSize(0)).toBe("The file is empty.");
-    expect(checkFileSize(MAX_FILE_BYTES + 1)).toBe("Files can be at most 1.0 MB.");
+    expect(checkFileSize(MAX_FILE_BYTES + 1)).toBe("Files can be at most 128.0 KB.");
   });
 });
 
@@ -47,7 +47,7 @@ describe("progress and labels", () => {
     expect(progressPercent(5, null)).toBeNull();
   });
   it("labels the upload with the size", () => {
-    expect(uploadLabel(MAX_FILE_BYTES)).toBe("Uploading 1.0 MB…");
+    expect(uploadLabel(MAX_FILE_BYTES)).toBe("Uploading 128.0 KB…");
   });
 });
 

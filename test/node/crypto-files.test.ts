@@ -125,12 +125,7 @@ describe("file blobs against an independent node:crypto implementation", () => {
       [65_913, 65_954],
       [65_914, 131_490],
       [131_449, 131_490],
-      [131_450, 262_562],
-      [262_521, 262_562],
-      [262_522, 524_706],
-      [524_665, 524_706],
-      [524_666, 1_048_994],
-      [1_048_576, 1_048_994],
+      [131_072, 131_490], // the hosted writer limit (128 KiB)
     ];
     for (const [size, blobSize] of cases) {
       const bytes = new Uint8Array(size).fill(7);
@@ -140,15 +135,25 @@ describe("file blobs against an independent node:crypto implementation", () => {
     }
   }, 120_000);
 
-  it("round trips a 1 MiB file through encryptFile and openPayload", async () => {
+  it("round trips a 128 KiB file through encryptFile and openPayload", async () => {
     const bytes = crypto.getRandomValues(new Uint8Array(65_536));
-    const big = new Uint8Array(1024 * 1024);
+    const big = new Uint8Array(128 * 1024);
     for (let i = 0; i < big.length; i += bytes.length) big.set(bytes, i);
     const made = await codec.encryptFile({ name: "big.dat", type: "", bytes: big });
-    expect(made.blob.length).toBe(1_048_994);
+    expect(made.blob.length).toBe(131_490);
     const link = fileLink(made.key);
     const opened = await codec.openPayload(made.blob, await codec.deriveKey(link), link);
     expect(opened.kind === "file" && sameBytes(opened.bytes, big)).toBe(true);
+  }, 120_000);
+
+  it("readers still open a 1 MiB file blob (format maximum) built by the reference, so no instance can make an unopenable link", async () => {
+    const kLink = randomBytes(32);
+    const content = randomBytes(1024 * 1024);
+    const blob = refEncryptFile({ name: "big.dat", type: "", content }, kLink);
+    expect(blob.length).toBe(1_048_994);
+    const link = fileLink(toBase64Url(kLink));
+    const opened = await codec.openPayload(asBlob(blob), await codec.deriveKey(link), link);
+    expect(opened.kind === "file" && sameBytes(opened.bytes, content)).toBe(true);
   }, 120_000);
 
   it("stores the sanitised name, and no name or type appears in the blob", async () => {
@@ -277,9 +282,9 @@ describe("writing files is off until deploy F2", () => {
     await expect(createCodec({ writeFormat: 2, writeFiles: false }).encryptFile({ name: "a", type: "", bytes: new Uint8Array([1]) })).rejects.toThrow();
     await expect(codec.encryptFile({ name: "a", type: "", bytes: new Uint8Array([1]) })).resolves.toBeDefined();
   });
-  it("refuses empty content, content above 1 MiB and a bad passphrase", async () => {
+  it("refuses empty content, content above 128 KiB and a bad passphrase", async () => {
     await expect(codec.encryptFile({ name: "a", type: "", bytes: new Uint8Array(0) })).rejects.toThrow();
-    await expect(codec.encryptFile({ name: "a", type: "", bytes: new Uint8Array(1024 * 1024 + 1) })).rejects.toBeInstanceOf(SecretTooLargeError);
+    await expect(codec.encryptFile({ name: "a", type: "", bytes: new Uint8Array(128 * 1024 + 1) })).rejects.toBeInstanceOf(SecretTooLargeError);
     await expect(codec.encryptFile({ name: "a", type: "", bytes: new Uint8Array([1]) }, "short")).rejects.toThrow();
   });
 });

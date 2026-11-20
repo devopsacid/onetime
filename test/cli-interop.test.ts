@@ -185,7 +185,7 @@ describe("largest v2 blob through the real router", () => {
     expect(await codec.decryptSecret(blob, { key: made.key, format: 2, passphrase: false, file: false })).toBe(text);
   });
 
-  it("answers 413 for 1,048,995 bytes", async () => {
-    expect((await post(new Uint8Array(1_048_995).fill(1))).status).toBe(413);
+  it("answers 413 for 131,491 bytes", async () => {
+    expect((await post(new Uint8Array(131_491).fill(1))).status).toBe(413);
   });
 });

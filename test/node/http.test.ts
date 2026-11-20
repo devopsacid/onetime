@@ -130,7 +130,7 @@ describe("API bridge", () => {
     expect(new Uint8Array(await r.arrayBuffer())).toEqual(blob);
   });
 
-  it("accepts a streamed upload of exactly 1,048,994 bytes (ttl one hour) and answers 413 for one byte more", async () => {
+  it("accepts a streamed upload of exactly 131,490 bytes (ttl one hour) and answers 413 for one byte more", async () => {
     const streamed = (total: number) => {
       let sent = 0;
       const stream = new ReadableStream<Uint8Array>({
@@ -509,18 +509,18 @@ describe("files through the Node server", () => {
     return out;
   };
 
-  it("round trips a blob of 1,048,994 bytes and refuses 1,048,995", async () => {
+  it("round trips a blob of 131,490 bytes and refuses 131,491", async () => {
     const s = await own({});
     try {
-      const blob = big(1_048_994);
+      const blob = big(131_490);
       const created = await post(s.base, blob);
       expect(created.status).toBe(201);
       const { id } = (await created.json()) as { id: string };
       const revealed = await fetch(`${s.base}/api/secrets/${id}/reveal`, { method: "POST" });
       expect(revealed.status).toBe(200);
-      expect(revealed.headers.get("content-length")).toBe("1048994");
+      expect(revealed.headers.get("content-length")).toBe("131490");
       expect(Buffer.from(await revealed.arrayBuffer()).equals(blob)).toBe(true);
-      expect((await post(s.base, big(1_048_995))).status).toBe(413);
+      expect((await post(s.base, big(131_491))).status).toBe(413);
       expect((await post(s.base, big(20_000), 604800)).status).toBe(409);
     } finally {
       await s.stop();
