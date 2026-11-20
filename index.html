@@ -106,15 +106,16 @@
             <label><input type="radio" name="mode" value="text" checked /> Text</label>
             <label><input type="radio" name="mode" value="file" /> File</label>
           </fieldset>
+          <p id="files-off" class="hint" hidden>This server does not accept files. You can still send text.</p>
 
           <div id="file-field" class="field" hidden>
             <label for="file-input">File</label>
             <input id="file-input" type="file" autocomplete="off" aria-describedby="file-note" />
             <!-- site:onetimepass -->
-            <p id="file-note" class="hint">One file, up to 128 KB. A file link lasts 1 hour or 1 day. You can also drop a file on this form. The name and contents are encrypted in your browser.</p>
+            <p id="file-note" class="hint">One file, up to <span data-file-max>256.0 KB</span>. A file link lasts at most <span data-file-life>1 hour</span>. You can also drop a file on this form. The name and contents are encrypted in your browser.</p>
             <!-- /site:onetimepass -->
             <!-- site:selfhost
-            <p id="file-note" class="hint">One file, up to 128 KB, or less if the operator of this instance set a lower limit. A file link lasts 1 hour or 1 day. You can also drop a file on this form. The name and contents are encrypted in your browser.</p>
+            <p id="file-note" class="hint">One file, up to <span data-file-max>256.0 KB</span>. A file link lasts at most <span data-file-life>1 hour</span>. You can also drop a file on this form. The name and contents are encrypted in your browser.</p>
             site:selfhost -->
             <p id="file-summary" class="hint"></p>
           </div>
@@ -221,7 +222,7 @@
             <li>It can be opened <strong>once</strong>. After that the secret is deleted.</li>
             <li>If nobody opens it, it stops working after <strong id="created-ttl"></strong> and is deleted soon after.</li>
             <li>The link is the only copy of the key. It cannot be recovered if you lose it.</li>
-            <li id="created-file" hidden>File: <strong id="created-file-name"></strong> (<span id="created-file-size"></span>). Files can be opened once and last at most 1 day.</li>
+            <li id="created-file" hidden>File: <strong id="created-file-name"></strong> (<span id="created-file-size"></span>). Files can be opened once and last at most <span data-file-life>1 hour</span>.</li>
             <li id="created-pp-hint" hidden>This link needs the passphrase. Send it separately, not in the same message.</li>
             <li id="created-check-hint" hidden>You can check whether it was opened: open the link yourself without pressing Reveal.</li>
           </ul>
@@ -310,10 +311,10 @@
           <li>
             <strong>Encrypted in your browser.</strong>
             <!-- site:onetimepass -->
-            A text, or a file of up to 128 KB, is locked with a new random key (AES-256-GCM) before anything is sent.
+            A text, or a file of up to <span data-file-max>256.0 KB</span>, is locked with a new random key (AES-256-GCM) before anything is sent.
             <!-- /site:onetimepass -->
             <!-- site:selfhost
-            A text, or a file of up to 128 KB (or less if the operator set a lower limit), is locked with a new random
+            A text, or a file of up to <span data-file-max>256.0 KB</span>, is locked with a new random
             key (AES-256-GCM) before anything is sent.
             site:selfhost -->
             You can add a passphrase as a second lock.
@@ -328,7 +329,7 @@
           </li>
           <li>
             <strong>No accounts, no cookies.</strong>
-            Unopened links expire after 1 hour, 1 day or 7 days; files last 1 hour or 1 day. The site’s code stores no
+            Unopened links expire after 1 hour, 1 day or 7 days; files last at most <span data-file-life>1 hour</span>. The site’s code stores no
             accounts, cookies or IP
             <!-- site:onetimepass -->
             addresses. This page loads nothing from other sites and has no analytics. Cloudflare, which hosts it, handles

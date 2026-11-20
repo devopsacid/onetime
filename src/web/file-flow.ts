@@ -1,19 +1,33 @@
-import { FILE_MAX_TTL_SECONDS, MAX_FILE_BYTES } from "../shared/limits";
 import { ApiError } from "./api";
 import { formatBytes, riskyFile } from "./filename";
 
 /** DOM-free decisions for the file mode of the create view and for the revealed-file view. */
 
-export const FILE_TTL_VALUES: readonly number[] = [FILE_MAX_TTL_SECONDS];
-
-export function checkFileSize(size: number): string | null {
+export function checkFileSize(size: number, maxFileBytes: number): string | null {
+  if (maxFileBytes <= 0) return "This server does not accept files.";
   if (size === 0) return "The file is empty.";
-  if (size > MAX_FILE_BYTES) return `Files can be at most ${formatBytes(MAX_FILE_BYTES)}.`;
+  if (size > maxFileBytes) return `Files can be at most ${formatBytes(maxFileBytes)}.`;
   return null;
 }
 
-export function ttlOptionsFor(mode: "text" | "file", all: readonly number[]): number[] {
-  return mode === "file" ? all.filter((value) => FILE_TTL_VALUES.includes(value)) : [...all];
+/** The expiry options a file may use: those not longer than the server's file lifetime. */
+export function fileTtlValues(all: readonly number[], maxFileTtl: number): number[] {
+  return all.filter((value) => value <= maxFileTtl);
+}
+
+export function ttlOptionsFor(mode: "text" | "file", all: readonly number[], maxFileTtl: number): number[] {
+  return mode === "file" ? fileTtlValues(all, maxFileTtl) : [...all];
+}
+
+export function pickFileTtl(allowed: readonly number[]): number | null {
+  return allowed.length === 0 ? null : Math.max(...allowed);
+}
+
+export function formatLifetime(seconds: number): string {
+  const unit = (n: number, name: string) => `${n} ${name}${n === 1 ? "" : "s"}`;
+  if (seconds % 86400 === 0) return unit(seconds / 86400, "day");
+  if (seconds % 3600 === 0) return unit(seconds / 3600, "hour");
+  return unit(Math.round(seconds / 60), "minute");
 }
 
 /** A file-specific message for a failed create, or null to use the generic handling (409 maxTtl, network). */

@@ -1,9 +1,9 @@
-import { FORMAT_MAX_BLOB_BYTES, MAX_FILE_BYTES, MAX_SECRET_BYTES } from "../shared/limits";
+import { FORMAT_MAX_BLOB_BYTES, HOSTED_LIMITS, MAX_SECRET_BYTES, type ServerLimits } from "../shared/limits";
 import { lowerTtlSelection } from "./ttl";
-import { ApiError, createSecret, revealSecret, secretExists } from "./api";
+import { ApiError, createSecret, fetchLimits, revealSecret, secretExists } from "./api";
 import { SecretTooLargeError, WRITE_FILES, WRITE_FORMAT, deriveKey, encryptFile, encryptSecret, openPayload } from "./crypto";
 import { createDownload, type Download } from "./download";
-import { FILE_TTL_VALUES, checkFileSize, describeFile, fileCreateError, progressPercent, uploadLabel } from "./file-flow";
+import { checkFileSize, describeFile, fileCreateError, fileTtlValues, formatLifetime, pickFileTtl, progressPercent, uploadLabel } from "./file-flow";
 import { formatBytes } from "./filename";
 import {
   PASSWORD_LENGTH,
@@ -67,8 +67,14 @@ const cancelButton = el<HTMLButtonElement>("create-cancel");
 const modeRadios = [...document.querySelectorAll<HTMLInputElement>('input[name="mode"]')];
 const textTtl = new Map<string, string>();
 
+// Server limits: the hosted ones until GET /api/limits answers (or when it fails or is invalid).
+let limits: ServerLimits = HOSTED_LIMITS;
+const filesAvailable = (): boolean => WRITE_FILES && limits.maxFileBytes > 0;
+const allTtls = Array.from(ttlSelect.options, (option) => Number(option.value));
+const fileTtls = (): number[] => fileTtlValues(allTtls, limits.maxFileTtl);
+
 function currentMode(): "text" | "file" {
-  return WRITE_FILES && modeRadios.find((radio) => radio.checked)?.value === "file" ? "file" : "text";
+  return filesAvailable() && modeRadios.find((radio) => radio.checked)?.value === "file" ? "file" : "text";
 }
 
 function syncMode(): void {
@@ -78,13 +84,16 @@ function syncMode(): void {
   el("file-field").hidden = !file;
   el("passphrase-create").hidden = !(file || ppTextEnabled);
   for (const option of ttlSelect.options) {
-    const allowed = !file || FILE_TTL_VALUES.includes(Number(option.value));
+    const allowed = !file || fileTtls().includes(Number(option.value));
     option.disabled = !allowed;
     option.hidden = !allowed;
   }
   if (file) {
     textTtl.set("value", ttlSelect.value);
-    if (!FILE_TTL_VALUES.includes(Number(ttlSelect.value))) ttlSelect.value = "86400";
+    if (!fileTtls().includes(Number(ttlSelect.value))) {
+      const picked = pickFileTtl(fileTtls());
+      if (picked !== null) ttlSelect.value = String(picked);
+    }
   } else if (textTtl.has("value")) {
     ttlSelect.value = textTtl.get("value")!;
   }
@@ -95,7 +104,30 @@ if (WRITE_FILES) {
   el("mode-switch").hidden = false;
   for (const radio of modeRadios) radio.addEventListener("change", syncMode);
 }
-syncMode();
+
+/** Puts the server's numbers into the texts that name them and shows or hides file mode. */
+function applyLimits(): void {
+  const size = formatBytes(limits.maxFileBytes);
+  const life = formatLifetime(limits.maxFileTtl);
+  for (const node of document.querySelectorAll("[data-file-max]")) node.textContent = size;
+  for (const node of document.querySelectorAll("[data-file-life]")) node.textContent = life;
+  const off = WRITE_FILES && limits.maxFileBytes <= 0;
+  const fileRadio = modeRadios.find((radio) => radio.value === "file");
+  if (fileRadio) {
+    fileRadio.disabled = off;
+    if (off && fileRadio.checked) modeRadios.find((radio) => radio.value === "text")!.checked = true;
+  }
+  el("files-off").hidden = !off;
+  syncMode();
+  if (chosenFile()) updateFileSummary();
+}
+
+applyLimits();
+void fetchLimits().then((reply) => {
+  if (!reply) return;
+  limits = reply;
+  applyLimits();
+});
 
 function resetFileInput(): void {
   fileInput.value = "";
@@ -109,7 +141,7 @@ function chosenFile(): File | null {
 function updateFileSummary(): void {
   const file = chosenFile();
   el("file-summary").textContent = file ? `${file.name} (${formatBytes(file.size)})` : "";
-  const problem = file ? checkFileSize(file.size) : null;
+  const problem = file ? checkFileSize(file.size, limits.maxFileBytes) : null;
   if (problem) setError("create-error", problem);
   else setError("create-error", null);
 }
@@ -127,7 +159,7 @@ if (WRITE_FILES) {
     event.preventDefault();
     card.classList.remove("is-dragging");
     const file = event.dataTransfer?.files[0];
-    if (!file) return;
+    if (!file || !filesAvailable()) return;
     const radio = modeRadios.find((r) => r.value === "file");
     if (radio) radio.checked = true;
     syncMode();
@@ -172,7 +204,7 @@ el<HTMLFormElement>("create-form").addEventListener("submit", async (event) => {
       fileInput.focus();
       return;
     }
-    const problem = checkFileSize(file.size);
+    const problem = checkFileSize(file.size, limits.maxFileBytes);
     if (problem) {
       setError("create-error", problem);
       fileInput.focus();
@@ -185,7 +217,7 @@ el<HTMLFormElement>("create-form").addEventListener("submit", async (event) => {
   }
 
   const plan = planCreate({
-    enabled: isFile ? WRITE_FILES : ppTextEnabled,
+    enabled: isFile ? filesAvailable() : ppTextEnabled,
     checked: ppUse.checked,
     first: ppFirst.value,
     second: ppSecond.value,
@@ -250,7 +282,7 @@ el<HTMLFormElement>("create-form").addEventListener("submit", async (event) => {
         ? lowerTtlSelection(
             Number(ttlSelect.value),
             error.maxTtl,
-            Array.from(ttlSelect.options, (option) => Number(option.value)).filter((value) => !isFile || FILE_TTL_VALUES.includes(value)),
+            Array.from(ttlSelect.options, (option) => Number(option.value)).filter((value) => !isFile || fileTtls().includes(value)),
           )
         : null;
     if (picked !== null) {
@@ -269,7 +301,7 @@ el<HTMLFormElement>("create-form").addEventListener("submit", async (event) => {
       "create-error",
       error instanceof SecretTooLargeError
         ? isFile
-          ? `Files can be at most ${formatBytes(MAX_FILE_BYTES)}.`
+          ? `Files can be at most ${formatBytes(limits.maxFileBytes)}.`
           : `The secret is too long. The limit is ${MAX_SECRET_BYTES / 1024} KB.`
         : (fileCreateError(error, isFile) ?? describe(error)),
     );
