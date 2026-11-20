@@ -258,6 +258,32 @@ describe("check-dist rules per profile", () => {
       put(dir, "_headers", `${headersForInfo(readFileSync(PUBLIC_HEADERS, "utf8"))}\n/privacy\n  Content-Security-Policy: ${INFO_CSP}\n`);
       failsWith(dir, /_headers/);
     });
+    it("the app CSP in public/_headers is exactly the strict policy, with no blob: and no data:", () => {
+      // Hard-coded on purpose: files are saved through <a download>, which needs no CSP change (docs/plans/file-transfer.md A-8).
+      const strict =
+        "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+      const headers = readFileSync(PUBLIC_HEADERS, "utf8");
+      const lines = headers.split("\n").filter((l) => /content-security-policy/i.test(l));
+      expect(lines).toEqual([`  Content-Security-Policy: ${strict}`]);
+      expect(headers).not.toMatch(/blob:|data:/i);
+    });
+    it.each(["blob:", "data:"] as const)("every profile: %s in a CSP directive fails with its own message", (scheme) => {
+      for (const profile of ["app", "info", "selfhost"] as const) {
+        const dir = fixture(tmp.path, profile);
+        const headers = readFileSync(join(dir, "_headers"), "utf8");
+        put(dir, "_headers", headers.replace(/(Content-Security-Policy: [^\n]*img-src 'self')/, `$1 ${scheme}`));
+        failsWith(dir, new RegExp(`CSP .*${scheme}`));
+        rmSync(dir, { recursive: true });
+      }
+    });
+    it("a blob: or data: source in a second place (connect-src, a rule for one path) fails too", () => {
+      const dir = fixture(tmp.path, "app");
+      const headers = readFileSync(join(dir, "_headers"), "utf8");
+      put(dir, "_headers", headers.replace("connect-src 'self'", "connect-src 'self' blob:"));
+      failsWith(dir, /CSP .*blob:/);
+      put(dir, "_headers", `${headers}\n/privacy\n  X-Test: data:text/html,hi\n`);
+      failsWith(dir, /data:/);
+    });
     it("a missing _headers fails", () => {
       const dir = fixture(tmp.path, "info");
       rmSync(join(dir, "_headers"));
