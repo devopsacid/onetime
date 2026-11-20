@@ -86,11 +86,14 @@ locals {
         ["sh", "-c", "id -u onetime >/dev/null 2>&1 || useradd --system --no-create-home --home-dir ${var.data_mount_path} --shell /usr/sbin/nologin onetime"],
         ["chown", "onetime:onetime", var.data_mount_path],
         ["chmod", "0700", var.data_mount_path],
+        # Started explicitly: an image may forbid service starts during package installation (policy-rc.d).
+        ["systemctl", "enable", "--now", "docker.service"],
       ],
       local.full ? [
         ["/usr/local/sbin/onetime-pull"],
         ["systemctl", "daemon-reload"],
         ["systemctl", "enable", "--now", "onetime.service"],
+        ["systemctl", "enable", "caddy.service"],
         ["systemctl", "reload-or-restart", "caddy.service"],
       ] : [],
     )
