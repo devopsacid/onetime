@@ -81,7 +81,7 @@ Example values:
 - ingress-nginx: the per-Ingress annotation `nginx.ingress.kubernetes.io/enable-access-log: "false"` is **not enough**. In the controller ConfigMap set `disable-access-log: "true"` and `error-log-level: "crit"`. Without the second one, every pod restart writes lines such as `connect() failed ... client: <IP> ... request: "POST /api/secrets/<id>/reveal HTTP/2.0"` to the controller log; the project's kind test produced exactly that line. Optional: `hsts: "false"`, so the app's own HSTS header is the only one.
 - ingress-nginx stays the tested default. Upstream ingress-nginx is retired (announced by Kubernetes SIG Network in November 2025, no maintenance after March 2026); Traefik is the suggested alternative for new clusters (`values-k3s-traefik.yaml`, **not tested**).
 - For ingress-nginx classes (a class name containing `nginx`, `webapprouting.kubernetes.azure.com`, or any `nginx.ingress.kubernetes.io/` annotation) `helm install` and `helm upgrade` print a warning with the two controller settings and how to check them.
-- Traefik writes access logs only when `accessLog` is configured; leave it off. Whether Traefik's error log writes request paths during an app restart was **not tested**. The k3s example adds a `buffering` Middleware limited to `ingress.maxBodyBytes`; the chart passes Ingress annotation values through `tpl`, so the middleware reference uses the release namespace **(not tested)**.
+- Traefik writes access logs only when `accessLog` is configured; leave it off. Whether Traefik's error log writes request paths during an app restart was **not tested**. The k3s example adds a `buffering` Middleware limited to the chart's derived body limit (`ingress.maxBodyBytes`, or derived from `config.maxFileBytes`); the chart passes Ingress annotation values through `tpl`, so the middleware reference uses the release namespace **(not tested)**. Traefik v3 entry points stop reading a request after 60 s by default (`respondingTimeouts.readTimeout`); see [Large files](#large-files).
 - `local-path` volumes live on one node; the pod is pinned there. Longhorn: RWO volumes only (Longhorn RWX uses NFS).
 - `persistence.accessModes: [ReadWriteOncePod]` is stricter (one pod, not one node) where the CSI driver supports it; `local-path` does not.
 
@@ -98,7 +98,7 @@ Example values:
 
 - EC2 node groups (managed, self-managed or Auto Mode) with the EBS CSI driver and a `gp3` StorageClass.
 - The AWS Load Balancer Controller creates an ALB; TLS uses an ACM certificate (`alb.ingress.kubernetes.io/certificate-arn`). The example sets `access_logs.s3.enabled=false` and `connection_logs.s3.enabled=false` explicitly (both are off by default).
-- ALB has no request-body limit setting, so `ingress.maxBodyBytes` has no effect there. The app refuses bodies over its own limit (16 KB + 28 bytes today) with 413 by itself.
+- ALB has no request-body limit setting, so `ingress.maxBodyBytes` has no effect there. The app refuses bodies over its own limit (the largest blob of `config.maxFileBytes`, 262,562 bytes by default) with 413 by itself.
 - `target-type: ip` means the ALB connects from VPC addresses: the NetworkPolicy allows the VPC CIDR. NetworkPolicy needs the VPC CNI network policy agent.
 - Not supported: EKS on Fargate (EFS only).
 
@@ -109,6 +109,29 @@ Example values:
 - `gke.managedCertificate` creates a Google-managed certificate for the host; `gke.frontendConfig` redirects HTTP to HTTPS. Reserve the global static IP first and point DNS at it.
 - Storage: `standard-rwo` (PD CSI). Never Filestore. Autopilot works with the chart's resources and security context **(not tested)**.
 - NetworkPolicy needs Dataplane V2 or network policy enforcement; the example allows Google's front-end ranges.
+
+## Large files
+
+`config.maxFileBytes` (`ONETIME_MAX_FILE_BYTES`, default 262144, 0 to 5242880, 0 = files off) and `config.maxFileTtl` (`ONETIME_MAX_FILE_TTL`, default 3600, 60 to 604800) are passed to the pod; the schema and the templates refuse values outside those ranges, and `extraEnv` may not set the two variables. The chart derives the ingress settings from the file limit ([deploy-architecture.md](deploy-architecture.md#5-tls-and-request-size) has the formulas):
+
+| `config.maxFileBytes` | Body limit (`proxy-body-size`, Traefik `maxRequestBodyBytes`) | Proxy timeout (`proxy-read-timeout`, `proxy-send-timeout`, GKE `timeoutSec`) |
+|---|---|---|
+| 0 (files off) | 102400 | 70 |
+| 262144 (default) | 307200 | 80 |
+| 1048576 | 1126400 | 110 |
+| 5242880 (ceiling) | 5427200 | 230 |
+
+`ingress.maxBodyBytes` and `ingress.proxyTimeoutSeconds` override the derived values (a body limit below the largest blob fails rendering); an annotation with the same name overrides both. `helm install` prints the values it used.
+
+Per controller:
+
+- **ingress-nginx**: the chart sets all three annotations. Request buffering (on by default) writes bodies above `client-body-buffer-size` to a temporary file and logs a warning with the request line at level `warn`; `error-log-level: crit` (required anyway, see above) keeps that out of the log. The controller's `client-body-timeout` (60 s between two reads by default) needs no change.
+- **Traefik**: the example Middleware gets the derived body limit. Traefik v3 entry points stop reading a request after 60 s (`respondingTimeouts.readTimeout`), which is enough for the default but not for multi-MiB files on a slow line: raise it in the static configuration to at least the proxy timeout, for example in the k3s `HelmChartConfig` with `additionalArguments: ["--entryPoints.websecure.transport.respondingTimeouts.readTimeout=240s"]` **(not tested)**.
+- **GKE Ingress**: the BackendConfig sets `timeoutSec` to the proxy timeout (GKE's default backend timeout is 30 s) **(not tested on GKE)**.
+- **AWS ALB**: no body limit; the idle timeout (60 s) applies only while no data flows, so a slow upload is not cut off **(not tested)**.
+- **Application Gateway for Containers**: no body limit setting in the chart, and its request timeouts are not set by it. If large uploads fail there, raise the route timeout with an AGC `RoutePolicy` **(not tested)**.
+
+Memory: the server holds each upload in progress about three times (3 x the blob), up to `ONETIME_MAX_UPLOADS` (default 16) at once. The default `resources.limits.memory: 256Mi` suits files up to about 1 MiB. Above that, raise the limit (5 MiB with 16 uploads: about 250 MB on top of the base, so 384Mi or more) or set `extraEnv.ONETIME_MAX_UPLOADS` lower (for example `"4"`); `helm install` prints a reminder when `config.maxFileBytes` is above 1 MiB. Files above 1 MiB also need CLI 0.4.0.
 
 ## Upgrade
 
@@ -161,7 +184,7 @@ Request paths contain secret ids. Checklist for every cluster:
 
 ## Values reference
 
-See `deploy/helm/onetime/values.yaml` (every key is commented) and `values.schema.json`. Notable keys: `ingress.maxBodyBytes` (proxy body limit, default 143360; at least 131490 for the largest file, see [deploy-architecture.md](deploy-architecture.md)), `config.maxStored` (ONETIME_MAX_STORED), `extraEnv` (map of further variables, for example `ONETIME_MAX_CONNECTIONS`; HOST, PORT and ONETIME_DB are refused), `persistence.*`, `ingress.*`, `networkPolicy.*`, `gke.*`, `extraObjects`.
+See `deploy/helm/onetime/values.yaml` (every key is commented) and `values.schema.json`. Notable keys: `config.maxFileBytes` and `config.maxFileTtl` (file limit and file life, see [Large files](#large-files)), `ingress.maxBodyBytes` and `ingress.proxyTimeoutSeconds` (empty = derived from the file limit; overrides), `config.maxStored` (ONETIME_MAX_STORED), `extraEnv` (map of further variables, for example `ONETIME_MAX_CONNECTIONS` or `ONETIME_MAX_UPLOADS`; HOST, PORT, ONETIME_DB, ONETIME_MAX_FILE_BYTES and ONETIME_MAX_FILE_TTL are refused), `persistence.*`, `ingress.*`, `networkPolicy.*`, `gke.*`, `extraObjects`.
 
 ## What was tested
 
@@ -185,5 +208,7 @@ Run on 2026-11-20 with Helm 3.17.0, kubeconform 0.8.0, kind 0.33.0 (Kubernetes 1
 | Logging, controller with `disable-access-log` and `error-log-level: crit` | 0 lines from the round trip, the 413 and a restart |
 | Backup and restore with the helper pod above | archive holds `db/onetime.db`; after the restore a secret revealed after the backup was revealed again (200, then 404) |
 | Terraform `examples/k8s-kubeconfig` against the same cluster | see [deploy-terraform.md](deploy-terraform.md) |
+
+File limit (added 2026-11-20 with Helm 3.17.0, rendered only, no cluster): `helm lint` with the defaults, `config.maxFileBytes=0` and `5242880` passes; `helm template` gives 307200 / 80 s, 102400 / 70 s and 5427200 / 230 s in the ingress-nginx annotations, the GKE BackendConfig `timeoutSec` and the Traefik Middleware, and the derived body limit and timeout equal the formula over 23 values at every size-class boundary (checked against `fileBlobBytes` from `src/shared/limits.ts`); 5242881, -1, a string, `maxFileTtl` 59 and 604801, `extraEnv.ONETIME_MAX_FILE_BYTES` and `ingress.maxBodyBytes` below the blob are refused by the schema and, with `--skip-schema-validation`, by the template; an explicit annotation wins over the derived one. kubeconform and a kind install were not re-run for this change.
 
 Not tested: AKS, EKS, GKE, k3s/Traefik, cert-manager issuance, Application Gateway for Containers, ALB, GKE BackendConfig behaviour, ManagedCertificate, `ReadWriteOncePod`, Autopilot, volume snapshots, arm64 nodes.

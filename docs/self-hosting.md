@@ -139,7 +139,7 @@ The proxy must:
 
 - terminate TLS (HTTPS) and forward to `127.0.0.1:8080`;
 - **keep no access log**, because request paths contain secret ids;
-- limit request bodies to the blob size of your largest file, plus a little slack. The default `ONETIME_MAX_FILE_BYTES` (262,144) gives blobs of at most 262,562 bytes, so about 270 KB (`client_max_body_size 270k` in nginx); a proxy limit below the blob size refuses the largest allowed file, and a secret text is at most 16 KB. The blob size is the file's size class plus 30 bytes, so it jumps at class boundaries:
+- limit request bodies to the blob size of your largest file, plus a little slack. The default `ONETIME_MAX_FILE_BYTES` (262,144) gives blobs of at most 262,562 bytes, so 300 KiB with headroom (`client_max_body_size 300k` in nginx, `max_size 300KiB` in Caddy; the examples and the Ansible, Helm and Terraform code use the blob plus 3 %, rounded up to the next 100 KiB); a proxy limit below the blob size refuses the largest allowed file, and a secret text is at most 16 KB. The blob size is the file's size class plus 30 bytes, so it jumps at class boundaries:
 
   | `ONETIME_MAX_FILE_BYTES` up to | Largest body (bytes) |
   |---|---|
@@ -153,7 +153,7 @@ The proxy must:
   | 4,194,304 | 4,194,722 |
   | 5,242,880 (ceiling) | 5,243,298 |
 
-  (Exact boundaries: the file plus up to 388 bytes of name and type must fit the class, so a file just below a round number may take the next class; the app answers 413 above its own limit either way, and `GET /api/limits` shows the setting.) With the ceiling, use 5.3 MB (`client_max_body_size 5300k`). The app allows an upload 60 seconds plus one second per 32 KiB of blob above a text blob (68 s at the default, 220 s at 5 MiB), so give the proxy a body timeout of at least 30 seconds between reads (nginx `client_body_timeout 30s`; Caddy needs none).
+  (Exact boundaries: the file plus up to 388 bytes of name and type must fit the class, so a file just below a round number may take the next class; the app answers 413 above its own limit either way, and `GET /api/limits` shows the setting.) With the ceiling, use 5.3 MB (`client_max_body_size 5300k`). The app allows an upload 60 seconds plus one second per 32 KiB of blob above a text blob (68 s at the default, 220 s at 5 MiB), so give the proxy a body timeout of at least 30 seconds between reads (nginx `client_body_timeout 30s`; Caddy needs none) and read/send timeouts towards the app of at least the app's timeout plus a little (nginx `proxy_read_timeout`/`proxy_send_timeout`: 80 s at the default, 230 s at 5 MiB; the deploy code derives them, see [deploy-architecture.md](deploy-architecture.md#5-tls-and-request-size)).
 - Files can be at most `ONETIME_MAX_FILE_BYTES` on a self-hosted server (default 256 KiB, ceiling 5 MiB; the hosted service uses 256 KiB). The page and the CLI ask the server for its limit (`GET /api/limits`) and refuse a larger file before uploading, so a client never sends what the server would refuse. Readers (page and CLI) open files up to 5 MiB from any server.
 
 The app never reads `Host` or `X-Forwarded-*` headers, so the proxy needs no forwarding setup.
@@ -165,13 +165,13 @@ Use `deploy/Caddyfile.example`. Replace the host name.
 - Caddy gets and renews the certificate itself when the domain points to the host and ports 80 and 443 are open. With a public CA certificate **(not tested)**.
 - The example has no `log` directive. Do not add one: Caddy writes access logs only when `log` is present.
 - Access logs are not the only risk. Without a `log` directive Caddy still writes handler errors with the full request URI and the client IP, for example when the app is restarting and a reveal request arrives. The example therefore starts with a global block, `log default { exclude http.log.error http.stdlib }`, that drops those errors and the TLS handshake errors (client IPs). Keep it. Without the block, a reveal sent while the app was stopped put `/api/secrets/<id>/reveal` into the journal; with it, nothing **(tested with Debian's Caddy 2.6.2, see [deploy-ansible.md](deploy-ansible.md))**.
-- Tested with Caddy's local CA (`tls internal`) in a container: page, security headers, the full create and reveal round trip, a 70 KB body refused with 413 (with the old 64 KB limit; the examples now allow 140 KiB), and no request line in Caddy's log **(tested)**.
+- Tested with Caddy's local CA (`tls internal`) in a container: page, security headers, the full create and reveal round trip, a 70 KB body refused with 413 (with the old 64 KB limit; the examples now allow 300 KiB), and no request line in Caddy's log **(tested)**. With the Ansible role's rendered Caddy file at the 5 MiB ceiling, a 5,243,298-byte body sent at 30 KB/s (170 s) was stored and revealed intact; Caddy has no timeout of its own that cut it off **(tested, plain HTTP in a container)**.
 
 ### nginx
 
 Use `deploy/nginx.conf.example` as `/etc/nginx/conf.d/onetime.conf`. Replace the host name and certificate paths.
 
-- It sets `access_log off`, `error_log ... crit` (lower levels write the request line, with the id), `client_max_body_size 140k`, `client_body_timeout 30s`, and sends no forwarding headers.
+- It sets `access_log off`, `error_log ... crit` (lower levels write the request line, with the id), `client_max_body_size 300k` (for the default file limit; the comment lists the values for 1 MiB, 5 MiB and files off), `client_body_timeout 30s`, `proxy_read_timeout`/`proxy_send_timeout 80s`, and sends no forwarding headers.
 - Also set the global `error_log` in `nginx.conf` to `crit`.
 - **Remove the default site.** Other server blocks, such as the distribution's default site or the nginx image's `conf.d/default.conf`, keep their own access log and catch requests with an unknown host name. In the project's test, `default.conf` logged one request line with a client IP until it was removed.
 - Tested with a self-signed certificate in a container: same checks as Caddy **(tested)**.
@@ -215,6 +215,8 @@ The repository also has deployment code for the same single-instance setup. Star
 - [deploy-ansible.md](deploy-ansible.md): `deploy/ansible/`, one Linux host in Docker or systemd mode, with Caddy or nginx.
 - [deploy-helm.md](deploy-helm.md): `deploy/helm/`, a one-replica Kubernetes chart with Ingress, and values for on-prem, AKS, EKS and GKE.
 - [deploy-terraform.md](deploy-terraform.md): `deploy/terraform/`, one VM on AWS, Azure or Google Cloud, and the Helm release on an existing cluster.
+
+All three have the file limit as a variable (Helm `config.maxFileBytes`/`config.maxFileTtl`, Ansible `onetime_max_file_bytes`/`onetime_max_file_ttl`, Terraform `max_file_bytes`/`max_file_ttl`; defaults 262144 and 3600) and derive the proxy or ingress body limit and timeouts from it. `compose.yaml` takes `ONETIME_MAX_FILE_BYTES` and `ONETIME_MAX_FILE_TTL` from the shell, `deploy/onetime.service` sets them with `Environment=`.
 
 Each guide says what the project tested and what it did not.
 

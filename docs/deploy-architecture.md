@@ -59,16 +59,27 @@ The app never reads `Host` or `X-Forwarded-*`, so no forwarding headers or trust
 
 ### 5. TLS and request size
 
-TLS terminates in front of the app (Caddy, nginx, an ingress controller or a cloud load balancer). Browsers only allow the page's encryption in a secure context, so plain HTTP works only on `localhost`. The proxy limits request bodies; the largest body is a file of 128 KiB, whose encrypted blob is 131,490 bytes (a secret text is at most 16,418 bytes). The required minimum for a proxy body limit is therefore 131,490 bytes, and the default is 143360 bytes (140 KiB), so a default install accepts the largest allowed file. A smaller value makes the proxy refuse files (the page then shows an upload error). The app also enforces its own limit (413), so a proxy without a body limit (AWS ALB, Application Gateway for Containers, GKE Ingress) is still safe. Proxies also need a body timeout of at least 30 seconds between reads; the app itself gives an upload 60 seconds. The proxy limit is a setting everywhere:
+TLS terminates in front of the app (Caddy, nginx, an ingress controller or a cloud load balancer). Browsers only allow the page's encryption in a secure context, so plain HTTP works only on `localhost`.
 
-| Tool | Setting | Default | Used for |
-|---|---|---|---|
-| Helm | `ingress.maxBodyBytes` | 143360 | `nginx.ingress.kubernetes.io/proxy-body-size` on ingress-nginx classes (unless set as an annotation), the Traefik Middleware in `values-k3s-traefik.yaml` |
-| Ansible | `onetime_max_body_bytes` | 143360 | Caddy `request_body max_size`, nginx `client_max_body_size` |
-| Terraform (VMs) | `max_body_bytes` (vm-bootstrap and the three VM modules) | 143360 | Caddy `request_body max_size` |
-| `deploy/Caddyfile.example`, `deploy/nginx.conf.example` | edit `140KiB` / `140k` by hand | 140 KiB | |
+The proxy limits request bodies, and the limit must follow the file limit (`ONETIME_MAX_FILE_BYTES`, default 262,144, ceiling 5,242,880). The largest body is the encrypted blob of the largest file: 262,562 bytes for the default, 5,243,298 at the ceiling, 16,418 (a secret text) with files off; the table in [self-hosting.md](self-hosting.md#reverse-proxy-and-https) has the steps in between. A proxy limit below the blob makes the proxy refuse the largest allowed file (the page then shows an upload error). The app also enforces its own limit (413), so a proxy without a body limit (AWS ALB, Application Gateway for Containers, GKE Ingress) is still safe.
 
-On ALB, Application Gateway for Containers and the GKE Ingress there is nothing to set; the app's own limit applies.
+Every deploy tool has the file limit as a variable and derives the proxy settings from it, so they are never hard-coded:
+
+- **Body limit** = the largest blob plus 3 %, rounded up to the next 100 KiB (102,400 bytes): 307,200 (300 KiB) by default, 5,427,200 (5300 KiB) at 5 MiB, 102,400 with files off.
+- **Proxy read/send timeout** = the app's own upload timeout (60 s plus 1 s per 32 KiB of blob above a text blob: 68 s by default, 220 s at 5 MiB) plus 10 s, rounded up to 10 s: 80 s by default, 230 s at 5 MiB, 70 s with files off. A proxy that streams the body (Caddy, or nginx without request buffering) waits for the answer during the whole upload, so a shorter timeout would cut off a large file on a slow line. Body timeouts *between two reads* stay at 30 s (nginx `client_body_timeout`): a slow upload still sends data.
+
+| Tool | File limit | Body limit (override, empty or null = derived) | Timeout (override) | Used for |
+|---|---|---|---|---|
+| Helm | `config.maxFileBytes` (262144), `config.maxFileTtl` (3600) | `ingress.maxBodyBytes` | `ingress.proxyTimeoutSeconds` | ingress-nginx `proxy-body-size`, `proxy-read-timeout`, `proxy-send-timeout` (unless set as annotations); the Traefik Middleware in `values-k3s-traefik.yaml`; GKE BackendConfig `timeoutSec` |
+| Ansible | `onetime_max_file_bytes` (262144), `onetime_max_file_ttl` (3600) | `onetime_max_body_bytes` | `onetime_proxy_timeout` | Caddy `request_body max_size`; nginx `client_max_body_size`, `proxy_read_timeout`, `proxy_send_timeout` |
+| Terraform (VMs) | `max_file_bytes` (262144), `max_file_ttl` (3600) on vm-bootstrap and the three VM modules | `max_body_bytes` | none (Caddy has no default timeout) | Caddy `request_body max_size` |
+| Terraform (`k8s-release`) | `max_file_bytes`, `max_file_ttl`, passed to the chart | chart values (`values`) | chart values | as Helm |
+| `compose.yaml`, `deploy/onetime.service` | `ONETIME_MAX_FILE_BYTES`, `ONETIME_MAX_FILE_TTL` (shell environment / `Environment=`) | | | |
+| `deploy/Caddyfile.example`, `deploy/nginx.conf.example` | | `300KiB` / `300k`, edit by hand (the comments list 1 MiB, 5 MiB and files off) | nginx `80s` | |
+
+A body limit override below the largest blob is refused (Helm rendering fails, the Ansible assert fails, the Terraform user-data precondition fails). Memory grows with the file limit too: the server holds each upload about three times, up to `ONETIME_MAX_UPLOADS` (default 16) at once, so with files above 1 MiB lower `ONETIME_MAX_UPLOADS` or give the process more memory ([self-hosting.md](self-hosting.md#files)).
+
+On ALB, Application Gateway for Containers and the GKE Ingress there is no body limit to set; the app's own limit applies. Their timeouts: see [deploy-helm.md](deploy-helm.md#large-files).
 
 ### 6. Backups bring back used links
 

@@ -60,7 +60,11 @@ New base images (AMI, Ubuntu image) are ignored after creation, so a new Ubuntu 
 
 The bootstrap is one script with `set -e`: if the data disk does not appear within `data_disk_wait_seconds` (default 600), nothing else is installed or started. `onetime.service` also runs `ExecStartPre=mountpoint -q /var/lib/onetime`, and `onetime-run` checks the mount again, so the app never starts on the root disk.
 
-The proxy body limit is `max_body_bytes` (default 143360, i.e. 140 KiB; at least 131490 is needed for the largest file, 128 KiB) on vm-bootstrap and the three VM modules.
+The file limit is `max_file_bytes` (ONETIME_MAX_FILE_BYTES, default 262144, 0 to 5242880, 0 = files off) and the file life `max_file_ttl` (ONETIME_MAX_FILE_TTL, default 3600, 60 to 604800) on vm-bootstrap and the three VM modules; both go into `/etc/onetime/env`, and `env` may not set them. Caddy's body limit is derived from the file limit: the largest blob plus 3 %, rounded up to the next 100 KiB (307200 by default, 1126400 at 1 MiB, 5427200 at 5 MiB, 102400 with files off; see [deploy-architecture.md](deploy-architecture.md#5-tls-and-request-size)). `max_body_bytes` (default `null`) overrides it; a value below the largest blob fails the plan (a precondition on the user data). Caddy has no read or upstream timeout by default, so the app's own upload timeout (220 s at 5 MiB) is the only one. Above 1 MiB, each upload takes about three times the blob in memory, up to `ONETIME_MAX_UPLOADS` (default 16) at once: on a small VM set `env = { ONETIME_MAX_UPLOADS = "4" }`.
+
+These inputs are part of the user data, so changing them replaces the VM like an image change (see [Upgrade](#upgrade)). Updating to this version of the modules does too, because the env file and the Caddyfile change (the derived limit replaces the old 143360 default).
+
+`k8s-release` has `max_file_bytes` and `max_file_ttl` as well (same defaults and checks); they are passed as `config.maxFileBytes` and `config.maxFileTtl` and win over `base_values` and `values`. The chart derives the ingress body limit and timeouts from them ([deploy-helm.md](deploy-helm.md#large-files)).
 
 ## Backup and restore
 
@@ -122,5 +126,7 @@ Run on 2026-11-20 with Terraform 1.17.2, tflint 0.66.0 (rulesets aws 0.50.0, azu
 | Replacement boot (new instance id) on the same disk | the filesystem was **not** formatted again (creation time unchanged), mounted from the existing fstab entry; a secret created on the first "VM" was still pending, revealed once (200), then 404 |
 
 Two bootstrap bugs were found and fixed on the way: the schema check caught `defer` rendered as the string `"true"`, and this run showed that Docker stayed stopped when package installation may not start services (`runcmd` now enables Docker and Caddy itself). Two harness issues (missing `lsb_release`, containerd storage on an overlay root) were test-container artefacts.
+
+File limit (added 2026-11-20 with Terraform 1.17.2, no tflint or trivy installed this time): `terraform fmt -check -recursive` passes; `terraform init -backend=false` + `terraform validate` pass in all 5 modules and 7 examples. vm-bootstrap applied in a provider-less root module: the env file holds `ONETIME_MAX_FILE_BYTES` and `ONETIME_MAX_FILE_TTL`, the Caddy limit is 307200 by default, 102400 at 0, 614400 at 262145, 1126400 at 1 MiB and 5427200 at 5242880, and the derived blob and body limit equal the formula over 23 values at every size-class boundary; the rendered 5 MiB Caddyfile passes `caddy validate`. 5242881, -1 and 1.5 are refused at plan time, and `max_body_bytes = 200000` with the default file limit fails the precondition. `k8s-release`: `terraform console` shows `config.maxFileBytes`/`maxFileTtl` in the chart overrides, and a TTL of 10 is refused. No cloud-init end-to-end run for this change.
 
 Not tested: any real AWS, Azure or Google Cloud resource (no plan or apply against a cloud account), the ECR/GAR/ACR pull paths, instance replacement with a real disk detach/attach, the EKS/AKS/GKE examples, remote backends.
