@@ -8,13 +8,13 @@ import { normalizePassphrase, validatePassphrase } from "./passphrase";
  * Which blob format this build writes. Deploy 1 reads both formats and writes format 1;
  * deploy 2 flips it to 2 (docs/plans/blob-v2.md). Passphrases need format 2.
  */
-export const WRITE_FORMAT: 1 | 2 = 1;
+export const WRITE_FORMAT: 1 | 2 = 2;
 
 /**
  * Whether this build may create file blobs (links 2f / 2fp). Deploy F1 reads files and keeps this false;
  * deploy F2 flips it together with WRITE_FORMAT (docs/plans/file-transfer.md).
  */
-export const WRITE_FILES = false;
+export const WRITE_FILES = true;
 
 /** The part of a link the crypto needs. */
 export interface LinkKey {

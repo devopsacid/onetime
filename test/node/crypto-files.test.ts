@@ -272,10 +272,13 @@ describe("openPayload on text", () => {
   });
 });
 
-describe("writing files is off until deploy F2", () => {
-  it("WRITE_FILES is false and the default encryptFile refuses", async () => {
-    expect(WRITE_FILES).toBe(false);
-    await expect(encryptFile({ name: "a", type: "", bytes: new Uint8Array([1]) })).rejects.toThrow("not available");
+describe("writing files (on since deploy F2)", () => {
+  it("WRITE_FILES is true and the default encryptFile makes a 2f blob", async () => {
+    expect(WRITE_FILES).toBe(true);
+    const made = await encryptFile({ name: "a", type: "", bytes: new Uint8Array([1]) });
+    expect(made).toMatchObject({ format: 2, passphrase: false, file: true });
+    expect(made.blob[0]).toBe(2);
+    expect(made.blob[1]).toBe(0x02);
   });
   it("a codec with writeFiles off refuses; one with it on works", async () => {
     await expect(createCodec({ writeFormat: 2, writeFiles: false }).encryptFile({ name: "a", type: "", bytes: new Uint8Array([1]) })).rejects.toThrow();

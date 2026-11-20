@@ -87,7 +87,7 @@ describe("parseArgs for passphrase options", () => {
   });
 });
 
-describe("while the writers have not shipped (WRITE_FORMAT 1)", () => {
+describe("a build with the writers off (WRITE_FORMAT 1 via the test hook)", () => {
   it("send and gen refuse both options as not available yet, before any request or prompt", async () => {
     for (const argv of [
       ["send", "--passphrase"],
@@ -95,7 +95,7 @@ describe("while the writers have not shipped (WRITE_FORMAT 1)", () => {
       ["gen", "--passphrase"],
       ["gen", "--passphrase-file", "p"],
     ]) {
-      const { rec, opts } = setup({ stdin: "secret\n", files: { p: PASS } });
+      const { rec, opts } = setup({ stdin: "secret\n", files: { p: PASS }, writeFormat: 1 });
       const io = makeIo(opts);
       expect(await run(argv, io), argv.join(" ")).toBe(EXIT.usage);
       expect(io.err).toContain("not available yet");
@@ -106,11 +106,11 @@ describe("while the writers have not shipped (WRITE_FORMAT 1)", () => {
   });
   it("the help texts of send, gen and the overview do not list them yet; get lists --passphrase-file", async () => {
     for (const argv of [["send", "--help"], ["gen", "--help"]]) {
-      const io = makeIo();
+      const io = makeIo({ writeFormat: 1 });
       await run(argv, io);
       expect(io.out, argv.join(" ")).not.toContain("--passphrase");
     }
-    const main = makeIo();
+    const main = makeIo({ writeFormat: 1 });
     await run(["--help"], main);
     expect(main.out.split("\n").filter((line) => !line.includes("onetime get")).join("\n")).not.toContain("--passphrase");
     const writers = makeIo({ writeFormat: 2 });
@@ -128,7 +128,7 @@ describe("while the writers have not shipped (WRITE_FORMAT 1)", () => {
     expect(get.out).toContain("passphrase");
   });
   it("still writes format 1 links that new readers open", async () => {
-    const { opts } = setup({ stdin: "old style\n" });
+    const { opts } = setup({ stdin: "old style\n", writeFormat: 1 });
     const io = makeIo(opts);
     expect(await run(["send"], io)).toBe(EXIT.ok);
     expect(io.out).toMatch(/#[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}\n$/);
@@ -261,6 +261,24 @@ describe("get, status and v2 links", () => {
   });
 });
 
+describe("the default build writes format 2 (since deploy 2)", () => {
+  it("send makes a #2. link and the help lists the passphrase options without 'not available'", async () => {
+    const { opts } = setup({ stdin: "new style\n" });
+    const io = makeIo(opts);
+    expect(await run(["send"], io)).toBe(EXIT.ok);
+    expect(io.out).toMatch(/#2\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}\n$/);
+    for (const argv of [["--help"], ["send", "--help"], ["gen", "--help"]]) {
+      const help = makeIo();
+      await run(argv, help);
+      expect(help.out, argv.join(" ")).toContain("--passphrase-file");
+      expect(help.out, argv.join(" ")).not.toContain("not available");
+    }
+    const bad = makeIo({ stdin: null });
+    expect(await run(["get", "garbage"], bad)).toBe(EXIT.badLink);
+    expect(bad.err).toContain("https://<host>/#2.<id>.<key>");
+  });
+});
+
 describe("send and gen with a passphrase (active once WRITE_FORMAT is 2)", () => {
   it("send --passphrase on a terminal asks twice, in order, and hints without the passphrase", async () => {
     const { opts } = setup({ stdin: null, promptQueue: ["the secret", PASS, PASS], ...writer });
@@ -329,7 +347,7 @@ describe("send and gen with a passphrase (active once WRITE_FORMAT is 2)", () =>
 
 describe("damaged-link message", () => {
   it("shows the v1 shape while readers only, the v2 shape once writers ship", async () => {
-    const readers = makeIo({ stdin: null });
+    const readers = makeIo({ stdin: null, writeFormat: 1 });
     expect(await run(["get", "garbage"], readers)).toBe(EXIT.badLink);
     expect(readers.err).toContain("https://<host>/#<id>.<key>");
     const writers = makeIo({ stdin: null, writeFormat: 2 });

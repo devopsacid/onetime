@@ -235,8 +235,11 @@ describe("run", () => {
     expect(io.err).toContain("onetime get -");
     expect(io.err).not.toContain(io.out.trim());
     expect(io.err).not.toContain("#");
-    // 2 bytes of plaintext + 12 IV + 16 tag: no CR or LF was encrypted.
-    expect(posted[0]!.byteLength).toBe(2 + 28);
+    // The posted blob decrypts to exactly "pw": no CR or LF was encrypted.
+    const link = parseLinkInput(io.out, "https://s.example");
+    if (link === "invalid") throw new Error("invalid link");
+    const { decryptSecret } = await import("../src/web/crypto");
+    expect(await decryptSecret(new Uint8Array(posted[0]!), link)).toBe("pw");
   });
   it("never puts the link or key in the send hint", async () => {
     const io = makeIo({
@@ -244,7 +247,7 @@ describe("run", () => {
       fetch: (async () => new Response(JSON.stringify({ id: ID }), { status: 201 })) as unknown as typeof fetch,
     });
     await run(["send", "--server", "https://s.example"], io);
-    const key = io.out.trim().split(".")[1]!;
+    const key = io.out.trim().split(".").at(-1)!;
     expect(io.err).not.toContain(key);
     expect(io.err).not.toContain(ID);
   });
@@ -354,7 +357,7 @@ describe("stdin, output and internal errors", () => {
       },
       fetch: (async () => new Response(blob)) as unknown as typeof fetch,
     });
-    expect(await run(["get", `${ID}.${key}`, "--server", "https://s.example"], io)).toBe(EXIT.network);
+    expect(await run(["get", `2.${ID}.${key}`, "--server", "https://s.example"], io)).toBe(EXIT.network);
     expect(io.err).toMatch(/write/i);
   });
   it("gives unexpected errors their own exit code", async () => {

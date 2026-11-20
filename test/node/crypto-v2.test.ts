@@ -257,8 +257,8 @@ describe("format 1 stays readable", () => {
 });
 
 describe("module defaults and the iterations test hook", () => {
-  it("ships writing format 1 until deploy 2, and the default exports use WRITE_FORMAT", async () => {
-    expect(WRITE_FORMAT).toBe(1);
+  it("writes format 2 since deploy 2, and the default exports use WRITE_FORMAT", async () => {
+    expect(WRITE_FORMAT).toBe(2);
     expect((await encryptSecret("x")).format).toBe(WRITE_FORMAT);
   });
 

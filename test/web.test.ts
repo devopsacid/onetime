@@ -17,7 +17,8 @@ describe("base64url", () => {
 });
 
 describe("crypto", () => {
-  const v1 = (key: string) => ({ key, format: 1 as const, passphrase: false, file: false });
+  // The default exports write format 2 since deploy 2; `def` is the link key for what they make.
+  const def = (key: string) => ({ key, format: WRITE_FORMAT, passphrase: false, file: false });
   const v2 = (key: string, passphrase = false, file = false) => ({ key, format: 2 as const, passphrase, file });
   // workerd refuses high PBKDF2 iteration counts; the real 600,000 path is proven in test/node/crypto-v2.test.ts.
   const codec = createCodec({ writeFormat: 2, pbkdf2Iterations: 1000 });
@@ -27,7 +28,8 @@ describe("crypto", () => {
     const { blob, key, format } = await encryptSecret(text);
     expect(key).toMatch(KEY_PATTERN);
     expect(format).toBe(WRITE_FORMAT);
-    expect(await decryptSecret(blob, v1(key))).toBe(text);
+    expect(WRITE_FORMAT).toBe(2);
+    expect(await decryptSecret(blob, def(key))).toBe(text);
   });
 
   it("does not leave the plaintext in the blob", async () => {
@@ -45,18 +47,18 @@ describe("crypto", () => {
   it("rejects a wrong key", async () => {
     const { blob } = await encryptSecret("secret");
     const other = await encryptSecret("secret");
-    await expect(decryptSecret(blob, v1(other.key))).rejects.toThrow();
+    await expect(decryptSecret(blob, def(other.key))).rejects.toThrow();
   });
 
   it("rejects a tampered blob", async () => {
     const { blob, key } = await encryptSecret("secret");
     blob[blob.length - 1]! ^= 1;
-    await expect(decryptSecret(blob, v1(key))).rejects.toThrow();
+    await expect(decryptSecret(blob, def(key))).rejects.toThrow();
   });
 
   it("rejects a malformed key", async () => {
     const { blob } = await encryptSecret("secret");
-    await expect(decryptSecret(blob, v1("short"))).rejects.toThrow("Invalid key");
+    await expect(decryptSecret(blob, def("short"))).rejects.toThrow("Invalid key");
   });
 
   it("enforces the size limit in bytes, not characters", async () => {

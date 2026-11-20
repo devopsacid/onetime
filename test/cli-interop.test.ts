@@ -5,7 +5,8 @@ import { fromBase64Url } from "../src/web/base64url";
 import { parseFragment } from "../src/web/link";
 import { makeIo, routerFetch, SERVER, type Recorded } from "./cli-helpers";
 
-const LINK_RE = /^https:\/\/onetime\.test\/#[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}\n$/;
+// Writers make format 2 links since deploy 2: #2.<id>.<key>.
+const LINK_RE = /^https:\/\/onetime\.test\/#2\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}\n$/;
 const fetchOpt = () => ({ fetch: routerFetch(), env: { ONETIME_SERVER: SERVER } });
 
 async function send(text: string, extra: string[] = []): Promise<string> {
@@ -50,7 +51,7 @@ describe("CLI send -> browser decrypt", () => {
     const rec: Recorded = { urls: [], methods: [] };
     const io = makeIo({ stdin: "s3cret\n", fetch: routerFetch(rec), env: { ONETIME_SERVER: SERVER } });
     await run(["send"], io);
-    const key = io.out.trim().split(".")[1]!;
+    const key = io.out.trim().split(".").at(-1)!;
     expect(rec.urls.join(" ")).not.toContain(key);
     expect(rec.urls.join(" ")).not.toContain("#");
   });
@@ -59,17 +60,30 @@ describe("CLI send -> browser decrypt", () => {
 describe("browser encrypt -> CLI get", () => {
   it("returns unicode and multi-line text exactly", async () => {
     for (const text of ["héllo wörld ✓ 日本語 🚀", "a\nb\r\nc\n\nlast ", "x"]) {
-      const { blob, key } = await encryptSecret(text);
+      const { blob, key, format } = await encryptSecret(text);
+      expect(format).toBe(2);
       const created = await routerFetch()(`${SERVER}/api/secrets?ttl=3600`, {
         method: "POST",
         headers: { "Content-Type": "application/octet-stream" },
         body: blob,
       });
       const { id } = (await created.json()) as { id: string };
-      const { code, io } = await get(`${SERVER}/#${id}.${key}`);
+      const { code, io } = await get(`${SERVER}/#2.${id}.${key}`);
       expect(code).toBe(EXIT.ok);
       expect(io.out).toBe(text); // stdout is not a TTY: no trailing newline added
     }
+  });
+  it("still opens format 1 links made by older writers", async () => {
+    const { blob, key } = await createCodec({ writeFormat: 1 }).encryptSecret("old link");
+    const created = await routerFetch()(`${SERVER}/api/secrets?ttl=3600`, {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: blob,
+    });
+    const { id } = (await created.json()) as { id: string };
+    const { code, io } = await get(`${SERVER}/#${id}.${key}`);
+    expect(code).toBe(EXIT.ok);
+    expect(io.out).toBe("old link");
   });
 });
 

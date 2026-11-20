@@ -61,8 +61,8 @@ describe("parseLinkInput with file links", () => {
 });
 
 describe("send --file", () => {
-  it("is off until deploy F2: exit 2, nothing read, nothing sent", async () => {
-    const { rec, opts } = setup({ files: { "a.txt": "hello" } });
+  it("a build with WRITE_FILES off (test hook) refuses: exit 2, nothing read, nothing sent", async () => {
+    const { rec, opts } = setup({ writeFiles: false, files: { "a.txt": "hello" } });
     const io = makeIo({ ...opts });
     expect(await run(["send", "--file", "a.txt"], io)).toBe(EXIT.usage);
     expect(io.err).toContain("Sending files is not available yet.");
@@ -170,13 +170,24 @@ describe("send --file", () => {
     }
   });
 
-  it("shows --file in the help only when files can be written", async () => {
-    const off = makeIo();
+  it("shows --file in the help only when files can be written (on by default since deploy F2)", async () => {
+    const off = makeIo({ writeFiles: false });
     await run(["send", "--help"], off);
     expect(off.out).not.toContain("--file");
-    const on = makeIo({ writeFiles: true });
+    const on = makeIo();
     await run(["send", "--help"], on);
     expect(on.out).toContain("--file");
+    const main = makeIo();
+    await run(["--help"], main);
+    expect(main.out).toContain("onetime send --file PATH|- [--name NAME] [--ttl 1h|1d]");
+    expect(main.out + on.out).not.toContain("not available");
+  });
+
+  it("sends a file with the default build settings (no test hook)", async () => {
+    const { opts } = setup({ files: { "a.txt": "hello" } });
+    const io = makeIo(opts);
+    expect(await run(["send", "--file", "a.txt"], io), io.err).toBe(EXIT.ok);
+    expect(io.out).toMatch(/^https:\/\/onetime\.test\/#2f\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}\n$/);
   });
 });
 
