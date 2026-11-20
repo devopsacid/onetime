@@ -1,0 +1,29 @@
+---
+# Derived values of the onetime role. Not meant to be set: change onetime_max_file_bytes, or the overrides
+# onetime_max_body_bytes and onetime_proxy_timeout (defaults/main.yml).
+
+# Largest request body of the app (fileBlobBytes() in src/shared/limits.ts): the file plus 388 bytes of name and type
+# must fit a padded block, the blob is the block plus 30 bytes, never below a text blob (16,418 bytes; also the limit
+# with files off). 262144 -> 262562, 5242880 -> 5243298.
+onetime_file_blob_bytes: >-
+  {%- set f = onetime_max_file_bytes | int -%}
+  {%- if f == 0 -%}16418{%- else -%}
+  {{- [16418, ([1024, 4096, 16388, 65924, 131460, 262532, 524676, 1048964, 2097540, 4194692, 5243268]
+       | select('ge', f + 388) | first) + 30] | max -}}
+  {%- endif -%}
+
+# Caddy request_body max_size and nginx client_max_body_size: onetime_max_body_bytes if set, else the largest blob
+# plus 3 %, rounded up to the next 100 KiB: 307200 (300 KiB) by default, 5427200 (5300 KiB) at 5 MiB, 102400 with files off.
+onetime_proxy_body_bytes: >-
+  {%- if onetime_max_body_bytes | string | length > 0 -%}{{ onetime_max_body_bytes | int }}
+  {%- else -%}{{ ((onetime_file_blob_bytes | int * 103 + 10239999) // 10240000) * 102400 }}{%- endif -%}
+
+# nginx proxy_read_timeout and proxy_send_timeout in seconds: onetime_proxy_timeout if set, else the app's own upload
+# timeout (60 s plus 1 s per 32 KiB of blob above a text blob, requestTimeoutMs in server/http.ts) plus 10 s, rounded
+# up to 10 s: 80 by default, 230 at 5 MiB, 70 with files off.
+onetime_proxy_timeout_seconds: >-
+  {%- if onetime_proxy_timeout | string | length > 0 -%}{{ onetime_proxy_timeout | int }}
+  {%- else -%}
+  {%- set app = 60 + ([0, onetime_file_blob_bytes | int - 16418] | max + 32767) // 32768 -%}
+  {{- ((app + 19) // 10) * 10 -}}
+  {%- endif -%}

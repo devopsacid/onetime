@@ -33,15 +33,39 @@
 - name: Check the environment variables
   ansible.builtin.assert:
     that:
-      - onetime_env.keys() | intersect(["HOST", "PORT", "ONETIME_DB"]) | length == 0
+      - onetime_env.keys() | intersect(["HOST", "PORT", "ONETIME_DB", "ONETIME_MAX_FILE_BYTES", "ONETIME_MAX_FILE_TTL"]) | length == 0
       - onetime_env.keys() | reject("match", "^[A-Za-z_][A-Za-z0-9_]*$") | list | length == 0
       - onetime_env.values() | map("string") | select("search", "[\\r\\n]") | list | length == 0
       - onetime_max_stored | string is match("^([1-9][0-9]{0,7})?$")
-      - onetime_max_body_bytes | int >= 1024
     fail_msg: >-
-      onetime_env must not set HOST, PORT or ONETIME_DB, names must be shell-style, values must be one line;
-      onetime_max_stored must be empty or a whole number from 1 to 10000000;
-      onetime_max_body_bytes must be a whole number of at least 1024.
+      onetime_env must not set HOST, PORT, ONETIME_DB, ONETIME_MAX_FILE_BYTES or ONETIME_MAX_FILE_TTL (use
+      onetime_max_file_bytes and onetime_max_file_ttl), names must be shell-style, values must be one line;
+      onetime_max_stored must be empty or a whole number from 1 to 10000000.
+    quiet: true
+
+- name: Check the file limits
+  ansible.builtin.assert:
+    that:
+      - onetime_max_file_bytes | string is match("^[0-9]{1,7}$")
+      - onetime_max_file_bytes | int <= 5242880
+      - onetime_max_file_ttl | string is match("^[0-9]{2,6}$")
+      - onetime_max_file_ttl | int >= 60
+      - onetime_max_file_ttl | int <= 604800
+    fail_msg: >-
+      onetime_max_file_bytes must be a whole number from 0 to 5242880 (0 turns files off; got {{ onetime_max_file_bytes }});
+      onetime_max_file_ttl must be a whole number of seconds from 60 to 604800 (got {{ onetime_max_file_ttl }}).
+    quiet: true
+
+- name: Check the proxy overrides
+  ansible.builtin.assert:
+    that:
+      - onetime_max_body_bytes | string is match("^([0-9]{1,9})?$")
+      - onetime_max_body_bytes | string | length == 0 or onetime_max_body_bytes | int >= onetime_file_blob_bytes | int
+      - onetime_proxy_timeout | string is match("^([1-9][0-9]{0,3})?$")
+    fail_msg: >-
+      onetime_max_body_bytes must be empty (derived from onetime_max_file_bytes) or at least the largest blob,
+      {{ onetime_file_blob_bytes }} bytes for onetime_max_file_bytes {{ onetime_max_file_bytes }} (a smaller limit refuses
+      the largest allowed file; got {{ onetime_max_body_bytes }}); onetime_proxy_timeout must be empty or 1 to 9999 seconds.
     quiet: true
 
 - name: Check the listen address

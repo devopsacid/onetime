@@ -28,5 +28,9 @@ all:
         # onetime_bundle_archive: ./onetime-bundle.tgz
 
         # onetime_max_stored: "20000"
+        # Files: largest file in bytes (0 = off, at most 5242880) and longest file life in seconds. The Caddy/nginx body
+        # limit and timeouts follow from onetime_max_file_bytes (300 KiB and 80 s by default, 5300 KiB and 230 s at 5 MiB).
+        # onetime_max_file_bytes: 262144
+        # onetime_max_file_ttl: 3600
         # onetime_env:
         #   ONETIME_MAX_CONNECTIONS: "200"

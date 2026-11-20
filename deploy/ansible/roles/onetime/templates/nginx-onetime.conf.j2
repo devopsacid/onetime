@@ -33,8 +33,9 @@ server {
     error_log /var/log/nginx/onetime-error.log crit;
     server_tokens off;
 
-    # onetime_max_body_bytes; a secret is at most 16 KB plus 28 bytes today.
-    client_max_body_size {{ onetime_max_body_bytes | int }};
+    # Derived from onetime_max_file_bytes ({{ onetime_max_file_bytes | int }}: largest blob {{ onetime_file_blob_bytes }} bytes),
+    # or onetime_max_body_bytes. 30 s between two reads of the body is enough on a slow line.
+    client_max_body_size {{ onetime_proxy_body_bytes | int }};
     client_header_timeout 10s;
     client_body_timeout 30s;
     send_timeout 15s;
@@ -51,8 +52,9 @@ server {
         # The app never reads client IPs or forwarding headers, so none are sent.
         proxy_set_header X-Forwarded-For "";
         proxy_connect_timeout 3s;
-        proxy_read_timeout 15s;
-        proxy_send_timeout 15s;
+        # The app's upload timeout plus 10 s (onetime_proxy_timeout, or derived from onetime_max_file_bytes).
+        proxy_read_timeout {{ onetime_proxy_timeout_seconds | int }}s;
+        proxy_send_timeout {{ onetime_proxy_timeout_seconds | int }}s;
         proxy_buffering on;
         proxy_cache off;
     }

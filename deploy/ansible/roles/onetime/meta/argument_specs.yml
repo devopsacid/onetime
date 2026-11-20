@@ -20,10 +20,18 @@ argument_specs:
         type: str
         default: ""
         description: ONETIME_MAX_STORED (1..10000000); empty for the server default.
+      onetime_max_file_bytes:
+        type: int
+        default: 262144
+        description: ONETIME_MAX_FILE_BYTES, largest file in bytes (0..5242880, 0 = files off). The proxy body limit and timeouts follow from it.
+      onetime_max_file_ttl:
+        type: int
+        default: 3600
+        description: ONETIME_MAX_FILE_TTL, longest life of a file in seconds (60..604800).
       onetime_env:
         type: dict
         default: {}
-        description: More environment variables for the server. HOST, PORT and ONETIME_DB are reserved.
+        description: More environment variables for the server. HOST, PORT, ONETIME_DB, ONETIME_MAX_FILE_BYTES and ONETIME_MAX_FILE_TTL are reserved.
       onetime_image:
         type: str
         default: ""
@@ -101,9 +109,13 @@ argument_specs:
         default: caddy
         description: Reverse proxy with TLS in front of the app. Both are configured without request logs.
       onetime_max_body_bytes:
-        type: int
-        default: 143360
-        description: Largest request body Caddy or nginx accepts, in bytes.
+        type: raw
+        default: ""
+        description: Largest request body Caddy or nginx accepts, in bytes. Empty = derived from onetime_max_file_bytes (307200 by default, 5427200 at 5 MiB); a number must be at least the largest blob.
+      onetime_proxy_timeout:
+        type: raw
+        default: ""
+        description: nginx proxy_read_timeout and proxy_send_timeout in seconds. Empty = derived from onetime_max_file_bytes (80 by default, 230 at 5 MiB).
       onetime_domain:
         type: str
         default: ""

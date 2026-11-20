@@ -11,7 +11,15 @@ onetime_port: 8080
 
 # ONETIME_MAX_STORED; empty = server default (20000).
 onetime_max_stored: ""
-# More environment variables (name: value), for example ONETIME_MAX_CONNECTIONS: "200". HOST, PORT, ONETIME_DB are reserved.
+# ONETIME_MAX_FILE_BYTES: largest file in bytes, 0..5242880 (5 MiB); 0 turns files off. The proxy body limit and timeouts
+# follow from it (onetime_max_body_bytes, onetime_proxy_timeout). Each upload in progress is held about 3 times in memory,
+# up to ONETIME_MAX_UPLOADS (default 16) at once: with files above 1 MiB on a small host, set ONETIME_MAX_UPLOADS lower in
+# onetime_env (for example "4"). Files above 1 MiB need CLI 0.4.0.
+onetime_max_file_bytes: 262144
+# ONETIME_MAX_FILE_TTL: longest life of a file in seconds, 60..604800. Default 1 hour, like the hosted service.
+onetime_max_file_ttl: 3600
+# More environment variables (name: value), for example ONETIME_MAX_CONNECTIONS: "200". HOST, PORT, ONETIME_DB,
+# ONETIME_MAX_FILE_BYTES and ONETIME_MAX_FILE_TTL are reserved (the last two are the variables above).
 onetime_env: {}
 
 # --- docker mode ---
@@ -50,9 +58,14 @@ onetime_node_major: 24
 onetime_node_bin: /usr/bin/node
 
 # --- reverse proxy ---
-# Largest request body the proxy accepts, in bytes. A secret is at most 16 KB + 28 bytes today; the app refuses anything
-# larger with 413 by itself.
-onetime_max_body_bytes: 143360
+# Largest request body the proxy accepts, in bytes. Empty = derived from onetime_max_file_bytes: the largest blob plus
+# 3 %, rounded up to the next 100 KiB (307200 by default, 5427200 at 5 MiB, 102400 with files off). A number overrides
+# it and must be at least the largest blob (262562 for the default; see docs/self-hosting.md). The app refuses larger
+# bodies with 413 by itself.
+onetime_max_body_bytes: ""
+# nginx proxy_read_timeout and proxy_send_timeout in seconds. Empty = derived from onetime_max_file_bytes: the app's own
+# upload timeout plus 10 s, rounded up to 10 s (80 by default, 230 at 5 MiB). Caddy has no such timeout by default.
+onetime_proxy_timeout: ""
 # "caddy" (automatic HTTPS), "nginx" (bring your certificate) or "none".
 onetime_proxy: caddy
 # Public host name; must equal the host of the ONETIME_ORIGIN the image or bundle was built with.

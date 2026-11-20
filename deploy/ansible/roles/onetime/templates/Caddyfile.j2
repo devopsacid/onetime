@@ -19,9 +19,11 @@
 {% endif %}
 	reverse_proxy {{ '[' ~ onetime_listen_host ~ ']' if ':' in onetime_listen_host else onetime_listen_host }}:{{ onetime_port }}
 
-	# Refuse bodies over onetime_max_body_bytes before they reach the app (a secret is at most 16 KB plus 28 bytes today).
+	# Refuse bodies over the largest blob plus headroom before they reach the app: derived from onetime_max_file_bytes
+	# ({{ onetime_max_file_bytes | int }}: largest blob {{ onetime_file_blob_bytes }} bytes), or onetime_max_body_bytes.
+	# Caddy sets no read or upstream timeout by default, so the app's own upload timeout applies.
 	request_body {
-		max_size {{ onetime_max_body_bytes | int }}
+		max_size {{ onetime_proxy_body_bytes | int }}
 	}
 
 	encode zstd gzip
