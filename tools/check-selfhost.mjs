@@ -70,7 +70,7 @@ try {
   const STRICT = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
   // Static table (docs/plans/self-host.md 3.4), main paths.
-  for (const path of ["/", "/how-it-works", "/command-line", "/privacy", "/404"]) {
+  for (const path of ["/", "/how-it-works", "/command-line", "/privacy", "/terms", "/404"]) {
     const r = await get(path);
     await r.arrayBuffer();
     expect(r.status === 200, `${path}: expected 200, got ${r.status}`);

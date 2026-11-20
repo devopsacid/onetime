@@ -1095,6 +1095,11 @@ html {
   color: var(--muted);
 }
 
+/* A paragraph after a tick or cross list (terms page) gets the same gap as between paragraphs. */
+.explainer :is(.ticks, .crosses) + p {
+  margin-top: 0.75rem;
+}
+
 .plain-list {
   display: grid;
   gap: 0.4rem;

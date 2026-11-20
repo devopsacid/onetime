@@ -16,8 +16,8 @@
 /index.html
   Cache-Control: no-store
 
-# The info pages are built into the info site and the self-host site (this file is its base). On the app origin
-# these two rules are shadowed by the 301s in _redirects. The CSP is the /* one, except on the info site (headersForInfo).
+# The info pages (how-it-works, privacy, terms) are built into the info site and the self-host site (this file is its
+# base). On the app origin their rules are shadowed by the 301s in _redirects. The CSP is the /* one, except on the info site (headersForInfo).
 /how-it-works
   Cache-Control: no-store
 
@@ -34,6 +34,12 @@
   Cache-Control: no-store
 
 /privacy.html
+  Cache-Control: no-store
+
+/terms
+  Cache-Control: no-store
+
+/terms.html
   Cache-Control: no-store
 
 /404

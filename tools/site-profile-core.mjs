@@ -109,12 +109,12 @@ export function parseOrigin(raw) {
 }
 
 const APP_PATH = /^\/(?:command-line)?$|^\/cli(?:\/|$)/;
-const INFO_PATH = /^\/(?:how-it-works|privacy)$/;
+const INFO_PATH = /^\/(?:how-it-works|privacy|terms)$/;
 const ANCHOR_HREF = /(<a\b[^>]*?\bhref\s*=\s*)(["'])(\/(?!\/)[^"']*)\2/gi;
 
 /**
  * Makes the links between the two Pages sites absolute. Only `<a href>` values that start with one `/` are looked at.
- * Table: `/`, `/command-line`, `/cli/...` live on the app; `/how-it-works` and `/privacy` on the info site. A link
+ * Table: `/`, `/command-line`, `/cli/...` live on the app; `/how-it-works`, `/privacy` and `/terms` on the info site. A link
  * to the other site's page gets that site's origin; fragment and query are kept. `profile`: "onetimepass" or "info".
  */
 export function rewriteLinks(html, profile) {
@@ -208,7 +208,7 @@ export function sitemapForSite(text, origin) {
 /** `_redirects` of the app: the old info URLs go to the info site. Never `/` or `/index.html` (a secret's fragment must not follow a redirect). */
 export function redirectsForApp() {
   const rules = [];
-  for (const page of ["how-it-works", "privacy"]) {
+  for (const page of ["how-it-works", "privacy", "terms"]) {
     for (const source of [`/${page}`, `/${page}.html`, `/${page}/`]) rules.push(`${source} ${INFO_ORIGIN}/${page} 301`);
   }
   return `${rules.join("\n")}\n`;

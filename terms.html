@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f6f5f1" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0a0c0b" media="(prefers-color-scheme: dark)" />
+    <script src="/theme-init.js"></script>
+    <title>Terms of use | onetime</title>
+    <meta name="description" content="Rules for using onetime: what you must not send, why the operator cannot read secrets or files, how abuse reports are handled, the limits, and availability." />
+    <link rel="canonical" href="https://onetimepass-info.pages.dev/terms" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="onetime" />
+    <meta property="og:title" content="Terms of use | onetime" />
+    <meta property="og:description" content="Rules for using onetime: what you must not send, why the operator cannot read secrets or files, how abuse reports are handled, the limits, and availability." />
+    <meta property="og:url" content="https://onetimepass-info.pages.dev/terms" />
+    <meta property="og:image" content="https://onetimepass-info.pages.dev/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="onetime: share a secret with a link that works once" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Terms of use | onetime" />
+    <meta name="twitter:description" content="Rules for using onetime: what you must not send, why the operator cannot read secrets or files, how abuse reports are handled, the limits, and availability." />
+    <meta name="twitter:image" content="https://onetimepass-info.pages.dev/og-image.png" />
+    <meta name="twitter:image:alt" content="onetime: share a secret with a link that works once" />
+    <!-- site:selfhost
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "onetime",
+                "item": "https://onetimepass.pages.dev/"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "Terms of use",
+                "item": "https://onetimepass-info.pages.dev/terms"
+              }
+            ]
+          }
+        ]
+      }
+    </script>
+    site:selfhost -->
+    <link rel="stylesheet" href="/src/web/style.css" />
+    <script type="module" src="/src/web/info.ts"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/">
+        <img src="/favicon.svg" alt="" width="28" height="28" />
+        <span>onetime</span>
+      </a>
+      <nav class="site-nav" aria-label="Site">
+        <a href="/how-it-works">How it works</a>
+        <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Switch theme">
+          <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+          </svg>
+          <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2" />
+            <path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+        </button>
+      </nav>
+    </header>
+
+    <main class="explainer">
+      <h1>Terms of use</h1>
+      <p class="lead">
+        Last updated 20 November 2026. These terms can change; the date shows the last change. Use the service only if
+        you accept them.
+      </p>
+
+      <nav class="toc" aria-labelledby="toc-title">
+        <h2 id="toc-title" class="toc-title">On this page</h2>
+        <ol>
+          <li><a href="#service">What onetime is</a></li>
+          <li><a href="#forbidden">What you must not send</a></li>
+          <li><a href="#encryption">Nobody can read what you send</a></li>
+          <li><a href="#moderation">How reports are handled</a></li>
+          <li><a href="#monitoring">No general monitoring</a></li>
+          <li><a href="#limits">Limits</a></li>
+          <li><a href="#availability">Availability and the code</a></li>
+          <li><a href="#contact">Questions</a></li>
+        </ol>
+      </nav>
+
+      <section id="service" aria-labelledby="service-title">
+        <h2 id="service-title">What onetime is</h2>
+        <p>
+          onetime is a free service for sharing a secret, such as a password, a token or a small file, through a link
+          that works once. It also has a password, token and UUID generator that runs only in your browser. There are
+          no accounts.
+        </p>
+        <!-- site:onetimepass -->
+        <p>
+          It is run by Michal Maxian, in Slovakia. These terms apply to onetimepass.pages.dev, where secrets are created
+          and opened, and to this information site.
+        </p>
+        <!-- /site:onetimepass -->
+        <!-- site:selfhost
+        <p>
+          This instance is run by {{OPERATOR_NAME}}, independently of the original onetime site and its author. These
+          terms apply to this instance.
+        </p>
+        site:selfhost -->
+      </section>
+
+      <section id="forbidden" aria-labelledby="forbidden-title">
+        <h2 id="forbidden-title">What you must not send</h2>
+        <p>Do not use onetime to send or store:</p>
+        <ul class="crosses">
+          <li>illegal content of any kind;</li>
+          <li>malware, or any other code meant to damage or take over devices or data;</li>
+          <li>child sexual abuse material;</li>
+          <li>content that infringes other people’s rights, such as copyright, trademarks or privacy.</li>
+        </ul>
+        <p>
+          Do not use it to harass, threaten, deceive or defraud anyone either, for example with phishing links or fake
+          payment details. These rules apply even though nobody but the recipient can read what you send.
+        </p>
+      </section>
+
+      <section id="encryption" aria-labelledby="encryption-title">
+        <h2 id="encryption-title">Nobody can read what you send</h2>
+        <p>
+          Every secret and file is encrypted in your browser (AES-256-GCM) before it is sent. The key is only in the
+          link, in the part after <code>#</code>, which browsers do not send to the server. So the operator cannot read,
+          scan or recognise any secret or file, including a file’s name and type. Details are in
+          <a href="/how-it-works">how it works</a>.
+        </p>
+      </section>
+
+      <section id="moderation" aria-labelledby="moderation-title">
+        <h2 id="moderation-title">How reports are handled</h2>
+        <p>
+          Anyone can report a link that is used for illegal content or abuse. What a report must contain, and where to
+          send it, is under <a href="/privacy#abuse">Reporting abuse</a> on the privacy page.
+        </p>
+        <ul class="plain-list">
+          <!-- site:onetimepass -->
+          <li>
+            On a valid report, the stored item is deleted by its id, without opening it. The key is never asked for and
+            never used.
+          </li>
+          <!-- /site:onetimepass -->
+          <!-- site:selfhost
+          <li>
+            On a valid report, the operator of this instance can delete the stored item by its id, without opening it.
+            The key is not needed for that.
+          </li>
+          site:selfhost -->
+          <li>
+            A link that was already opened or has expired is no longer stored, so there is nothing left to delete.
+          </li>
+          <li>
+            There are no accounts, and the service keeps no contact details or IP addresses of the people who create
+            links. So the sender of a deleted item cannot be told about the deletion, and there is no way to appeal
+            against it.
+          </li>
+          <li>The person who sent the report gets a reply about the decision.</li>
+        </ul>
+      </section>
+
+      <section id="monitoring" aria-labelledby="monitoring-title">
+        <h2 id="monitoring-title">No general monitoring</h2>
+        <p>
+          The operator does not watch, scan or filter what people send, and could not, because everything is encrypted.
+          An item is deleted early only after a report or an order from an authority. Otherwise it is deleted when the
+          recipient presses Reveal, or removed after it expires, on a later request to the service.
+        </p>
+      </section>
+
+      <section id="limits" aria-labelledby="limits-title">
+        <h2 id="limits-title">Limits</h2>
+        <ul class="ticks">
+          <!-- site:onetimepass -->
+          <li>Texts up to 16 KB. The sender picks 1 hour, 1 day or 7 days.</li>
+          <li>One file per link, up to 256 KB. A file link lasts 1 hour.</li>
+          <!-- /site:onetimepass -->
+          <!-- site:selfhost
+          <li>Texts up to 16 KB. The sender picks 1 hour, 1 day or 7 days.</li>
+          <li>One file per link, up to 256 KB, or less if the operator of this instance set a lower limit. A file link lasts 1 hour.</li>
+          site:selfhost -->
+          <li>A link works once: pressing Reveal deletes it. A wrong passphrase deletes it too.</li>
+          <!-- site:onetimepass -->
+          <li>
+            Storage is limited: at most 20,000 secrets at once, and a limited total size. While it is nearly full, new
+            links can last at most 1 day; when it is full, creating links fails until space frees up.
+          </li>
+          <!-- /site:onetimepass -->
+          <!-- site:selfhost
+          <li>
+            Storage is limited: a set number of secrets at once (20,000 unless the operator of this instance changed it),
+            and a limited total size. While it is nearly full, new links can last at most 1 day; when it is full,
+            creating links fails until space frees up.
+          </li>
+          site:selfhost -->
+        </ul>
+      </section>
+
+      <section id="availability" aria-labelledby="availability-title">
+        <h2 id="availability-title">Availability and the code</h2>
+        <p>
+          The service is free and provided as it is. There is no guarantee that it is available, that a link can be
+          created or opened, or that an item stays stored until it expires. It can be changed, limited or stopped at
+          any time. Do not use a onetime link as the only copy of anything you need.
+        </p>
+        <p>
+          The onetime code is licensed under the MIT License and is provided as is, without warranty, as that licence
+          says. It has not been independently audited.
+        </p>
+      </section>
+
+      <section id="contact" aria-labelledby="contact-title">
+        <h2 id="contact-title">Questions</h2>
+        <p>
+          For questions about these terms, use the contact on the <a href="/privacy#controller">privacy page</a>. To
+          report a link, see <a href="/privacy#abuse">Reporting abuse</a>.
+        </p>
+      </section>
+
+      <p class="explainer-cta"><a class="button" href="/">Share a secret</a></p>
+    </main>
+
+    <footer class="site-footer site-footer-plain">
+      <!-- site:onetimepass -->
+      <p>No accounts. Secrets are encrypted on your device. onetimepass.pages.dev, where secrets are created and opened, has no analytics or cookies. This information site uses Google Analytics only if you accept. Your theme choice and this choice are saved in your browser.</p>
+      <p><a href="/">Share a secret</a> · <a href="/how-it-works">How it works</a> · <a href="/command-line">Command-line tool</a> · <a href="/privacy">Privacy</a> · <a href="/terms" aria-current="page">Terms</a> · <a href="/privacy#abuse">Report abuse</a> · <a href="/privacy#cookies" data-cookie-settings>Cookie settings</a></p>
+      <!-- /site:onetimepass -->
+      <!-- site:selfhost
+      <p>No accounts. Secrets are encrypted on your device. No page of this site uses analytics or cookies. Your theme choice is saved in your browser.</p>
+      <p><a href="/">Share a secret</a> · <a href="/how-it-works">How it works</a> · <a href="/command-line">Command-line tool</a> · <a href="/privacy">Privacy</a> · <a href="/terms" aria-current="page">Terms</a> · <a href="/privacy#abuse">Report abuse</a></p>
+      site:selfhost -->
+    </footer>
+  </body>
+</html>

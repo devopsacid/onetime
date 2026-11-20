@@ -26,10 +26,10 @@ import {
 
 /** Rollup inputs (HTML pages) of a profile. */
 export function inputsFor(profile) {
-  const all = { main: "index.html", howItWorks: "how-it-works.html", commandLine: "command-line.html", privacy: "privacy.html", notFound: "404.html" };
+  const all = { main: "index.html", howItWorks: "how-it-works.html", commandLine: "command-line.html", privacy: "privacy.html", terms: "terms.html", notFound: "404.html" };
   if (profile === "selfhost") return all;
   if (profile === "onetimepass") return { main: all.main, commandLine: all.commandLine, notFound: all.notFound };
-  if (profile === "info") return { howItWorks: all.howItWorks, privacy: all.privacy, notFound: all.notFound };
+  if (profile === "info") return { howItWorks: all.howItWorks, privacy: all.privacy, terms: all.terms, notFound: all.notFound };
   throw new Error(`unknown profile ${profile}`);
 }
 

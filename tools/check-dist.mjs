@@ -7,9 +7,9 @@
 // site (dist-info); else the app (dist).
 //   app:      one strict CSP in /* and no Google string in any file; index, command-line, 404 and cli/ present, the info
 //             pages absent; _redirects exact (never a rule for / or /index.html); no resource URL to the info origin.
-//   info:     INFO_CSP in /*; 404 and every chunk it loads free of Google strings; how-it-works, privacy, 404 present,
+//   info:     INFO_CSP in /*; 404 and every chunk it loads free of Google strings; how-it-works, privacy, terms, 404 present,
 //             no index, command-line, cli/, _routes.json or manifest; _redirects exact; no resource URL to the app origin.
-//   selfhost: strict CSP, no GA, owner data or onetimepass(-info) hosts (cli/ may name the project URL); all five pages.
+//   selfhost: strict CSP, no GA, owner data or onetimepass(-info) hosts (cli/ may name the project URL); all six pages.
 // All: every root-relative <a href> points into the build; no `site:` markers or {{placeholders}} left.
 // Usage: node tools/check-dist.mjs [dir] [--profile info]   (default dir: dist)
 
@@ -328,8 +328,8 @@ for (const name of profile === "info" ? ["404.html"] : ["index.html", "404.html"
 
 // Which files exist (rule 3).
 {
-  const must = { app: ["index.html", "command-line.html", "404.html", "cli"], info: ["how-it-works.html", "privacy.html", "404.html"], selfhost: ["index.html", "how-it-works.html", "command-line.html", "privacy.html", "404.html"] }[profile];
-  const mustNot = { app: ["how-it-works.html", "privacy.html"], info: ["index.html", "command-line.html", "cli", "_routes.json", "manifest.webmanifest", "_worker.js"], selfhost: ["_redirects"] }[profile];
+  const must = { app: ["index.html", "command-line.html", "404.html", "cli"], info: ["how-it-works.html", "privacy.html", "terms.html", "404.html"], selfhost: ["index.html", "how-it-works.html", "command-line.html", "privacy.html", "terms.html", "404.html"] }[profile];
+  const mustNot = { app: ["how-it-works.html", "privacy.html", "terms.html"], info: ["index.html", "command-line.html", "cli", "_routes.json", "manifest.webmanifest", "_worker.js"], selfhost: ["_redirects"] }[profile];
   for (const name of must) if (!exists(name)) problems.push(`${profile} build: ${name} is missing`);
   for (const name of mustNot) if (exists(name)) problems.push(`${profile} build: ${name} must not be present`);
 }

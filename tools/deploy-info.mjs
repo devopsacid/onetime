@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 
 export const INFO_PROJECT = "onetimepass-info";
 const FORBIDDEN = ["_routes.json", "index.html", "command-line.html", "manifest.webmanifest", "_worker.js", "functions", "cli", "wrangler.jsonc", "wrangler.toml"];
-const REQUIRED = ["how-it-works.html", "privacy.html", "404.html", "_headers", "_redirects"];
+const REQUIRED = ["how-it-works.html", "privacy.html", "terms.html", "404.html", "_headers", "_redirects"];
 
 /** Throws unless `dir` looks like the info build: its pages present, nothing of the app or a Function in it. */
 export function assertInfoDist(dir) {
