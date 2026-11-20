@@ -629,7 +629,7 @@ async function createLink(io: Io, text: string, ttl: number, server: string, pas
   if (typeof id !== "string" || !ID_PATTERN.test(id)) {
     throw new ExitError(EXIT.network, "The server returned an invalid secret id.");
   }
-  return buildLink(server, { id, key: encrypted.key, format: encrypted.format, passphrase: encrypted.passphrase });
+  return buildLink(server, { id, key: encrypted.key, format: encrypted.format, passphrase: encrypted.passphrase, file: false });
 }
 
 function sendHints(io: Io, ttl: number, passphrase: boolean): void {

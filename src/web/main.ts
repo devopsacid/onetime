@@ -108,7 +108,7 @@ el<HTMLFormElement>("create-form").addEventListener("submit", async (event) => {
     secretInput.value = "";
     clearPassphraseFields();
     updateSize();
-    el<HTMLInputElement>("link").value = buildLink(location.origin, { id, key, format, passphrase });
+    el<HTMLInputElement>("link").value = buildLink(location.origin, { id, key, format, passphrase, file: false });
     el("created-pp-hint").hidden = !passphrase;
     el("created-check-hint").hidden = !passphrase;
     el("created-ttl").textContent = ttlSelect.selectedOptions[0]?.textContent ?? "";
@@ -315,6 +315,15 @@ async function route(): Promise<void> {
     showGone(
       "This link is incomplete",
       "Part of the link is missing or changed. Copy the whole link again, including everything after the # sign.",
+    );
+    return;
+  }
+
+  if (parsed.file) {
+    // File links need the file UI, which this build does not have yet. No request is made, so nothing is used up.
+    showGone(
+      "This page cannot open this link yet",
+      "This link holds a file, and this version of the page cannot receive files. Nothing has been used up. Try again later.",
     );
     return;
   }

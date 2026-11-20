@@ -19,7 +19,7 @@ export const FILE_META_MAX = 4 + 1 + 255 + 1 + 127;
 export const FILE_BUCKETS = [1024, 4096, MAX_SECRET_BYTES + 4, ...[64, 128, 256, 512, 1024].map((k) => k * 1024 + FILE_META_MAX)] as const;
 
 /** Largest blob the router reads: the largest file blob the format allows (hosted limits may be lower, see fileBlobBytes). */
-export const MAX_BLOB_BYTES = FILE_BUCKETS[FILE_BUCKETS.length - 1] + 14 + 16;
+export const MAX_BLOB_BYTES = FILE_BUCKETS[FILE_BUCKETS.length - 1]! + 14 + 16;
 
 /** Smallest blob size whose block holds a file of `maxFile` bytes with maximal meta. Throws RangeError outside 1..format maximum. */
 export function fileBlobBytes(maxFile: number): number {
@@ -60,5 +60,5 @@ export const KEY_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 /** Length of the padded block (4-byte length prefix, secret, zero bytes) in a v2 blob; see docs/plans/blob-v2.md. */
 export const V2_BUCKETS = [256, 1024, 4096, MAX_SECRET_BYTES + 4] as const;
 
-/** Link format prefix of v2 links: "2", or "2p" when a passphrase is needed. */
-export const FORMAT_PATTERN = /^2p?$/;
+/** Link format prefix of v2 links: "2", "2p" (passphrase), "2f" (file) or "2fp" (file with passphrase). */
+export const FORMAT_PATTERN = /^2f?p?$/;
