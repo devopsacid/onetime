@@ -37,10 +37,10 @@ describe("encodeFilePayload and decodeFilePayload", () => {
     expect(odd.type).toBe("");
   });
 
-  it("the writer refuses empty content and content above MAX_FILE_BYTES", () => {
+  it("the writer refuses empty content and content above FORMAT_MAX_FILE_BYTES (the server limit is the caller's check)", () => {
     expect(() => encodeFilePayload({ name: "a", type: "", bytes: new Uint8Array(0) })).toThrow();
-    expect(() => encodeFilePayload({ name: "a", type: "", bytes: new Uint8Array(MAX_FILE_BYTES + 1) })).toThrow();
-    expect(() => encodeFilePayload({ name: "a", type: "", bytes: new Uint8Array(MAX_FILE_BYTES) })).not.toThrow();
+    expect(() => encodeFilePayload({ name: "a", type: "", bytes: new Uint8Array(FORMAT_MAX_FILE_BYTES + 1) })).toThrow();
+    expect(() => encodeFilePayload({ name: "a", type: "", bytes: new Uint8Array(FORMAT_MAX_FILE_BYTES) })).not.toThrow();
   });
 
   it("the largest name (200 bytes) and type fit the 388-byte meta budget", () => {
@@ -72,9 +72,9 @@ describe("decodeFilePayload rejects", () => {
   it("empty content", () => {
     expect(() => decodeFilePayload(raw(ok, new Uint8Array(0), new Uint8Array(0)))).toThrow();
   });
-  it("readers accept content up to the format maximum (1 MiB), above the 128 KiB writer limit, and refuse more", () => {
-    expect(MAX_FILE_BYTES).toBe(131_072);
-    expect(FORMAT_MAX_FILE_BYTES).toBe(1024 * 1024);
+  it("readers accept content up to the format maximum (5 MiB), above the 256 KiB hosted limit, and refuse more", () => {
+    expect(MAX_FILE_BYTES).toBe(262_144);
+    expect(FORMAT_MAX_FILE_BYTES).toBe(5 * 1024 * 1024);
     expect(() => decodeFilePayload(raw(ok, new Uint8Array(0), new Uint8Array(MAX_FILE_BYTES + 1)))).not.toThrow();
     expect(() => decodeFilePayload(raw(ok, new Uint8Array(0), new Uint8Array(FORMAT_MAX_FILE_BYTES)))).not.toThrow();
     expect(() => decodeFilePayload(raw(ok, new Uint8Array(0), new Uint8Array(FORMAT_MAX_FILE_BYTES + 1)))).toThrow();

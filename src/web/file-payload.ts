@@ -1,4 +1,4 @@
-import { FORMAT_MAX_FILE_BYTES, MAX_FILE_BYTES } from "../shared/limits";
+import { FORMAT_MAX_FILE_BYTES } from "../shared/limits";
 import { cleanMime, safeFileName } from "./filename";
 
 /** What the sender gives and the receiver gets. The reader's name and type are already sanitised. */
@@ -10,7 +10,7 @@ export interface FileParts {
 
 /** Payload layout (docs/plans/file-transfer.md A-2): N, name (UTF-8), T, type (ASCII), content. */
 export function encodeFilePayload(file: { name: string; type: string; bytes: Uint8Array }): Uint8Array<ArrayBuffer> {
-  if (file.bytes.length === 0 || file.bytes.length > MAX_FILE_BYTES) throw new RangeError("File size out of range");
+  if (file.bytes.length === 0 || file.bytes.length > FORMAT_MAX_FILE_BYTES) throw new RangeError("File size out of range");
   const name = new TextEncoder().encode(safeFileName(file.name));
   const type = new TextEncoder().encode(cleanMime(file.type));
   const out = new Uint8Array(2 + name.length + type.length + file.bytes.length);

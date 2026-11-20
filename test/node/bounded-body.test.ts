@@ -28,15 +28,15 @@ async function readAll(stream: ReadableStream<Uint8Array>): Promise<number> {
 }
 
 describe("boundedBody", () => {
-  it("lets exactly 131,490 bytes through complete by default and cuts at 131,491", async () => {
-    expect(MAX_BLOB_BYTES).toBe(131_490);
-    const exact = Readable.from([Buffer.alloc(131_490, 1)]) as unknown as IncomingMessage;
+  it("lets exactly 262,562 bytes through complete by default and cuts at 131,491", async () => {
+    expect(MAX_BLOB_BYTES).toBe(262_562);
+    const exact = Readable.from([Buffer.alloc(262_562, 1)]) as unknown as IncomingMessage;
     const ok = boundedBody(exact);
-    expect(await readAll(ok.stream)).toBe(131_490);
+    expect(await readAll(ok.stream)).toBe(262_562);
     expect(ok.complete()).toBe(true);
-    const over = Readable.from([Buffer.alloc(131_491, 1)]) as unknown as IncomingMessage;
+    const over = Readable.from([Buffer.alloc(262_563, 1)]) as unknown as IncomingMessage;
     const cut = boundedBody(over);
-    expect(await readAll(cut.stream)).toBe(131_491);
+    expect(await readAll(cut.stream)).toBe(262_563);
     expect(cut.complete()).toBe(false);
   });
 

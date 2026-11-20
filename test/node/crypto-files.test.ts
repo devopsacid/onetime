@@ -5,8 +5,8 @@ import { SecretTooLargeError, WRITE_FILES, createCodec, encryptFile, type LinkKe
 
 // ---- An independent implementation of file blobs from docs/plans/file-transfer.md, node:crypto only, with every size hard-coded. ----
 
-const REF_BLOCKS = [1024, 4096, 16_388, 65_924, 131_460, 262_532, 524_676, 1_048_964];
-const REF_BLOBS = [1054, 4126, 16_418, 65_954, 131_490, 262_562, 524_706, 1_048_994];
+const REF_BLOCKS = [1024, 4096, 16_388, 65_924, 131_460, 262_532, 524_676, 1_048_964, 2_097_540, 4_194_692, 5_243_268];
+const REF_BLOBS = [1054, 4126, 16_418, 65_954, 131_490, 262_562, 524_706, 1_048_994, 2_097_570, 4_194_722, 5_243_298];
 
 const hkdf = (ikm: Uint8Array, info: string, bytes: number): Buffer =>
   Buffer.from(hkdfSync("sha256", ikm, Buffer.alloc(0), Buffer.from(info, "ascii"), bytes));
@@ -124,7 +124,12 @@ describe("file blobs against an independent node:crypto implementation", () => {
       [16_378, 65_954],
       [65_913, 65_954],
       [65_914, 131_490],
-      [131_072, 131_490], // the hosted writer limit (128 KiB)
+      [131_072, 131_490],
+      [131_449, 131_490],
+      [131_450, 262_562],
+      [262_144, 262_562], // the hosted limit (256 KiB)
+      [262_521, 262_562],
+      [262_522, 524_706],
     ];
     for (const [size, blobSize] of cases) {
       const bytes = new Uint8Array(size).fill(7);
@@ -145,11 +150,11 @@ describe("file blobs against an independent node:crypto implementation", () => {
     expect(opened.kind === "file" && sameBytes(opened.bytes, big)).toBe(true);
   }, 120_000);
 
-  it("readers still open a 1 MiB file blob (format maximum) built by the reference, so no instance can make an unopenable link", async () => {
+  it("readers open a 5 MiB file blob (format maximum) built by the reference, so no instance can make an unopenable link", async () => {
     const kLink = randomBytes(32);
-    const content = randomBytes(1024 * 1024);
+    const content = randomBytes(5 * 1024 * 1024);
     const blob = refEncryptFile({ name: "big.dat", type: "", content }, kLink);
-    expect(blob.length).toBe(1_048_994);
+    expect(blob.length).toBe(5_243_298);
     const link = fileLink(toBase64Url(kLink));
     const opened = await codec.openPayload(asBlob(blob), await codec.deriveKey(link), link);
     expect(opened.kind === "file" && sameBytes(opened.bytes, content)).toBe(true);
@@ -284,9 +289,9 @@ describe("writing files (on since deploy F2)", () => {
     await expect(createCodec({ writeFormat: 2, writeFiles: false }).encryptFile({ name: "a", type: "", bytes: new Uint8Array([1]) })).rejects.toThrow();
     await expect(codec.encryptFile({ name: "a", type: "", bytes: new Uint8Array([1]) })).resolves.toBeDefined();
   });
-  it("refuses empty content, content above 128 KiB and a bad passphrase", async () => {
+  it("refuses empty content, content above the 5 MiB format maximum and a bad passphrase", async () => {
     await expect(codec.encryptFile({ name: "a", type: "", bytes: new Uint8Array(0) })).rejects.toThrow();
-    await expect(codec.encryptFile({ name: "a", type: "", bytes: new Uint8Array(128 * 1024 + 1) })).rejects.toBeInstanceOf(SecretTooLargeError);
+    await expect(codec.encryptFile({ name: "a", type: "", bytes: new Uint8Array(5 * 1024 * 1024 + 1) })).rejects.toBeInstanceOf(SecretTooLargeError);
     await expect(codec.encryptFile({ name: "a", type: "", bytes: new Uint8Array([1]) }, "short")).rejects.toThrow();
   });
 });

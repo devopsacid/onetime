@@ -10,26 +10,32 @@ export const BLOB_OVERHEAD_BYTES = 12 + 16;
 export const MAX_TEXT_BLOB_BYTES = MAX_SECRET_BYTES + 4 + 14 + 16;
 
 /**
- * Largest file (bytes of content) any writer sends and any router stores: 128 KiB. The A0 spike (docs/plans/file-transfer.md,
- * Deviations) showed that blobs of 256 KiB and more can kill a reveal on the free plan after the row is deleted. Self-hosted
- * servers use the same limit: the web page and the CLI refuse more, so a bigger body limit would only be dead weight.
+ * Largest file (bytes of content) the hosted service stores: 256 KiB, and the default of a self-hosted server. The A0 spike
+ * (docs/plans/file-transfer.md, Deviations) lost a reveal to error 1102 at this size before the reveal path was made cheaper,
+ * so a re-spike is required before the hosted deploy. Self-hosted servers can raise it (ONETIME_MAX_FILE_BYTES) up to
+ * FORMAT_MAX_FILE_BYTES.
  */
-export const MAX_FILE_BYTES = 128 * 1024;
+export const MAX_FILE_BYTES = 256 * 1024;
 
-/** Largest file the blob format can hold (FILE_BUCKETS' last block). Readers accept up to this, so a link is never unopenable. */
-export const FORMAT_MAX_FILE_BYTES = 1024 * 1024;
+/** Largest file the blob format can hold (FILE_BUCKETS' last block): 5 MiB. Readers accept up to this, so a link is never unopenable. */
+export const FORMAT_MAX_FILE_BYTES = 5 * 1024 * 1024;
 
 /** Largest file meta in the payload: 4-byte length prefix + 1 + 255 (name) + 1 + 127 (type). */
 export const FILE_META_MAX = 4 + 1 + 255 + 1 + 127;
 
-/** Padded block sizes of file blobs. The first three equal v2 text buckets; above 16 KiB they double, meta on top. */
-export const FILE_BUCKETS = [1024, 4096, MAX_SECRET_BYTES + 4, ...[64, 128, 256, 512, 1024].map((k) => k * 1024 + FILE_META_MAX)] as const;
+/** Padded block sizes of file blobs. The first three equal v2 text buckets; above 16 KiB they double up to 4 MiB, then 5 MiB, meta on top. */
+export const FILE_BUCKETS = [
+  1024,
+  4096,
+  MAX_SECRET_BYTES + 4,
+  ...[64, 128, 256, 512, 1024, 2048, 4096, 5120].map((k) => k * 1024 + FILE_META_MAX),
+] as const;
 
-/** Largest blob the format allows (1,048,994): what readers accept from a reveal. */
+/** Largest blob the format allows (5,243,298): what readers accept from a reveal. */
 export const FORMAT_MAX_BLOB_BYTES = FILE_BUCKETS[FILE_BUCKETS.length - 1]! + 14 + 16;
 
-/** Largest blob a router reads and stores (131,490): the file blob of MAX_FILE_BYTES; equals fileBlobBytes(MAX_FILE_BYTES). */
-export const MAX_BLOB_BYTES = FILE_BUCKETS[4]! + 14 + 16;
+/** Largest blob the hosted router reads and stores (262,562): the file blob of MAX_FILE_BYTES; equals fileBlobBytes(MAX_FILE_BYTES). */
+export const MAX_BLOB_BYTES = FILE_BUCKETS[5]! + 14 + 16;
 
 /** Smallest blob size whose block holds a file of `maxFile` bytes with maximal meta. Throws RangeError outside 1..format maximum. */
 export function fileBlobBytes(maxFile: number): number {
@@ -38,10 +44,10 @@ export function fileBlobBytes(maxFile: number): number {
   return bucket + 14 + 16;
 }
 
-/** Blobs above MAX_TEXT_BLOB_BYTES can last at most this long (409 with maxTtl otherwise). */
-export const LARGE_MAX_TTL_SECONDS = 24 * 60 * 60;
-/** Client rule for every file. */
-export const FILE_MAX_TTL_SECONDS = 24 * 60 * 60;
+/** Blobs above MAX_TEXT_BLOB_BYTES (files) can last at most this long on the hosted service (409 with maxTtl otherwise): 1 hour. */
+export const LARGE_MAX_TTL_SECONDS = 60 * 60;
+/** The hosted limit for files, as clients assume it when a server does not answer GET /api/limits. */
+export const FILE_MAX_TTL_SECONDS = LARGE_MAX_TTL_SECONDS;
 /** All stored blobs together; the capped insert refuses beyond this. */
 export const MAX_STORED_BYTES = 400_000_000;
 /** Large blobs insert only while the total stays at or below this; the rest is reserved for texts. */

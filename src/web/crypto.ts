@@ -1,4 +1,4 @@
-import { FILE_BUCKETS, FILE_META_MAX, FORMAT_MAX_FILE_BYTES, KEY_PATTERN, MAX_FILE_BYTES, MAX_SECRET_BYTES, V2_BUCKETS } from "../shared/limits";
+import { FILE_BUCKETS, FILE_META_MAX, FORMAT_MAX_FILE_BYTES, KEY_PATTERN, MAX_SECRET_BYTES, V2_BUCKETS } from "../shared/limits";
 import { fromBase64Url, toBase64Url } from "./base64url";
 import { decodeFilePayload, encodeFilePayload, type FileParts } from "./file-payload";
 import { pad, unpad } from "./padding";
@@ -188,7 +188,7 @@ export function createCodec(opts: { pbkdf2Iterations?: number; writeFormat?: 1 |
 
   /**
    * Encrypts a file (blob v2 with the file flag) with a fresh random link key. Needs WRITE_FILES. The caller checks the size
-   * first (see MAX_FILE_BYTES); content above it throws SecretTooLargeError, empty content throws.
+   * first (the server's limit, see GET /api/limits); content above the format maximum (FORMAT_MAX_FILE_BYTES) throws SecretTooLargeError, empty content throws.
    */
   async function encryptFile(
     file: { name: string; type: string; bytes: Uint8Array },
@@ -196,7 +196,7 @@ export function createCodec(opts: { pbkdf2Iterations?: number; writeFormat?: 1 |
   ): Promise<{ blob: Uint8Array<ArrayBuffer>; key: string; format: 2; passphrase: boolean; file: true }> {
     if (!writeFiles) throw new Error("Sending files is not available yet");
     if (file.bytes.byteLength === 0) throw new Error("The file is empty");
-    if (file.bytes.byteLength > MAX_FILE_BYTES) throw new SecretTooLargeError();
+    if (file.bytes.byteLength > FORMAT_MAX_FILE_BYTES) throw new SecretTooLargeError();
 
     const key = toBase64Url(crypto.getRandomValues(new Uint8Array(32)));
     const link: LinkKey = { key, format: 2, passphrase: passphrase !== undefined, file: true };

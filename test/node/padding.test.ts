@@ -36,22 +36,22 @@ describe("MAX_TEXT_BLOB_BYTES", () => {
 });
 
 describe("file limits", () => {
-  it("MAX_FILE_BYTES is 128 KiB (spike A0), the format maximum for readers is 1 MiB, FILE_META_MAX is the 4-byte prefix plus 1 + 255 + 1 + 127", () => {
-    expect(MAX_FILE_BYTES).toBe(131_072);
-    expect(FORMAT_MAX_FILE_BYTES).toBe(1_048_576);
+  it("MAX_FILE_BYTES is 256 KiB (hosted), the format maximum for readers is 5 MiB, FILE_META_MAX is the 4-byte prefix plus 1 + 255 + 1 + 127", () => {
+    expect(MAX_FILE_BYTES).toBe(262_144);
+    expect(FORMAT_MAX_FILE_BYTES).toBe(5_242_880);
     expect(FILE_META_MAX).toBe(388);
   });
   it("FILE_BUCKETS are the three small text blocks, then doubling blocks that hold meta on top of the file", () => {
-    expect([...FILE_BUCKETS]).toEqual([1024, 4096, 16_388, 65_924, 131_460, 262_532, 524_676, 1_048_964]);
+    expect([...FILE_BUCKETS]).toEqual([1024, 4096, 16_388, 65_924, 131_460, 262_532, 524_676, 1_048_964, 2_097_540, 4_194_692, 5_243_268]);
   });
-  it("MAX_BLOB_BYTES (what every router reads) is the hosted file blob, 131,490, and equals fileBlobBytes(MAX_FILE_BYTES)", () => {
-    expect(MAX_BLOB_BYTES).toBe(131_490);
-    expect(fileBlobBytes(MAX_FILE_BYTES)).toBe(131_490);
-    expect(MAX_BLOB_BYTES).toBe(FILE_BUCKETS[4]! + 30);
+  it("MAX_BLOB_BYTES (what the hosted router reads) is the hosted file blob, 262,562, and equals fileBlobBytes(MAX_FILE_BYTES)", () => {
+    expect(MAX_BLOB_BYTES).toBe(262_562);
+    expect(fileBlobBytes(MAX_FILE_BYTES)).toBe(262_562);
+    expect(MAX_BLOB_BYTES).toBe(FILE_BUCKETS[5]! + 30);
   });
-  it("FORMAT_MAX_BLOB_BYTES (what readers accept) is the largest blob of the format, 1,048,994", () => {
-    expect(FORMAT_MAX_BLOB_BYTES).toBe(1_048_994);
-    expect(fileBlobBytes(FORMAT_MAX_FILE_BYTES)).toBe(1_048_994);
+  it("FORMAT_MAX_BLOB_BYTES (what readers accept) is the largest blob of the format, 5,243,298", () => {
+    expect(FORMAT_MAX_BLOB_BYTES).toBe(5_243_298);
+    expect(fileBlobBytes(FORMAT_MAX_FILE_BYTES)).toBe(5_243_298);
     expect(FORMAT_MAX_BLOB_BYTES).toBe(FILE_BUCKETS[FILE_BUCKETS.length - 1]! + 30);
     expect(FORMAT_MAX_BLOB_BYTES).toBeGreaterThanOrEqual(MAX_BLOB_BYTES);
   });
@@ -62,14 +62,17 @@ describe("file limits", () => {
     expect(fileBlobBytes(16_000)).toBe(16_418);
     expect(fileBlobBytes(16_001)).toBe(65_954);
     expect(fileBlobBytes(256 * 1024)).toBe(262_562);
-    expect(() => fileBlobBytes(1024 * 1024 + 1)).toThrow(RangeError);
+    expect(fileBlobBytes(1024 * 1024)).toBe(1_048_994);
+    expect(fileBlobBytes(1024 * 1024 + 1)).toBe(2_097_570);
+    expect(fileBlobBytes(5 * 1024 * 1024)).toBe(5_243_298);
+    expect(() => fileBlobBytes(5 * 1024 * 1024 + 1)).toThrow(RangeError);
     expect(() => fileBlobBytes(0)).toThrow(RangeError);
   });
   it("byte budgets and the TTL rule for large blobs", () => {
     expect(MAX_STORED_BYTES).toBe(400_000_000);
     expect(MAX_LARGE_STORED_BYTES).toBe(200_000_000);
-    expect(LARGE_MAX_TTL_SECONDS).toBe(86_400);
-    expect(FILE_MAX_TTL_SECONDS).toBe(86_400);
+    expect(LARGE_MAX_TTL_SECONDS).toBe(3600);
+    expect(FILE_MAX_TTL_SECONDS).toBe(3600);
   });
 });
 
@@ -156,6 +159,9 @@ describe("pad and unpad with file buckets", () => {
     [262_144, 262_532],
     [524_288, 524_676],
     [1024 * 1024, 1_048_964],
+    [2 * 1024 * 1024, 2_097_540],
+    [4 * 1024 * 1024, 4_194_692],
+    [5 * 1024 * 1024, 5_243_268],
   ];
   for (const [file, block] of cases) {
     it(`puts a ${file}-byte file with maximal meta in a ${block}-byte block`, () => {

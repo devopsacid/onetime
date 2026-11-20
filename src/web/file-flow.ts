@@ -4,7 +4,7 @@ import { formatBytes, riskyFile } from "./filename";
 
 /** DOM-free decisions for the file mode of the create view and for the revealed-file view. */
 
-export const FILE_TTL_VALUES: readonly number[] = [3600, FILE_MAX_TTL_SECONDS];
+export const FILE_TTL_VALUES: readonly number[] = [FILE_MAX_TTL_SECONDS];
 
 export function checkFileSize(size: number): string | null {
   if (size === 0) return "The file is empty.";
