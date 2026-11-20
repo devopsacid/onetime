@@ -60,6 +60,41 @@ function check(dir: string): { code: number | null; out: string } {
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
 }
 
+const faqPage = (origin: string, ld: Array<[string, string]>, visible: Array<[string, string]>) => {
+  const entity = ld.map(([name, text]) => ({ "@type": "Question", name, acceptedAnswer: { "@type": "Answer", text } }));
+  const json = JSON.stringify({ "@context": "https://schema.org", "@graph": [{ "@type": "FAQPage", mainEntity: entity }] });
+  const details = visible.map(([q, a]) => `<details><summary>${q}</summary>\n<p>\n  ${a}\n</p></details>`).join("\n");
+  return page(origin, `<script type="application/ld+json">${json}</script><section id="faq"><div class="faq">${details}</div></section>`);
+};
+
+describe("check-dist FAQ equality", () => {
+  let tmp: ReturnType<typeof tempDir>;
+  beforeEach(() => {
+    tmp = tempDir("check-dist-faq-");
+  });
+  afterEach(() => tmp.remove());
+  const qa: Array<[string, string]> = [["Can you read it?", "No. The key is after <code>#</code>."]];
+  const plain: Array<[string, string]> = [["Can you read it?", "No. The key is after #."]];
+
+  it.each(["selfhost", "info"] as const)("%s: a matching FAQ (whitespace and tags normalised) passes", (profile) => {
+    const dir = fixture(tmp.path, profile);
+    writeFileSync(join(dir, "how-it-works.html"), faqPage(ownOrigin(profile), plain, qa));
+    expect(check(dir).code).toBe(0);
+  });
+  it.each(["selfhost", "info"] as const)("%s: a JSON-LD answer that differs from the visible one fails", (profile) => {
+    const dir = fixture(tmp.path, profile);
+    writeFileSync(join(dir, "how-it-works.html"), faqPage(ownOrigin(profile), [["Can you read it?", "Yes."]], qa));
+    const r = check(dir);
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/FAQ/);
+  });
+  it("a JSON-LD question missing from the visible FAQ fails", () => {
+    const dir = fixture(tmp.path, "info");
+    writeFileSync(join(dir, "how-it-works.html"), faqPage(INFO, [...plain, ["Extra?", "Hidden."]], qa));
+    expect(check(dir).code).toBe(1);
+  });
+});
+
 describe("check-dist profiles", () => {
   let tmp: ReturnType<typeof tempDir>;
   beforeEach(() => {
