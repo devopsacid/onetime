@@ -11,7 +11,8 @@ BEGIN
 END;
 DROP TRIGGER secrets_counter_insert;
 DROP TRIGGER secrets_counter_delete;
--- Between the CREATE and the DROP both triggers ran (an over-count only: stricter, never an overshoot).
+-- Between the CREATE and the DROP both trigger sets ran: an insert counts twice (over-count), but a delete
+-- decrements `stored` twice (an under-count). The reset below corrects it.
 -- This resets both counters exactly, also if the file did not run as one transaction.
 UPDATE stats SET stored = (SELECT COUNT(*) FROM secrets),
                  bytes = (SELECT COALESCE(SUM(length(blob)), 0) FROM secrets) WHERE id = 1;
