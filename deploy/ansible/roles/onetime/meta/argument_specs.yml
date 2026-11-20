@@ -58,6 +58,10 @@ argument_specs:
         type: path
         default: /var/lib/onetime
         description: Docker mode. Host folder with the database (mode 0700). Local or block storage only, never NFS/SMB.
+      onetime_require_data_mount:
+        type: bool
+        default: false
+        description: Refuse to start unless the database folder is a mount point (set it when a separate data disk is used).
       onetime_user:
         type: str
         default: onetime
@@ -96,6 +100,10 @@ argument_specs:
         choices: [caddy, nginx, none]
         default: caddy
         description: Reverse proxy with TLS in front of the app. Both are configured without request logs.
+      onetime_max_body_bytes:
+        type: int
+        default: 65536
+        description: Largest request body Caddy or nginx accepts, in bytes.
       onetime_domain:
         type: str
         default: ""

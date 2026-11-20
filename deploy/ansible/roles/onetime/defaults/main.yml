@@ -29,6 +29,9 @@ onetime_registry_password: ""
 onetime_docker_install: true
 # Host folder mounted at /data. Owned by the onetime system user, mode 0700. Mount a data disk here if you have one.
 onetime_data_dir: /var/lib/onetime
+# true = the database folder is a separate disk: the unit refuses to start unless it is a mount point, so the app never
+# runs on the root disk when the data disk is missing (Docker mode: onetime_data_dir; systemd mode: /var/lib/private/onetime).
+onetime_require_data_mount: false
 # The container runs as this host system user (not uid 1000, which is often the cloud image's login user).
 onetime_user: onetime
 # Extra "docker run" arguments, for example ["--memory", "256m", "--pids-limit", "256"].
@@ -47,6 +50,9 @@ onetime_node_major: 24
 onetime_node_bin: /usr/bin/node
 
 # --- reverse proxy ---
+# Largest request body the proxy accepts, in bytes. A secret is at most 16 KB + 28 bytes today; the app refuses anything
+# larger with 413 by itself.
+onetime_max_body_bytes: 65536
 # "caddy" (automatic HTTPS), "nginx" (bring your certificate) or "none".
 onetime_proxy: caddy
 # Public host name; must equal the host of the ONETIME_ORIGIN the image or bundle was built with.

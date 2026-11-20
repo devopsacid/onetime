@@ -37,9 +37,11 @@
       - onetime_env.keys() | reject("match", "^[A-Za-z_][A-Za-z0-9_]*$") | list | length == 0
       - onetime_env.values() | map("string") | select("search", "[\\r\\n]") | list | length == 0
       - onetime_max_stored | string is match("^([1-9][0-9]{0,7})?$")
+      - onetime_max_body_bytes | int >= 1024
     fail_msg: >-
       onetime_env must not set HOST, PORT or ONETIME_DB, names must be shell-style, values must be one line;
-      onetime_max_stored must be empty or a whole number from 1 to 10000000.
+      onetime_max_stored must be empty or a whole number from 1 to 10000000;
+      onetime_max_body_bytes must be a whole number of at least 1024.
     quiet: true
 
 - name: Check the listen address

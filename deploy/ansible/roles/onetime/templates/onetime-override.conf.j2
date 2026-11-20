@@ -7,3 +7,13 @@ Environment=HOST={{ onetime_listen_host }}
 Environment=PORT={{ onetime_port }}
 # ONETIME_MAX_STORED and extra variables. The database stays in /var/lib/onetime (StateDirectory of the unit).
 EnvironmentFile=/etc/onetime/env
+{% if onetime_require_data_mount %}
+[Unit]
+# Give up after 5 failed starts in a minute (for example no data disk) instead of retrying every 2 s.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+# The data disk must be mounted on the unit's state directory; never fall back to the root disk.
+ExecStartPre=/usr/bin/mountpoint -q /var/lib/private/onetime
+{% endif %}

@@ -107,27 +107,32 @@
     - onetime_image_archive | length > 0
     - onetime_archive_copy is changed or onetime_image_before.rc != 0
 
-- name: Log in to the registry
-  ansible.builtin.command:
-    argv: [docker, login, --username, "{{ onetime_registry_username }}", --password-stdin, "{{ onetime_registry }}"]
-    stdin: "{{ onetime_registry_password }}"
-  no_log: true
-  changed_when: false
+- name: Pull the image (with an optional registry login, always logged out again)
   when:
     - onetime_image_archive | length == 0
-    - onetime_registry | length > 0
     - onetime_image_before.rc != 0 or onetime_image_pull == "always"
+  block:
+    - name: Log in to the registry
+      ansible.builtin.command:
+        argv: [docker, login, --username, "{{ onetime_registry_username }}", --password-stdin, "{{ onetime_registry }}"]
+        stdin: "{{ onetime_registry_password }}"
+      no_log: true
+      changed_when: false
+      when: onetime_registry | length > 0
 
-- name: Pull the image
-  ansible.builtin.shell:
-    cmd: docker pull --quiet "$IMAGE" >/dev/null && docker image inspect --format '{{ "{{" }}.Id{{ "}}" }}' "$IMAGE"
-  environment:
-    IMAGE: "{{ onetime_image }}"
-  register: onetime_image_pull_result
-  changed_when: onetime_image_pull_result.stdout != onetime_image_before.stdout
-  when:
-    - onetime_image_archive | length == 0
-    - onetime_image_before.rc != 0 or onetime_image_pull == "always"
+    - name: Pull the image
+      ansible.builtin.shell:
+        cmd: docker pull --quiet "$IMAGE" >/dev/null && docker image inspect --format '{{ "{{" }}.Id{{ "}}" }}' "$IMAGE"
+      environment:
+        IMAGE: "{{ onetime_image }}"
+      register: onetime_image_pull_result
+      changed_when: onetime_image_pull_result.stdout != onetime_image_before.stdout
+  always:
+    - name: Log out of the registry (no credentials stay on the host)
+      ansible.builtin.command:
+        argv: [docker, logout, "{{ onetime_registry }}"]
+      changed_when: false
+      when: onetime_registry | length > 0
 
 - name: Find the image id after loading or pulling
   ansible.builtin.command:

@@ -33,8 +33,8 @@ server {
     error_log /var/log/nginx/onetime-error.log crit;
     server_tokens off;
 
-    # A secret is at most 16 KB plus 28 bytes.
-    client_max_body_size 64k;
+    # onetime_max_body_bytes; a secret is at most 16 KB plus 28 bytes today.
+    client_max_body_size {{ onetime_max_body_bytes | int }};
     client_header_timeout 10s;
     client_body_timeout 10s;
     send_timeout 15s;

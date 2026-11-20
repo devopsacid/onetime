@@ -4,9 +4,16 @@ Description=onetime (Docker container), one-time secret links
 After=docker.service network-online.target
 Requires=docker.service
 Wants=network-online.target
+# A failing start (for example no data disk) gives up after 5 tries in a minute instead of retrying every 2 s.
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
+{% if onetime_require_data_mount %}
+# The data disk must be mounted; never fall back to a folder on the root disk.
+ExecStartPre=/usr/bin/mountpoint -q {{ onetime_data_dir }}
+{% endif %}
 ExecStartPre=-/usr/bin/docker rm --force onetime
 # Same hardening as compose.yaml. Runs as the host system user {{ onetime_user }} instead of the image's uid 1000.
 ExecStart=/usr/bin/docker run --rm --name onetime \

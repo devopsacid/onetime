@@ -19,9 +19,9 @@
 {% endif %}
 	reverse_proxy {{ '[' ~ onetime_listen_host ~ ']' if ':' in onetime_listen_host else onetime_listen_host }}:{{ onetime_port }}
 
-	# A secret is at most 16 KB plus 28 bytes; refuse anything bigger before it reaches the app.
+	# Refuse bodies over onetime_max_body_bytes before they reach the app (a secret is at most 16 KB plus 28 bytes today).
 	request_body {
-		max_size 64KB
+		max_size {{ onetime_max_body_bytes | int }}
 	}
 
 	encode zstd gzip
