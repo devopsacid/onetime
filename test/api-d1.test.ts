@@ -33,7 +33,7 @@ describe("D1 store statements", () => {
     const store = d1Store(spy);
     const id = "b".repeat(22);
     const now = 1_800_000_000_000;
-    await store.insertIfBelowCap(id, new Uint8Array(40), now + 60_000, now, 10);
+    await store.insertIfBelowCap(id, new Uint8Array(40), now + 60_000, 10);
     const issued: IssuedSql = { reveal: [], insert: into };
     into = [];
     expect(await store.take(id, now)).not.toBeNull();
@@ -51,6 +51,7 @@ describe("API contract on D1", () => {
       return response;
     },
     rowCount: async () => (await env.DB.prepare("SELECT COUNT(*) AS n FROM secrets").first<{ n: number }>())!.n,
+    storedCounter: async () => (await env.DB.prepare("SELECT stored FROM stats WHERE id = 1").first<{ stored: number }>())!.stored,
     expiresAt: async (id) =>
       (await env.DB.prepare("SELECT expires_at FROM secrets WHERE id = ?").bind(id).first<{ expires_at: number }>())?.expires_at ?? null,
     setExpiresAt: async (id, ms) => {

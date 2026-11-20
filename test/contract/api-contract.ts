@@ -9,6 +9,8 @@ export interface ApiHarness {
   /** Runs the router, then waits for background work (purges) to finish. */
   call(path: string, init?: RequestInit, options?: Options): Promise<Response>;
   rowCount(): Promise<number>;
+  /** The counter row, `SELECT stored FROM stats WHERE id = 1`. */
+  storedCounter(): Promise<number>;
   expiresAt(id: string): Promise<number | null>;
   setExpiresAt(id: string, ms: number): Promise<void>;
   ids(): Promise<string[]>;
@@ -273,7 +275,7 @@ export function defineApiContract(h: ApiHarness): void {
       expect(MAX_STORED_SECRETS).toBe(20_000);
     });
 
-    it("answers 503 while the table holds the maximum of unexpired secrets", async () => {
+    it("answers 503 while the table holds the maximum of stored secrets", async () => {
       await createOk();
       const stored = await rowCount();
       const options = { maxStored: stored };
@@ -295,6 +297,29 @@ export function defineApiContract(h: ApiHarness): void {
       await Promise.all(responses.map((response) => response.arrayBuffer()));
       expect(codes).toEqual([201, ...Array<number>(9).fill(503)]);
       expect(await rowCount()).toBe(before + 1);
+    });
+
+    it("keeps stats.stored equal to COUNT(*) after mixed concurrent create, reveal and expiry purge", async () => {
+      const T0 = 1_800_000_000_000;
+      expect(await h.storedCounter()).toBe(await rowCount());
+      const old = await Promise.all(Array.from({ length: 5 }, () => createOk(blobOf(64), "60", { now: T0 })));
+      const keep = await Promise.all(Array.from({ length: 5 }, () => createOk(blobOf(64), "3600", { now: T0 })));
+      expect(await h.storedCounter()).toBe(await rowCount());
+
+      // Reveals (including double reveals of the same id), creates and a purging create, all at once.
+      await Promise.all([
+        ...keep.slice(0, 3).flatMap((id) => [reveal(id, { now: T0 }), reveal(id, { now: T0 })]),
+        ...Array.from({ length: 4 }, () => create(blobOf(64), { ttl: "3600", options: { now: T0 + 61_000 } })),
+        reveal(old[0]!, { now: T0 + 61_000 }),
+      ].map(async (p) => (await p).arrayBuffer()));
+
+      expect(await h.storedCounter()).toBe(await rowCount());
+      expect((await h.ids()).filter((id) => old.includes(id))).toEqual([]);
+
+      // Refused creates (cap reached) do not move the counter either.
+      const stored = await rowCount();
+      expect((await create(blobOf(64), { options: { maxStored: stored } })).status).toBe(503);
+      expect(await h.storedCounter()).toBe(stored);
     });
 
     it("does not count expired secrets towards the cap", async () => {
@@ -320,5 +345,5 @@ export function expectAtomicSql({ reveal, insert }: IssuedSql): void {
   expect(reveal[0]).toMatch(/^DELETE FROM secrets WHERE id = \? AND expires_at > \? RETURNING blob$/i);
   expect(reveal.join(" ")).not.toMatch(/\bselect\b/i);
   expect(insert.map(squash)).toHaveLength(1);
-  expect(insert[0]).toMatch(/^INSERT INTO secrets \(id, blob, expires_at\) SELECT \S+, \S+, \S+ WHERE \(SELECT COUNT\(\*\) FROM secrets WHERE expires_at > \S+\) < \S+$/i);
+  expect(insert[0]).toMatch(/^INSERT INTO secrets \(id, blob, expires_at\) SELECT \S+, \S+, \S+ WHERE \(SELECT stored FROM stats WHERE id = 1\) < \S+$/i);
 }

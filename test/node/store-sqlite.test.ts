@@ -44,7 +44,7 @@ describe("SqliteStore", () => {
     const realExec = store.db.exec.bind(store.db);
     store.db.exec = ((sql: string) => (into.push(sql), realExec(sql))) as typeof store.db.exec;
     const issued: IssuedSql = { reveal: [], insert: [] };
-    await store.insertIfBelowCap("a".repeat(22), blobOf(40), T0 + 60_000, T0, 10);
+    await store.insertIfBelowCap("a".repeat(22), blobOf(40), T0 + 60_000, 10);
     issued.insert = into;
     into = [];
     expect(await store.take("a".repeat(22), T0)).not.toBeNull();
@@ -55,26 +55,28 @@ describe("SqliteStore", () => {
   it("round-trips every byte value", async () => {
     const blob = new Uint8Array(256);
     for (let i = 0; i < 256; i++) blob[i] = i;
-    expect(await store.insertIfBelowCap("a".repeat(22), blob, T0 + 1000, T0, 10)).toBe(true);
+    expect(await store.insertIfBelowCap("a".repeat(22), blob, T0 + 1000, 10)).toBe(true);
     const back = await store.take("a".repeat(22), T0);
     expect(back).toEqual(blob);
     expect(back!.buffer).toBeInstanceOf(ArrayBuffer);
     expect(await store.take("a".repeat(22), T0)).toBeNull();
   });
 
-  it("honours the cap and expiry in the store itself", async () => {
-    expect(await store.insertIfBelowCap("a".repeat(22), blobOf(40), T0 + 1000, T0, 1)).toBe(true);
-    expect(await store.insertIfBelowCap("b".repeat(22), blobOf(40), T0 + 1000, T0, 1)).toBe(false);
-    // The first row is expired at T0+1000, so it no longer counts and cannot be taken.
+  it("honours the cap (stored rows) and expiry in the store itself", async () => {
+    expect(await store.insertIfBelowCap("a".repeat(22), blobOf(40), T0 + 1000, 1)).toBe(true);
+    expect(await store.insertIfBelowCap("b".repeat(22), blobOf(40), T0 + 1000, 1)).toBe(false);
+    // The first row is expired at T0+1000 and cannot be taken. It still counts until a purge removes it.
     expect(await store.exists("a".repeat(22), T0 + 999)).toBe(true);
     expect(await store.exists("a".repeat(22), T0 + 1000)).toBe(false);
     expect(await store.take("a".repeat(22), T0 + 1000)).toBeNull();
-    expect(await store.insertIfBelowCap("b".repeat(22), blobOf(40), T0 + 5000, T0 + 1000, 1)).toBe(true);
+    expect(await store.insertIfBelowCap("b".repeat(22), blobOf(40), T0 + 5000, 1)).toBe(false);
+    await store.purgeExpired(T0 + 1000);
+    expect(await store.insertIfBelowCap("b".repeat(22), blobOf(40), T0 + 5000, 1)).toBe(true);
   });
 
   it("exists does not delete, purgeExpired deletes only expired rows", async () => {
-    await store.insertIfBelowCap("a".repeat(22), blobOf(40), T0 + 1000, T0, 10);
-    await store.insertIfBelowCap("b".repeat(22), blobOf(40), T0 + 9000, T0, 10);
+    await store.insertIfBelowCap("a".repeat(22), blobOf(40), T0 + 1000, 10);
+    await store.insertIfBelowCap("b".repeat(22), blobOf(40), T0 + 9000, 10);
     expect(await store.exists("b".repeat(22), T0)).toBe(true);
     expect(await store.exists("b".repeat(22), T0)).toBe(true);
     await store.purgeExpired(T0 + 1000);
@@ -89,7 +91,7 @@ describe("SqliteStore", () => {
   });
 
   it("checkpoints the WAL into the main file on close", async () => {
-    await store.insertIfBelowCap("a".repeat(22), blobOf(500), T0 + 1000, T0, 10);
+    await store.insertIfBelowCap("a".repeat(22), blobOf(500), T0 + 1000, 10);
     await store.close();
     const wal = `${dbPath}-wal`;
     expect(!existsSync(wal) || statSync(wal).size === 0).toBe(true);
@@ -114,7 +116,7 @@ describe("SqliteStore", () => {
       const nested = join(dir.path, "a", "b");
       const p = join(nested, "x.db");
       const s = openSqliteStore(p, migrations());
-      await s.insertIfBelowCap("a".repeat(22), blobOf(40), T0 + 1000, T0, 10);
+      await s.insertIfBelowCap("a".repeat(22), blobOf(40), T0 + 1000, 10);
       expect(statSync(nested).mode & 0o777).toBe(0o700);
       expect(statSync(p).mode & 0o777).toBe(0o600);
       expect(statSync(`${p}-wal`).mode & 0o777).toBe(0o600);
@@ -207,6 +209,28 @@ describe("migrations", () => {
     const good = openSqliteStore(dbPath, [{ name: "0001_ok.sql", sql: "CREATE TABLE ok (x INTEGER);" }]);
     expect(good.db.prepare("PRAGMA user_version").get()).toEqual({ user_version: 1 });
     await good.close();
+  });
+
+  it("seeds stats.stored from the rows of a version-1 database and keeps it exact with triggers", async () => {
+    const dbPath = join(dir.path, "seed.db");
+    const all = migrations();
+    expect(all.map((m) => m.name)).toEqual(["0001_init.sql", "0002_counter.sql"]);
+    const v1 = openSqliteStore(dbPath, all.slice(0, 1));
+    for (let i = 0; i < 7; i++) v1.db.prepare("INSERT INTO secrets (id, blob, expires_at) VALUES (?, ?, ?)").run(`id${i}`, new Uint8Array(40), i < 3 ? 1 : 9_000_000_000_000);
+    expect(v1.db.prepare("PRAGMA user_version").get()).toEqual({ user_version: 1 });
+    await v1.close();
+
+    const v2 = openSqliteStore(dbPath, all);
+    expect(v2.db.prepare("PRAGMA user_version").get()).toEqual({ user_version: 2 });
+    // Expired-but-unpurged rows count: the counter is the number of stored rows.
+    expect(v2.db.prepare("SELECT stored FROM stats WHERE id = 1").get()).toEqual({ stored: 7 });
+
+    await v2.purgeExpired(2);
+    expect(v2.db.prepare("SELECT stored FROM stats WHERE id = 1").get()).toEqual({ stored: 4 });
+    expect(await v2.take("id5", 2)).not.toBeNull();
+    expect(v2.db.prepare("SELECT stored FROM stats WHERE id = 1").get()).toEqual({ stored: 3 });
+    expect(() => v2.db.prepare("INSERT INTO stats (id, stored) VALUES (2, 0)").run()).toThrow();
+    await v2.close();
   });
 
   it("readMigrations ignores non-sql files and sorts numerically by name", () => {

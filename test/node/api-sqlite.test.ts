@@ -28,6 +28,7 @@ describe("API contract on SQLite", () => {
       return response;
     },
     rowCount: async () => (store.db.prepare("SELECT COUNT(*) AS n FROM secrets").get() as { n: number }).n,
+    storedCounter: async () => (store.db.prepare("SELECT stored FROM stats WHERE id = 1").get() as { stored: number }).stored,
     expiresAt: async (id) => (store.db.prepare("SELECT expires_at FROM secrets WHERE id = ?").get(id) as { expires_at: number } | undefined)?.expires_at ?? null,
     setExpiresAt: async (id, ms) => {
       store.db.prepare("UPDATE secrets SET expires_at = ? WHERE id = ?").run(ms, id);
