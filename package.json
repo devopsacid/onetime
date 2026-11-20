@@ -22,13 +22,15 @@
     "build:info": "ONETIME_SITE=info vite build",
     "build:cli": "node tools/build-cli.mjs",
     "build:server": "node tools/build-server.mjs",
-    "build:selfhost": "ONETIME_SITE=selfhost vite build && ONETIME_SITE=selfhost node tools/build-cli.mjs && node tools/build-server.mjs"
+    "build:selfhost": "ONETIME_SITE=selfhost vite build && ONETIME_SITE=selfhost node tools/build-cli.mjs && node tools/build-server.mjs",
+    "e2e": "node test/e2e/run.mjs"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.8.3",
     "@cloudflare/workers-types": "^5.20261117.1",
     "@types/node": "^24.19.2",
     "esbuild": "^0.28.2",
+    "playwright-core": "1.64.1",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
     "vitest": "^4.1.12",
