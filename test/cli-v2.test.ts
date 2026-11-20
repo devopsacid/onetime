@@ -103,11 +103,23 @@ describe("while the writers have not shipped (WRITE_FORMAT 1)", () => {
     }
   });
   it("the help texts of send, gen and the overview do not list them yet; get lists --passphrase-file", async () => {
-    for (const argv of [["--help"], ["send", "--help"], ["gen", "--help"]]) {
+    for (const argv of [["send", "--help"], ["gen", "--help"]]) {
       const io = makeIo();
       await run(argv, io);
       expect(io.out, argv.join(" ")).not.toContain("--passphrase");
     }
+    const main = makeIo();
+    await run(["--help"], main);
+    expect(main.out.split("\n").filter((line) => !line.includes("onetime get")).join("\n")).not.toContain("--passphrase");
+    const writers = makeIo({ writeFormat: 2 });
+    await run(["send", "--help"], writers);
+    expect(writers.out).toContain("--passphrase-file PATH");
+    const writersGen = makeIo({ writeFormat: 2 });
+    await run(["gen", "--help"], writersGen);
+    expect(writersGen.out).toContain("--passphrase");
+    const writersMain = makeIo({ writeFormat: 2 });
+    await run(["--help"], writersMain);
+    expect(writersMain.out).toContain("onetime send [--ttl 1h|1d|7d|SECONDS] [--passphrase | --passphrase-file PATH]");
     const get = makeIo();
     await run(["get", "--help"], get);
     expect(get.out).toContain("--passphrase-file");
@@ -313,6 +325,17 @@ describe("send and gen with a passphrase (active once WRITE_FORMAT is 2)", () =>
   });
 });
 
+describe("damaged-link message", () => {
+  it("shows the v1 shape while readers only, the v2 shape once writers ship", async () => {
+    const readers = makeIo({ stdin: null });
+    expect(await run(["get", "garbage"], readers)).toBe(EXIT.badLink);
+    expect(readers.err).toContain("https://<host>/#<id>.<key>");
+    const writers = makeIo({ stdin: null, writeFormat: 2 });
+    expect(await run(["get", "garbage"], writers)).toBe(EXIT.badLink);
+    expect(writers.err).toContain("https://<host>/#2.<id>.<key>");
+  });
+});
+
 describe("limits and hints", () => {
   it("builds the near-full --ttl hint from the validated maxTtl", async () => {
     const hint = async (maxTtl: number) => {
@@ -352,7 +375,7 @@ describe("limits and hints", () => {
   it("interoperates with the browser codec both ways", async () => {
     const codec = createCodec({ writeFormat: 2, pbkdf2Iterations: 1000 });
     const made = await codec.encryptSecret("from the page", PASS);
-    const post = await routerFetch()(`${SERVER}/api/secrets?ttl=3600`, { method: "POST", body: made.blob });
+    const post = await routerFetch()(`${SERVER}/api/secrets?ttl=3600`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: made.blob });
     const { id } = (await post.json()) as { id: string };
     const io = makeIo({ stdin: null, files: { p: PASS }, ...setup().opts });
     expect(await run(["get", `${SERVER}/#2p.${id}.${made.key}`, "--passphrase-file", "p"], io)).toBe(EXIT.ok);

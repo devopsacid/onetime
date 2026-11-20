@@ -1,3 +1,4 @@
+import { open } from "node:fs/promises";
 import { run, type Io } from "./core";
 
 declare const __VERSION__: string | undefined;
@@ -13,6 +14,23 @@ async function readStdinBytes(max: number): Promise<Uint8Array> {
     if (total > max) break;
   }
   return Buffer.concat(chunks).subarray(0, max + 1);
+}
+
+/** Reads at most `max + 1` bytes of a file (the core rejects the overflow); rejects when it cannot be read. */
+async function readFileBytes(path: string, max: number): Promise<Uint8Array> {
+  const file = await open(path, "r");
+  try {
+    const buffer = Buffer.alloc(max + 1);
+    let total = 0;
+    while (total < buffer.length) {
+      const { bytesRead } = await file.read(buffer, total, buffer.length - total, null);
+      if (bytesRead === 0) break;
+      total += bytesRead;
+    }
+    return buffer.subarray(0, total);
+  } finally {
+    await file.close();
+  }
 }
 
 /** Hidden input on the terminal using raw mode only (no stty, no /dev/tty): works on Linux, macOS and Windows. */
@@ -63,6 +81,7 @@ const io: Io = {
   defaultServer: typeof __DEFAULT_SERVER__ === "string" ? __DEFAULT_SERVER__ : undefined,
   stdin: { isTTY: process.stdin.isTTY === true, readBytes: readStdinBytes },
   promptHidden,
+  readFile: readFileBytes,
   stdout: {
     isTTY: process.stdout.isTTY === true,
     write: (text) =>

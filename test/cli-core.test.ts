@@ -92,6 +92,8 @@ describe("parseLinkInput", () => {
       origin: "http://localhost:8788",
       id: ID,
       key: KEY,
+      format: 1,
+      passphrase: false,
     });
     expect(() => parseLinkInput(link, "https://d.example")).toThrow(UsageError);
     expect(() => parseLinkInput(link, "https://d.example", "http://localhost:9999")).toThrow(UsageError);

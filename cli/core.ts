@@ -1,4 +1,5 @@
-import { decryptSecret, encryptSecret, SecretTooLargeError } from "../src/web/crypto";
+import { createCodec, SecretTooLargeError, WRITE_FORMAT } from "../src/web/crypto";
+import { normalizePassphrase, validatePassphrase } from "../src/web/passphrase";
 import {
   generatePassword,
   generateToken,
@@ -7,7 +8,7 @@ import {
   TOKEN_BYTES,
   type CharsetName,
 } from "../src/web/generate";
-import { buildLink, parseFragment } from "../src/web/link";
+import { buildLink, parseFragment, type SecretLink } from "../src/web/link";
 import {
   DEFAULT_TTL_SECONDS,
   ID_PATTERN,
@@ -33,6 +34,12 @@ export interface Io {
   /** Reads at most `max + 1` bytes of stdin (one extra byte lets the core see an overflow). */
   stdin: { isTTY: boolean; readBytes(max: number): Promise<Uint8Array> };
   promptHidden(label: string): Promise<string>;
+  /** Reads at most `max + 1` bytes of a file (one extra byte lets the core see an overflow). Rejects when it cannot be read. */
+  readFile(path: string, max: number): Promise<Uint8Array>;
+  /** Test hook, never set by main.ts: PBKDF2 rounds (workerd refuses the real 600,000). */
+  pbkdf2Iterations?: number;
+  /** Test hook, never set by main.ts: pretend WRITE_FORMAT is this (to test the writers before the flip). */
+  writeFormat?: 1 | 2;
   stdout: { isTTY: boolean; write(text: string): void | Promise<void> };
   stderr: { write(text: string): void };
 }
@@ -103,10 +110,8 @@ export function resolveServer(flag: string | undefined, env: Record<string, stri
   return url.origin;
 }
 
-export interface ParsedLink {
+export interface ParsedLink extends SecretLink {
   origin: string;
-  id: string;
-  key: string;
 }
 
 /** Accepts a full link or `<id>.<key>`. Returns "invalid" without ever echoing the input. */
@@ -140,11 +145,17 @@ export function parseLinkInput(input: string, defaultOrigin: string, explicitSer
 
 export type GenType = "password" | "hex" | "base64url" | "uuid";
 
+/** How send and gen get a passphrase: typed twice at the prompt, or the first line of a file. */
+interface PassphraseSource {
+  passphrase?: "prompt";
+  passphraseFile?: string;
+}
+
 export type Command =
   | { kind: "help"; topic?: string }
   | { kind: "version" }
-  | { kind: "send"; ttl: number; server?: string }
-  | {
+  | ({ kind: "send"; ttl: number; server?: string } & PassphraseSource)
+  | ({
       kind: "gen";
       type: GenType;
       length?: number;
@@ -154,13 +165,13 @@ export type Command =
       printOnly: boolean;
       ttl: number;
       server?: string;
-    }
-  | { kind: "get"; link?: string; server?: string }
+    } & PassphraseSource)
+  | { kind: "get"; link?: string; server?: string; passphraseFile?: string }
   | { kind: "status"; link?: string; server?: string };
 
 type OptionSpec = { value: boolean };
 const OPTIONS: Record<string, Record<string, OptionSpec>> = {
-  send: { ttl: { value: true }, server: { value: true } },
+  send: { ttl: { value: true }, server: { value: true }, passphrase: { value: false }, "passphrase-file": { value: true } },
   gen: {
     type: { value: true },
     length: { value: true },
@@ -170,14 +181,20 @@ const OPTIONS: Record<string, Record<string, OptionSpec>> = {
     "print-only": { value: false },
     ttl: { value: true },
     server: { value: true },
+    passphrase: { value: false },
+    "passphrase-file": { value: true },
   },
-  get: { server: { value: true } },
+  get: { server: { value: true }, "passphrase-file": { value: true } },
   status: { server: { value: true } },
 };
 
 const SEND_ARG_ERROR =
   "send does not take the secret as an argument: it would end up in your shell history and in the process list. " +
   "Pipe it in (echo -n 'secret' | onetime send) or run `onetime send` and type it at the hidden prompt.";
+
+const PASSPHRASE_ARG_ERROR =
+  "The passphrase is never taken as an argument: it would end up in your shell history and in the process list. " +
+  "Use --passphrase (typed at a hidden prompt) or --passphrase-file PATH.";
 
 function parseInteger(name: string, text: string, min: number, max: number, unit: string): number {
   if (!/^\d+$/.test(text) || Number(text) < min || Number(text) > max) {
@@ -230,7 +247,9 @@ export function parseArgs(argv: string[]): Command {
       if (value === undefined) throw new UsageError(`Option --${optName} needs a value.`);
       values.set(optName, value);
     } else {
-      if (eq !== -1) throw new UsageError(`Option --${optName} does not take a value.`);
+      if (eq !== -1) {
+        throw new UsageError(optName === "passphrase" ? PASSPHRASE_ARG_ERROR : `Option --${optName} does not take a value.`);
+      }
       flags.add(optName);
     }
   }
@@ -238,11 +257,20 @@ export function parseArgs(argv: string[]): Command {
   const server = values.get("server");
   const withServer = <T extends object>(command: T) => (server === undefined ? command : { ...command, server });
   const ttl = values.has("ttl") ? parseTtl(values.get("ttl")!) : DEFAULT_TTL_SECONDS;
+  if (flags.has("passphrase") && values.has("passphrase-file")) {
+    throw new UsageError("Use either --passphrase or --passphrase-file, not both.");
+  }
+  const passphraseFile = values.get("passphrase-file");
+  const withPassphrase = <T extends object>(command: T) => ({
+    ...command,
+    ...(flags.has("passphrase") ? { passphrase: "prompt" as const } : {}),
+    ...(passphraseFile === undefined ? {} : { passphraseFile }),
+  });
 
   switch (name) {
     case "send":
       if (positional.length > 0) throw new UsageError(SEND_ARG_ERROR);
-      return withServer({ kind: "send" as const, ttl });
+      return withPassphrase(withServer({ kind: "send" as const, ttl }));
     case "gen": {
       if (positional.length > 0) throw new UsageError("gen takes no arguments. Run onetime gen --help.");
       const typeText = values.get("type") ?? "password";
@@ -267,7 +295,10 @@ export function parseArgs(argv: string[]): Command {
       if (flags.has("print-only") && flags.has("show")) {
         throw new UsageError("--show has no effect with --print-only (the secret is printed anyway).");
       }
-      return withServer({
+      if (flags.has("print-only") && (flags.has("passphrase") || passphraseFile !== undefined)) {
+        throw new UsageError("--passphrase and --passphrase-file do not apply to --print-only (no link is made).");
+      }
+      return withPassphrase(withServer({
         kind: "gen" as const,
         type,
         ...(length === undefined ? {} : { length }),
@@ -276,25 +307,32 @@ export function parseArgs(argv: string[]): Command {
         show: flags.has("show"),
         printOnly: flags.has("print-only"),
         ttl,
-      });
+      }));
     }
     default: {
       if (positional.length > 1) throw new UsageError(`${name} takes one link. Run onetime ${name} --help.`);
       const link = positional[0];
-      return withServer({ kind: name as "get" | "status", ...(link === undefined ? {} : { link }) });
+      const base = { kind: name as "get" | "status", ...(link === undefined ? {} : { link }) };
+      return name === "get" && passphraseFile !== undefined ? withServer({ ...base, passphraseFile }) : withServer(base);
     }
   }
 }
 
 // ---------- help ----------
 
-const HELP_MAIN = `onetime - share a secret through a link that works once
+/** Whether this build writes passphrase links (deploy 2). Until then the writer options stay out of the help. */
+function writersOn(io: Pick<Io, "writeFormat">): boolean {
+  return (io.writeFormat ?? WRITE_FORMAT) === 2;
+}
+
+function helpMain(writers: boolean): string {
+  return `onetime - share a secret through a link that works once
 
 Usage:
-  onetime send [--ttl 1h|1d|7d|SECONDS] [--server URL]
+  onetime send [--ttl 1h|1d|7d|SECONDS]${writers ? " [--passphrase | --passphrase-file PATH]" : ""} [--server URL]
   onetime gen  [--type password|hex|base64url|uuid] [--length N] [--no-symbols]
-               [--no-lookalikes] [--ttl ...] [--show] [--print-only] [--server URL]
-  onetime get  [LINK | -] [--server URL]
+               [--no-lookalikes] [--ttl ...] [--show] [--print-only]${writers ? "\n               [--passphrase | --passphrase-file PATH]" : ""} [--server URL]
+  onetime get  [LINK | -] [--passphrase-file PATH] [--server URL]
   onetime status [LINK | -] [--server URL]
   onetime --help | --version
 
@@ -313,11 +351,14 @@ Exit codes: 0 ok, 1 link gone (already opened or expired), 2 usage error,
             70 internal error.
 Run onetime COMMAND --help for details.
 `;
+}
 
-const HELP_TOPICS: Record<string, string> = {
-  send: `onetime send - create a one-time link for a secret
+function helpTopic(topic: string, writers: boolean): string {
+  switch (topic) {
+    case "send":
+      return `onetime send - create a one-time link for a secret
 
-Usage: onetime send [--ttl 1h|1d|7d|SECONDS] [--server URL]
+Usage: onetime send [--ttl 1h|1d|7d|SECONDS]${writers ? " [--passphrase | --passphrase-file PATH]" : ""} [--server URL]
 
 The secret is read from stdin when piped (one trailing newline is removed),
 otherwise typed at a hidden prompt. It is never accepted as an argument, because
@@ -329,8 +370,9 @@ arguments end up in shell history and the process list.
 Prints only the link on stdout; hints go to stderr.
 --ttl   how long an unopened link lasts: 1h, 1d (default), 7d, or seconds (60 to 604800);
        at most 1d while the service is nearly full
-`,
-  gen: `onetime gen - generate a secret and share it in one step
+${writers ? PASSPHRASE_SEND_HELP : ""}`;
+    case "gen":
+      return `onetime gen - generate a secret and share it in one step
 
 Usage: onetime gen [options]
 
@@ -343,28 +385,48 @@ Usage: onetime gen [options]
   --show            also print the secret to stderr, labelled
   --print-only      print the secret to stdout; no link, no server contact
   --server URL
-
+${writers ? PASSPHRASE_GEN_HELP : ""}
 Prints only the link on stdout. The secret is not printed unless you ask.
-`,
-  get: `onetime get - open a link and print the secret
+`;
+    case "get":
+      return `onetime get - open a link and print the secret
 
-Usage: onetime get [LINK | -] [--server URL]
+Usage: onetime get [LINK | -] [--passphrase-file PATH] [--server URL]
 
 LINK is the full link or just ID.KEY (the server then comes from --server or
 ONETIME_SERVER). With - or no argument the link is read from stdin or typed at a
 hidden prompt, which keeps it out of your shell history.
 
+A link that needs a passphrase (it looks like https://<host>/#2p.<id>.<key>) asks for it
+at a hidden prompt, or reads the first line of --passphrase-file PATH. You get one try:
+a wrong passphrase destroys the secret.
+
 Opening a link uses it up: a second attempt reports it is gone.
 Prints exactly the secret on stdout (a trailing newline only when stdout is a terminal).
-Exit codes: 0 ok, 1 gone, 3 damaged link, 4 decryption failed, 5 network or server error.
-`,
-  status: `onetime status - check a link without using it up
+Exit codes: 0 ok, 1 gone, 2 usage error (including a missing passphrase), 3 damaged link,
+            4 decryption failed (also: wrong passphrase), 5 network or server error.
+`;
+    default:
+      return `onetime status - check a link without using it up
 
 Usage: onetime status [LINK | -] [--server URL]
 
 Exit 0 if the secret is still waiting, 1 if it is gone (opened or expired).
-`,
-};
+`;
+  }
+}
+
+const PASSPHRASE_SEND_HELP = `
+Passphrase (optional):
+  --passphrase             asks twice at a hidden prompt (needs a terminal, so not with a piped secret)
+  --passphrase-file PATH   first line of PATH (at most 4096 bytes, UTF-8), for scripts
+The passphrase has 8 to 256 characters. Send it to the recipient by another channel than the link:
+a wrong passphrase destroys the secret, and there is one try.
+`;
+
+const PASSPHRASE_GEN_HELP = `  --passphrase      protect the link with a passphrase typed twice at a hidden prompt
+  --passphrase-file PATH   same, taken from the first line of PATH (not with --print-only)
+`;
 
 // ---------- flows ----------
 
@@ -403,7 +465,7 @@ async function serverError(response: Response): Promise<ExitError> {
     ) {
       return new ExitError(
         EXIT.network,
-        `The service is nearly full right now, so links can last at most ${describeTtl(body.maxTtl)}. Run the command again with --ttl 1d or shorter.`,
+        `The service is nearly full right now, so links can last at most ${describeTtl(body.maxTtl)}. Run the command again with --ttl ${ttlFlag(body.maxTtl)} or shorter.`,
       );
     }
     if (typeof body.error === "string") detail = `: ${cleanMessage(body.error)}`;
@@ -411,6 +473,12 @@ async function serverError(response: Response): Promise<ExitError> {
     // not JSON
   }
   return new ExitError(EXIT.network, `The server answered ${response.status}${detail}`);
+}
+
+/** The --ttl value for a number of seconds: the preset name when there is one. */
+function ttlFlag(seconds: number): string {
+  for (const [name, value] of Object.entries(TTL_PRESETS)) if (value === seconds) return name;
+  return String(seconds);
 }
 
 const GONE_MESSAGE = "This secret was already opened or has expired.";
@@ -465,10 +533,81 @@ async function readLinkInput(io: Io, link: string | undefined): Promise<{ text: 
   return { text: await readStdinText(io), fromArg: false };
 }
 
-async function createLink(io: Io, text: string, ttl: number, server: string): Promise<string> {
+function codecFor(io: Io) {
+  return createCodec({
+    ...(io.pbkdf2Iterations === undefined ? {} : { pbkdf2Iterations: io.pbkdf2Iterations }),
+    ...(io.writeFormat === undefined ? {} : { writeFormat: io.writeFormat }),
+  });
+}
+
+const PASSPHRASE_FILE_MAX = 4096;
+
+function passphraseProblem(text: string): string | null {
+  switch (validatePassphrase(text)) {
+    case null:
+      return null;
+    case "control":
+      return "A passphrase cannot contain control characters.";
+    default:
+      return "A passphrase has 8 to 256 characters.";
+  }
+}
+
+function checkPassphrase(text: string): string {
+  const problem = passphraseProblem(text);
+  if (problem !== null) throw new UsageError(problem);
+  return text;
+}
+
+/** First line of the file (strict UTF-8, at most 4,096 bytes); a trailing CR or LF is not part of the passphrase. */
+async function readPassphraseFile(io: Io, path: string): Promise<string> {
+  let bytes: Uint8Array;
+  try {
+    bytes = await io.readFile(path, PASSPHRASE_FILE_MAX);
+  } catch {
+    throw new UsageError("Could not read the passphrase file.");
+  }
+  if (bytes.length > PASSPHRASE_FILE_MAX) throw new UsageError(`The passphrase file is larger than ${PASSPHRASE_FILE_MAX} bytes.`);
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
+  } catch {
+    throw new UsageError("The passphrase file is not valid UTF-8 text.");
+  }
+  const newline = text.indexOf("\n");
+  const line = newline === -1 ? text : text.slice(0, newline);
+  return checkPassphrase(line.endsWith("\r") ? line.slice(0, -1) : line);
+}
+
+type PassphraseOption = { passphrase?: "prompt"; passphraseFile?: string };
+
+/** Refuses what cannot work before anything is read, prompted or sent. */
+function checkPassphraseOptions(io: Io, command: PassphraseOption, secretIsPiped: boolean): void {
+  if (command.passphrase === undefined && command.passphraseFile === undefined) return;
+  if (!writersOn(io)) throw new UsageError("Passphrases are not available yet.");
+  if (command.passphrase !== undefined && !io.stdin.isTTY) {
+    throw new UsageError(
+      secretIsPiped
+        ? "--passphrase asks at the terminal, which the piped secret is using: use --passphrase-file when the secret is piped."
+        : "--passphrase needs a terminal: use --passphrase-file PATH instead.",
+    );
+  }
+}
+
+/** The passphrase for a new link, or undefined when none was asked for. Typed entries must match. */
+async function readNewPassphrase(io: Io, command: PassphraseOption): Promise<string | undefined> {
+  if (command.passphraseFile !== undefined) return readPassphraseFile(io, command.passphraseFile);
+  if (command.passphrase === undefined) return undefined;
+  const first = await io.promptHidden("Passphrase (input hidden): ");
+  const second = await io.promptHidden("Repeat passphrase: ");
+  if (normalizePassphrase(first) !== normalizePassphrase(second)) throw new UsageError("The two passphrases differ.");
+  return checkPassphrase(first);
+}
+
+async function createLink(io: Io, text: string, ttl: number, server: string, passphrase?: string): Promise<string> {
   let encrypted;
   try {
-    encrypted = await encryptSecret(text);
+    encrypted = await codecFor(io).encryptSecret(text, passphrase);
   } catch (error) {
     if (error instanceof SecretTooLargeError) {
       throw new UsageError(`The secret is too large (limit ${MAX_SECRET_BYTES} bytes).`);
@@ -490,13 +629,14 @@ async function createLink(io: Io, text: string, ttl: number, server: string): Pr
   if (typeof id !== "string" || !ID_PATTERN.test(id)) {
     throw new ExitError(EXIT.network, "The server returned an invalid secret id.");
   }
-  return buildLink(server, { id, key: encrypted.key });
+  return buildLink(server, { id, key: encrypted.key, format: encrypted.format, passphrase: encrypted.passphrase });
 }
 
-function sendHints(io: Io, ttl: number): void {
+function sendHints(io: Io, ttl: number, passphrase: boolean): void {
   io.stderr.write(
     `Opens once. Expires in ${describeTtl(ttl)} if not opened.\n` +
-      "Receive it in a browser, or with: onetime get -  (then paste the link)\n",
+      "Receive it in a browser, or with: onetime get -  (then paste the link)\n" +
+      (passphrase ? "Send the passphrase separately. A wrong one destroys the secret.\n" : ""),
   );
 }
 
@@ -522,17 +662,19 @@ function generateSecret(command: Extract<Command, { kind: "gen" }>): string {
 async function execute(command: Command, io: Io): Promise<number> {
   switch (command.kind) {
     case "help":
-      io.stdout.write(command.topic ? HELP_TOPICS[command.topic]! : HELP_MAIN);
+      io.stdout.write(command.topic ? helpTopic(command.topic, writersOn(io)) : helpMain(writersOn(io)));
       return EXIT.ok;
     case "version":
       io.stdout.write(`${io.version}\n`);
       return EXIT.ok;
     case "send": {
       const server = resolveServer(command.server, io.env, io.defaultServer);
+      checkPassphraseOptions(io, command, !io.stdin.isTTY);
       const secret = await readSecretInput(io);
-      const link = await createLink(io, secret, command.ttl, server);
+      const passphrase = await readNewPassphrase(io, command);
+      const link = await createLink(io, secret, command.ttl, server, passphrase);
       io.stdout.write(`${link}\n`);
-      sendHints(io, command.ttl);
+      sendHints(io, command.ttl, passphrase !== undefined);
       return EXIT.ok;
     }
     case "gen": {
@@ -542,10 +684,12 @@ async function execute(command: Command, io: Io): Promise<number> {
         return EXIT.ok;
       }
       const server = resolveServer(command.server, io.env, io.defaultServer);
-      const link = await createLink(io, secret, command.ttl, server);
+      checkPassphraseOptions(io, command, false);
+      const passphrase = await readNewPassphrase(io, command);
+      const link = await createLink(io, secret, command.ttl, server, passphrase);
       io.stdout.write(`${link}\n`);
       if (command.show) io.stderr.write(`Secret: ${secret}\n`);
-      sendHints(io, command.ttl);
+      sendHints(io, command.ttl, passphrase !== undefined);
       return EXIT.ok;
     }
     case "get":
@@ -556,12 +700,13 @@ async function execute(command: Command, io: Io): Promise<number> {
       const input = await readLinkInput(io, command.link);
       const parsed = parseLinkInput(input.text, defaultServer, explicit);
       if (parsed === "invalid") {
-        throw new ExitError(EXIT.badLink, "The link is damaged or incomplete. It should look like https://<host>/#<id>.<key>.");
+        const shape = writersOn(io) ? "https://<host>/#2.<id>.<key>" : "https://<host>/#<id>.<key>";
+        throw new ExitError(EXIT.badLink, `The link is damaged or incomplete. It should look like ${shape}.`);
       }
       if (command.kind === "status") {
         const response = await request(io, `${parsed.origin}/api/secrets/${parsed.id}`, { method: "GET" });
         if (response.ok) {
-          io.stderr.write("The secret is still waiting.\n");
+          io.stderr.write(parsed.passphrase ? "The secret is still waiting (it needs a passphrase).\n" : "The secret is still waiting.\n");
           return EXIT.ok;
         }
         if (response.status === 404) {
@@ -570,6 +715,17 @@ async function execute(command: Command, io: Io): Promise<number> {
         }
         throw await serverError(response);
       }
+      let passphrase: string | undefined;
+      if (parsed.passphrase) {
+        if (command.passphraseFile !== undefined) passphrase = await readPassphraseFile(io, command.passphraseFile);
+        else if (io.stdin.isTTY) passphrase = checkPassphrase(await io.promptHidden("Passphrase (input hidden, one try): "));
+        else throw new UsageError("This link needs a passphrase: run it in a terminal or use --passphrase-file.");
+      } else if (command.passphraseFile !== undefined) {
+        throw new UsageError("This link has no passphrase.");
+      }
+      // The slow step runs before the reveal request, so closing the terminal here loses nothing.
+      const codec = codecFor(io);
+      const aesKey = await codec.deriveKey(parsed, passphrase);
       if (input.fromArg) {
         io.stderr.write(
           "Note: the link is now in your shell history. Next time use `onetime get -` or `onetime get` and paste it.\n",
@@ -581,9 +737,14 @@ async function execute(command: Command, io: Io): Promise<number> {
       const blob = await readBounded(response, MAX_BLOB_BYTES);
       let secret: string;
       try {
-        secret = await decryptSecret(blob as Uint8Array<ArrayBuffer>, parsed.key);
+        secret = await codec.openBlob(blob as Uint8Array<ArrayBuffer>, aesKey, parsed);
       } catch {
-        throw new ExitError(EXIT.decrypt, "Decryption failed: the key does not match or the data was changed. The secret is now used up.");
+        throw new ExitError(
+          EXIT.decrypt,
+          parsed.passphrase
+            ? "Decryption failed: wrong passphrase, or the link was changed. The secret is now used up."
+            : "Decryption failed: the key does not match or the data was changed. The secret is now used up.",
+        );
       }
       try {
         await io.stdout.write(io.stdout.isTTY ? `${secret}\n` : secret);

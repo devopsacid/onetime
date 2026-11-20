@@ -16,6 +16,9 @@ export interface LinkKey {
   passphrase: boolean;
 }
 
+/** The derived AES-GCM key (a CryptoKey; spelled this way because the Worker tsconfig has no DOM types). */
+export type AesKey = Awaited<ReturnType<typeof crypto.subtle.importKey>>;
+
 export class SecretTooLargeError extends Error {}
 
 const IV_BYTES = 12;
@@ -25,25 +28,25 @@ const V2_FIXED_BYTES = V2_HEADER_BYTES + IV_BYTES + TAG_BYTES;
 const V2_BLOB_SIZES: readonly number[] = V2_BUCKETS.map((bucket) => bucket + V2_FIXED_BYTES);
 export const PBKDF2_ITERATIONS = 600_000;
 
-const ascii = (text: string): Uint8Array<ArrayBuffer> => new TextEncoder().encode(text);
+const ascii = (text: string): Uint8Array<ArrayBuffer> => new Uint8Array(new TextEncoder().encode(text));
 const NO_SALT = new ArrayBuffer(0);
 
 function failed(): Error {
   return new Error("Decryption failed");
 }
 
-function hkdfParams(info: string): HkdfParams {
-  return { name: "HKDF", hash: "SHA-256", salt: NO_SALT, info: ascii(info) };
+function hkdfParams(info: string) {
+  return { name: "HKDF", hash: "SHA-256", salt: NO_SALT, info: ascii(info) } as const;
 }
 
-const AES_USAGES: KeyUsage[] = ["encrypt", "decrypt"];
+const AES_USAGES: Array<"encrypt" | "decrypt"> = ["encrypt", "decrypt"];
 
 export function createCodec(opts: { pbkdf2Iterations?: number; writeFormat?: 1 | 2 } = {}) {
   const iterations = opts.pbkdf2Iterations ?? PBKDF2_ITERATIONS;
   const writeFormat = opts.writeFormat ?? WRITE_FORMAT;
 
   /** The slow step (PBKDF2 when a passphrase is used). Makes no network request. */
-  async function deriveKey(link: LinkKey, passphrase?: string): Promise<CryptoKey> {
+  async function deriveKey(link: LinkKey, passphrase?: string): Promise<AesKey> {
     if (!KEY_PATTERN.test(link.key)) throw new Error("Invalid key");
     if (link.passphrase !== (passphrase !== undefined)) throw new Error("Passphrase does not match the link");
     const kLink = fromBase64Url(link.key);
@@ -82,7 +85,7 @@ export function createCodec(opts: { pbkdf2Iterations?: number; writeFormat?: 1 |
   }
 
   /** Throws if the key is wrong, the blob was changed, or it does not fit the link. */
-  async function openBlob(blob: Uint8Array<ArrayBuffer>, aesKey: CryptoKey, link: LinkKey): Promise<string> {
+  async function openBlob(blob: Uint8Array<ArrayBuffer>, aesKey: AesKey, link: LinkKey): Promise<string> {
     let plain: Uint8Array<ArrayBuffer>;
     if (link.format === 1) {
       if (blob.length < IV_BYTES + TAG_BYTES) throw failed();

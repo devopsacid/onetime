@@ -120,14 +120,14 @@ describe("format 2 against an independent node:crypto implementation (real 600,0
 describe("format 2 failures all throw", () => {
   it("a flipped flag byte", async () => {
     const made = await codec.encryptSecret("secret");
-    made.blob[1] ^= 1;
+    made.blob[1]! ^= 1;
     await expect(codec.decryptSecret(made.blob, link2(made.key))).rejects.toThrow();
     await expect(codec.decryptSecret(made.blob, link2(made.key, true), PASS)).rejects.toThrow();
   });
 
   it("a flipped version byte", async () => {
     const made = await codec.encryptSecret("secret");
-    made.blob[0] ^= 1;
+    made.blob[0]! ^= 1;
     await expect(codec.decryptSecret(made.blob, link2(made.key))).rejects.toThrow();
   });
 
@@ -153,7 +153,7 @@ describe("format 2 failures all throw", () => {
     const made = await codec.encryptSecret("secret");
     for (const at of [2, 20, made.blob.length - 1]) {
       const copy = made.blob.slice();
-      copy[at] ^= 1;
+      copy[at]! ^= 1;
       await expect(codec.decryptSecret(copy, link2(made.key))).rejects.toThrow();
     }
   });
