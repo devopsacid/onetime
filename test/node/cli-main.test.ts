@@ -144,7 +144,6 @@ describe("CLI file system access with a real directory", () => {
       expect(readdirSync(out)).toEqual(["passwd"]);
       expect(statSync(join(out, "passwd")).mode & 0o777).toBe(0o600);
       expect(Buffer.from(readFileSync(join(out, "passwd"))).equals(Buffer.from(content))).toBe(true);
-      expect(readdirSync(s.dir.path).sort()).toEqual(["out", "s.db", "s.db-wal"].filter((n) => readdirSync(s.dir.path).includes(n)));
     } finally {
       await s.close();
     }

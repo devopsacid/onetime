@@ -1,4 +1,5 @@
-import { createCodec, SecretTooLargeError, WRITE_FORMAT } from "../src/web/crypto";
+import { createCodec, SecretTooLargeError, WRITE_FILES, WRITE_FORMAT } from "../src/web/crypto";
+import { formatBytes, riskyFile, safeFileName } from "../src/web/filename";
 import { normalizePassphrase, validatePassphrase } from "../src/web/passphrase";
 import {
   generatePassword,
@@ -11,8 +12,10 @@ import {
 import { buildLink, parseFragment, type SecretLink } from "../src/web/link";
 import {
   DEFAULT_TTL_SECONDS,
+  FILE_MAX_TTL_SECONDS,
   ID_PATTERN,
   MAX_BLOB_BYTES,
+  MAX_FILE_BYTES,
   MAX_SECRET_BYTES,
   MAX_TTL_SECONDS,
   MIN_TTL_SECONDS,
@@ -40,7 +43,19 @@ export interface Io {
   pbkdf2Iterations?: number;
   /** Test hook, never set by main.ts: pretend WRITE_FORMAT is this (to test the writers before the flip). */
   writeFormat?: 1 | 2;
-  stdout: { isTTY: boolean; write(text: string): void | Promise<void> };
+  /** Test hook, never set by main.ts: pretend WRITE_FILES is this (to test `send --file` before the flip). */
+  writeFiles?: boolean;
+  /** What is at `path`, following symlinks; a dangling symlink counts as "file" (it exists and must not be written through). */
+  stat(path: string): Promise<"dir" | "file" | "missing">;
+  /**
+   * Creates `path` with O_CREAT | O_EXCL | O_WRONLY and mode 0600 (never overwrites, never follows a symlink at the end)
+   * and writes `bytes`. Rejects with `code: "EEXIST"` if the path exists. If it failed after creating the file it rejects
+   * with `partial: true`, and the caller removes it.
+   */
+  writeFileExclusive(path: string, bytes: Uint8Array): Promise<void>;
+  /** Removes a file this process created. */
+  removeFile(path: string): Promise<void>;
+  stdout: { isTTY: boolean; write(text: string): void | Promise<void>; writeBytes(bytes: Uint8Array): void | Promise<void> };
   stderr: { write(text: string): void };
 }
 
@@ -154,7 +169,7 @@ interface PassphraseSource {
 export type Command =
   | { kind: "help"; topic?: string }
   | { kind: "version" }
-  | ({ kind: "send"; ttl: number; server?: string } & PassphraseSource)
+  | ({ kind: "send"; ttl: number; server?: string; file?: string; name?: string } & PassphraseSource)
   | ({
       kind: "gen";
       type: GenType;
@@ -166,12 +181,19 @@ export type Command =
       ttl: number;
       server?: string;
     } & PassphraseSource)
-  | { kind: "get"; link?: string; server?: string; passphraseFile?: string }
+  | { kind: "get"; link?: string; server?: string; passphraseFile?: string; output?: string }
   | { kind: "status"; link?: string; server?: string };
 
 type OptionSpec = { value: boolean };
 const OPTIONS: Record<string, Record<string, OptionSpec>> = {
-  send: { ttl: { value: true }, server: { value: true }, passphrase: { value: false }, "passphrase-file": { value: true } },
+  send: {
+    ttl: { value: true },
+    server: { value: true },
+    passphrase: { value: false },
+    "passphrase-file": { value: true },
+    file: { value: true },
+    name: { value: true },
+  },
   gen: {
     type: { value: true },
     length: { value: true },
@@ -184,7 +206,7 @@ const OPTIONS: Record<string, Record<string, OptionSpec>> = {
     passphrase: { value: false },
     "passphrase-file": { value: true },
   },
-  get: { server: { value: true }, "passphrase-file": { value: true } },
+  get: { server: { value: true }, "passphrase-file": { value: true }, output: { value: true } },
   status: { server: { value: true } },
 };
 
@@ -235,6 +257,12 @@ export function parseArgs(argv: string[]): Command {
       continue;
     }
     if (arg === "--help" || arg === "-h") return { kind: "help", topic: name };
+    if (arg === "-o" && spec["output"] !== undefined) {
+      const value = rest[++i];
+      if (value === undefined) throw new UsageError("Option -o needs a value.");
+      values.set("output", value);
+      continue;
+    }
     if (!arg.startsWith("--")) throw new UsageError(`Unknown option "${arg}".`);
     const eq = arg.indexOf("=");
     const optName = eq === -1 ? arg.slice(2) : arg.slice(2, eq);
@@ -270,7 +298,15 @@ export function parseArgs(argv: string[]): Command {
   switch (name) {
     case "send":
       if (positional.length > 0) throw new UsageError(SEND_ARG_ERROR);
-      return withPassphrase(withServer({ kind: "send" as const, ttl }));
+      if (values.has("name") && !values.has("file")) throw new UsageError("--name only applies with --file.");
+      return withPassphrase(
+        withServer({
+          kind: "send" as const,
+          ttl,
+          ...(values.has("file") ? { file: values.get("file")! } : {}),
+          ...(values.has("name") ? { name: values.get("name")! } : {}),
+        }),
+      );
     case "gen": {
       if (positional.length > 0) throw new UsageError("gen takes no arguments. Run onetime gen --help.");
       const typeText = values.get("type") ?? "password";
@@ -313,7 +349,9 @@ export function parseArgs(argv: string[]): Command {
       if (positional.length > 1) throw new UsageError(`${name} takes one link. Run onetime ${name} --help.`);
       const link = positional[0];
       const base = { kind: name as "get" | "status", ...(link === undefined ? {} : { link }) };
-      return name === "get" && passphraseFile !== undefined ? withServer({ ...base, passphraseFile }) : withServer(base);
+      if (name !== "get") return withServer(base);
+      const output = values.get("output");
+      return withServer({ ...base, ...(passphraseFile === undefined ? {} : { passphraseFile }), ...(output === undefined ? {} : { output }) });
     }
   }
 }
@@ -325,21 +363,26 @@ function writersOn(io: Pick<Io, "writeFormat">): boolean {
   return (io.writeFormat ?? WRITE_FORMAT) === 2;
 }
 
-function helpMain(writers: boolean): string {
+/** Whether this build writes files (deploy F2). Until then `send --file` stays out of the help and exits 2. */
+function filesOn(io: Pick<Io, "writeFiles">): boolean {
+  return (io.writeFiles ?? WRITE_FILES) === true;
+}
+
+function helpMain(writers: boolean, files: boolean): string {
   return `onetime - share a secret through a link that works once
 
 Usage:
-  onetime send [--ttl 1h|1d|7d|SECONDS]${writers ? " [--passphrase | --passphrase-file PATH]" : ""} [--server URL]
+  onetime send [--ttl 1h|1d|7d|SECONDS]${writers ? " [--passphrase | --passphrase-file PATH]" : ""} [--server URL]${files ? "\n  onetime send --file PATH|- [--name NAME] [--ttl 1h|1d]" : ""}
   onetime gen  [--type password|hex|base64url|uuid] [--length N] [--no-symbols]
                [--no-lookalikes] [--ttl ...] [--show] [--print-only]${writers ? "\n               [--passphrase | --passphrase-file PATH]" : ""} [--server URL]
-  onetime get  [LINK | -] [--passphrase-file PATH] [--server URL]
+  onetime get  [LINK | -] [-o PATH] [--passphrase-file PATH] [--server URL]
   onetime status [LINK | -] [--server URL]
   onetime --help | --version
 
 Commands:
   send     Encrypt a secret (from stdin, or typed at a hidden prompt) and print the link.
   gen      Generate a secret and print a link to it. The secret itself is not shown.
-  get      Open a link, print the secret, and use the link up.
+  get      Open a link, print the secret (or save a file with -o), and use the link up.
   status   Say whether a link is still waiting, without using it up.
 
 The secret is encrypted on this machine; the server only stores ciphertext and
@@ -353,7 +396,7 @@ Run onetime COMMAND --help for details.
 `;
 }
 
-function helpTopic(topic: string, writers: boolean): string {
+function helpTopic(topic: string, writers: boolean, files: boolean): string {
   switch (topic) {
     case "send":
       return `onetime send - create a one-time link for a secret
@@ -370,7 +413,7 @@ arguments end up in shell history and the process list.
 Prints only the link on stdout; hints go to stderr.
 --ttl   how long an unopened link lasts: 1h, 1d (default), 7d, or seconds (60 to 604800);
        at most 1d while the service is nearly full
-${writers ? PASSPHRASE_SEND_HELP : ""}`;
+${files ? FILE_SEND_HELP : ""}${writers ? PASSPHRASE_SEND_HELP : ""}`;
     case "gen":
       return `onetime gen - generate a secret and share it in one step
 
@@ -391,7 +434,7 @@ Prints only the link on stdout. The secret is not printed unless you ask.
     case "get":
       return `onetime get - open a link and print the secret
 
-Usage: onetime get [LINK | -] [--passphrase-file PATH] [--server URL]
+Usage: onetime get [LINK | -] [-o PATH] [--passphrase-file PATH] [--server URL]
 
 LINK is the full link or just ID.KEY (the server then comes from --server or
 ONETIME_SERVER). With - or no argument the link is read from stdin or typed at a
@@ -403,7 +446,15 @@ a wrong passphrase destroys the secret.
 
 Opening a link uses it up: a second attempt reports it is gone.
 Prints exactly the secret on stdout (a trailing newline only when stdout is a terminal).
-Exit codes: 0 ok, 1 gone, 2 usage error (including a missing passphrase), 3 damaged link,
+
+Files (links that look like https://<host>/#2f.<id>.<key>) need version 0.3.0 or newer:
+  -o PATH   a folder: the file is saved there under its (sanitised) name, never overwriting;
+            another path: the file is saved as that name, which must not exist yet.
+  Without -o the raw bytes go to stdout when it is redirected; on a terminal nothing is opened.
+-o also writes a text secret to a new file (no newline added).
+The target is checked before the link is used up.
+Exit codes: 0 ok, 1 gone, 2 usage error (including a missing passphrase, an existing target, a file link
+            on a terminal without -o), 3 damaged link,
             4 decryption failed (also: wrong passphrase), 5 network or server error.
 `;
     default:
@@ -415,6 +466,14 @@ Exit 0 if the secret is still waiting, 1 if it is gone (opened or expired).
 `;
   }
 }
+
+const FILE_SEND_HELP = `
+Files:
+  onetime send --file PATH [--name NAME] [--ttl 1h|1d]
+  cat photo.jpg | onetime send --file - --name photo.jpg
+Sends a file of at most ${formatBytes(MAX_FILE_BYTES)} (name and content are encrypted). It lasts at most 1 day and can be
+downloaded once. --file - reads raw bytes from a pipe. The service cannot scan files for viruses.
+`;
 
 const PASSPHRASE_SEND_HELP = `
 Passphrase (optional):
@@ -537,6 +596,7 @@ function codecFor(io: Io) {
   return createCodec({
     ...(io.pbkdf2Iterations === undefined ? {} : { pbkdf2Iterations: io.pbkdf2Iterations }),
     ...(io.writeFormat === undefined ? {} : { writeFormat: io.writeFormat }),
+    ...(io.writeFiles === undefined ? {} : { writeFiles: io.writeFiles }),
   });
 }
 
@@ -604,6 +664,32 @@ async function readNewPassphrase(io: Io, command: PassphraseOption): Promise<str
   return checkPassphrase(first);
 }
 
+/** Posts a blob and returns the validated id. */
+async function uploadBlob(io: Io, blob: Uint8Array<ArrayBuffer>, ttl: number, server: string, isFile: boolean): Promise<string> {
+  const response = await request(io, `${server}/api/secrets?ttl=${ttl}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/octet-stream" },
+    body: blob,
+  });
+  if (!response.ok) {
+    if (isFile && response.status === 413) throw new ExitError(EXIT.network, "The server does not accept files this large.");
+    if (isFile && response.status === 503) {
+      throw new ExitError(EXIT.network, "There is no room for files right now. Try again later or send a smaller file.");
+    }
+    throw await serverError(response);
+  }
+  let id: unknown;
+  try {
+    id = ((await readJson(response)) as { id?: unknown }).id;
+  } catch {
+    throw new ExitError(EXIT.network, "The server's answer was not understood.");
+  }
+  if (typeof id !== "string" || !ID_PATTERN.test(id)) {
+    throw new ExitError(EXIT.network, "The server returned an invalid secret id.");
+  }
+  return id;
+}
+
 async function createLink(io: Io, text: string, ttl: number, server: string, passphrase?: string): Promise<string> {
   let encrypted;
   try {
@@ -614,28 +700,49 @@ async function createLink(io: Io, text: string, ttl: number, server: string, pas
     }
     throw error;
   }
-  const response = await request(io, `${server}/api/secrets?ttl=${ttl}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/octet-stream" },
-    body: encrypted.blob,
-  });
-  if (!response.ok) throw await serverError(response);
-  let id: unknown;
-  try {
-    id = ((await readJson(response)) as { id?: unknown }).id;
-  } catch {
-    throw new ExitError(EXIT.network, "The server's answer was not understood.");
-  }
-  if (typeof id !== "string" || !ID_PATTERN.test(id)) {
-    throw new ExitError(EXIT.network, "The server returned an invalid secret id.");
-  }
+  const id = await uploadBlob(io, encrypted.blob, ttl, server, false);
   return buildLink(server, { id, key: encrypted.key, format: encrypted.format, passphrase: encrypted.passphrase, file: false });
 }
 
-function sendHints(io: Io, ttl: number, passphrase: boolean): void {
+async function createFileLink(io: Io, file: { name: string; bytes: Uint8Array }, ttl: number, server: string, passphrase?: string): Promise<string> {
+  let encrypted;
+  try {
+    encrypted = await codecFor(io).encryptFile({ name: file.name, type: "", bytes: file.bytes }, passphrase);
+  } catch (error) {
+    if (error instanceof SecretTooLargeError) {
+      throw new UsageError(`The file is too large (limit ${formatBytes(MAX_FILE_BYTES)}).`);
+    }
+    throw error;
+  }
+  const id = await uploadBlob(io, encrypted.blob, ttl, server, true);
+  return buildLink(server, { id, key: encrypted.key, format: 2, passphrase: encrypted.passphrase, file: true });
+}
+
+/** The file for `send --file`: raw bytes from a path or a pipe, with a sanitised name. Refuses empty and oversized input. */
+async function readFileInput(io: Io, path: string, nameOverride: string | undefined): Promise<{ name: string; bytes: Uint8Array }> {
+  let bytes: Uint8Array;
+  if (path === "-") {
+    if (io.stdin.isTTY) throw new UsageError("Pipe the file in, or give a path.");
+    bytes = await io.stdin.readBytes(MAX_FILE_BYTES);
+  } else {
+    try {
+      bytes = await io.readFile(path, MAX_FILE_BYTES);
+    } catch {
+      throw new UsageError("Could not read the file.");
+    }
+  }
+  if (bytes.length === 0) throw new UsageError("The file is empty.");
+  if (bytes.length > MAX_FILE_BYTES) throw new UsageError(`The file is too large (limit ${formatBytes(MAX_FILE_BYTES)}).`);
+  return { name: safeFileName(nameOverride ?? (path === "-" ? "" : path)), bytes };
+}
+
+function sendHints(io: Io, ttl: number, passphrase: boolean, file?: { name: string; size: number }): void {
   io.stderr.write(
-    `Opens once. Expires in ${describeTtl(ttl)} if not opened.\n` +
-      "Receive it in a browser, or with: onetime get -  (then paste the link)\n" +
+    (file === undefined ? "" : `File: ${file.name} (${formatBytes(file.size)}). Files last at most 1 day.\n`) +
+      `Opens once. Expires in ${describeTtl(ttl)} if not opened.\n` +
+      (file === undefined
+        ? "Receive it in a browser, or with: onetime get -  (then paste the link)\n"
+        : "Receive it with: onetime get - -o FOLDER  (then paste the link)\n") +
       (passphrase ? "Send the passphrase separately. A wrong one destroys the secret.\n" : ""),
   );
 }
@@ -659,15 +766,131 @@ function generateSecret(command: Extract<Command, { kind: "gen" }>): string {
   }
 }
 
+// ---------- where `get` puts what it opens ----------
+
+type Target = { kind: "stdout" } | { kind: "file"; path: string } | { kind: "dir"; path: string };
+
+/** The folder part of a path, without node:path (the core also runs in tests without it). */
+function parentOf(path: string): string {
+  const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  if (cut === -1) return ".";
+  return cut === 0 ? path.slice(0, 1) : path.slice(0, cut);
+}
+
+function joinPath(dir: string, name: string): string {
+  return dir.endsWith("/") || dir.endsWith("\\") ? `${dir}${name}` : `${dir}/${name}`;
+}
+
+/**
+ * Decides and checks the destination before anything is requested. A file link without -o on a terminal is refused
+ * (nothing is opened); an existing target, or a folder that is missing, is refused too.
+ */
+async function planOutput(io: Io, output: string | undefined, isFile: boolean): Promise<Target> {
+  if (output === undefined) {
+    if (isFile && io.stdout.isTTY) {
+      throw new UsageError("This link holds a file. Save it with -o <file or directory>, or redirect the output.");
+    }
+    return { kind: "stdout" };
+  }
+  const kind = await io.stat(output);
+  if (kind === "dir") {
+    if (!isFile) throw new UsageError("-o must be a file name for a text secret, not a folder.");
+    return { kind: "dir", path: output };
+  }
+  if (kind === "file") throw new UsageError(`${output} already exists; nothing was opened.`);
+  if ((await io.stat(parentOf(output))) !== "dir") {
+    throw new UsageError(`The folder for ${output} does not exist; nothing was opened.`);
+  }
+  return { kind: "file", path: output };
+}
+
+const WRITE_FAILED = "Could not write the file. It is now used up.";
+
+/** Creates `path` exclusively. Removes what this call created if the write fails; returns false only when the path already exists. */
+async function tryCreate(io: Io, path: string, bytes: Uint8Array, failure: string = WRITE_FAILED): Promise<boolean> {
+  try {
+    await io.writeFileExclusive(path, bytes);
+    return true;
+  } catch (error) {
+    const e = error as { code?: unknown; partial?: unknown };
+    if (e.code === "EEXIST") return false;
+    if (e.partial === true) await io.removeFile(path).catch(() => {});
+    throw new ExitError(EXIT.network, failure);
+  }
+}
+
+/** A new file at `path`; it must not exist (a file that appeared since the check is never overwritten or removed). */
+async function saveNew(io: Io, path: string, bytes: Uint8Array, failure: string): Promise<void> {
+  if (!(await tryCreate(io, path, bytes, failure))) throw new ExitError(EXIT.network, failure);
+}
+
+const EXTENSION = /\.[A-Za-z0-9]{1,16}$/;
+
+/** `name`, then `stem (1).ext` to `(99)`, then onetime-<8 hex>.bin. */
+function* candidateNames(name: string): Generator<string> {
+  yield name;
+  const ext = EXTENSION.exec(name)?.[0] ?? "";
+  const stem = name.slice(0, name.length - ext.length);
+  for (let i = 1; i <= 99; i++) yield `${stem} (${i})${ext}`;
+  const random = crypto.getRandomValues(new Uint8Array(4));
+  yield `onetime-${[...random].map((b) => b.toString(16).padStart(2, "0")).join("")}.bin`;
+}
+
+async function deliverFile(io: Io, target: Target, file: { name: string; bytes: Uint8Array }): Promise<void> {
+  if (target.kind === "stdout") {
+    try {
+      await io.stdout.writeBytes(file.bytes);
+    } catch {
+      throw new ExitError(EXIT.network, "Could not write the file to the output. It is now used up.");
+    }
+    return;
+  }
+  let path: string | undefined;
+  if (target.kind === "file") {
+    if (!(await tryCreate(io, target.path, file.bytes))) throw new ExitError(EXIT.network, WRITE_FAILED);
+    path = target.path;
+  } else {
+    for (const candidate of candidateNames(file.name)) {
+      // Defence in depth: a safe name has no separator, but nothing may ever leave the folder.
+      if (/[\\/]/.test(candidate) || candidate === "." || candidate === "..") continue;
+      const candidatePath = joinPath(target.path, candidate);
+      if (await tryCreate(io, candidatePath, file.bytes)) {
+        path = candidatePath;
+        break;
+      }
+    }
+    if (path === undefined) throw new ExitError(EXIT.network, WRITE_FAILED);
+  }
+  const saved = path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1);
+  io.stderr.write(
+    `Saved ${target.kind === "dir" ? saved : file.name} (${formatBytes(file.bytes.length)}) to ${path}.\n` +
+      (riskyFile(file.name)
+        ? "Warning: this kind of file can run code on your device. Open it only if you expected it from the sender.\n"
+        : ""),
+  );
+}
+
 async function execute(command: Command, io: Io): Promise<number> {
   switch (command.kind) {
     case "help":
-      io.stdout.write(command.topic ? helpTopic(command.topic, writersOn(io)) : helpMain(writersOn(io)));
+      io.stdout.write(command.topic ? helpTopic(command.topic, writersOn(io), filesOn(io)) : helpMain(writersOn(io), filesOn(io)));
       return EXIT.ok;
     case "version":
       io.stdout.write(`${io.version}\n`);
       return EXIT.ok;
     case "send": {
+      if (command.file !== undefined) {
+        if (!filesOn(io)) throw new UsageError("Sending files is not available yet.");
+        if (command.ttl > FILE_MAX_TTL_SECONDS) throw new UsageError("Files can last at most 1 day.");
+        const server = resolveServer(command.server, io.env, io.defaultServer);
+        checkPassphraseOptions(io, command, command.file === "-");
+        const file = await readFileInput(io, command.file, command.name);
+        const passphrase = await readNewPassphrase(io, command);
+        const link = await createFileLink(io, file, command.ttl, server, passphrase);
+        io.stdout.write(`${link}\n`);
+        sendHints(io, command.ttl, passphrase !== undefined, { name: file.name, size: file.bytes.length });
+        return EXIT.ok;
+      }
       const server = resolveServer(command.server, io.env, io.defaultServer);
       checkPassphraseOptions(io, command, !io.stdin.isTTY);
       const secret = await readSecretInput(io);
@@ -706,7 +929,8 @@ async function execute(command: Command, io: Io): Promise<number> {
       if (command.kind === "status") {
         const response = await request(io, `${parsed.origin}/api/secrets/${parsed.id}`, { method: "GET" });
         if (response.ok) {
-          io.stderr.write(parsed.passphrase ? "The secret is still waiting (it needs a passphrase).\n" : "The secret is still waiting.\n");
+          const what = parsed.file ? "The file" : "The secret";
+          io.stderr.write(parsed.passphrase ? `${what} is still waiting (it needs a passphrase).\n` : `${what} is still waiting.\n`);
           return EXIT.ok;
         }
         if (response.status === 404) {
@@ -715,6 +939,8 @@ async function execute(command: Command, io: Io): Promise<number> {
         }
         throw await serverError(response);
       }
+      // Where the result goes is decided and checked before the link is used up.
+      const target = await planOutput(io, command.output, parsed.file);
       let passphrase: string | undefined;
       if (parsed.passphrase) {
         if (command.passphraseFile !== undefined) passphrase = await readPassphraseFile(io, command.passphraseFile);
@@ -735,9 +961,9 @@ async function execute(command: Command, io: Io): Promise<number> {
       if (response.status === 404) throw new ExitError(EXIT.gone, GONE_MESSAGE);
       if (!response.ok) throw await serverError(response);
       const blob = await readBounded(response, MAX_BLOB_BYTES);
-      let secret: string;
+      let opened;
       try {
-        secret = await codec.openBlob(blob as Uint8Array<ArrayBuffer>, aesKey, parsed);
+        opened = await codec.openPayload(blob as Uint8Array<ArrayBuffer>, aesKey, parsed);
       } catch {
         throw new ExitError(
           EXIT.decrypt,
@@ -746,8 +972,18 @@ async function execute(command: Command, io: Io): Promise<number> {
             : "Decryption failed: the key does not match or the data was changed. The secret is now used up.",
         );
       }
+      if (opened.kind === "file") {
+        await deliverFile(io, target, opened);
+        return EXIT.ok;
+      }
+      if (target.kind === "file") {
+        const bytes = new TextEncoder().encode(opened.text);
+        await saveNew(io, target.path, bytes, "Could not write the secret to the file. It is now used up.");
+        io.stderr.write(`Saved the secret (${formatBytes(bytes.length)}) to ${target.path}.\n`);
+        return EXIT.ok;
+      }
       try {
-        await io.stdout.write(io.stdout.isTTY ? `${secret}\n` : secret);
+        await io.stdout.write(io.stdout.isTTY ? `${opened.text}\n` : opened.text);
       } catch {
         throw new ExitError(EXIT.network, "Could not write the secret to the output. It is now used up.");
       }
