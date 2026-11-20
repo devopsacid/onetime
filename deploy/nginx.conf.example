@@ -33,10 +33,12 @@ server {
     error_log /var/log/nginx/onetime-error.log crit;
     server_tokens off;
 
-    # A secret is at most 16 KB plus 28 bytes.
-    client_max_body_size 64k;
+    # The largest body is a 128 KiB file: its blob is 131,490 bytes. 140k leaves headroom; never go below 131,490 bytes.
+    # The app refuses anything above 131,490 bytes with 413 itself and gives an upload 60 seconds, so the proxy must not
+    # be stricter than that: 30 s between two reads of the body is enough for 128 KiB on a slow line.
+    client_max_body_size 140k;
     client_header_timeout 10s;
-    client_body_timeout 10s;
+    client_body_timeout 30s;
     send_timeout 15s;
     keepalive_timeout 5s;
 

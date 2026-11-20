@@ -137,7 +137,8 @@ The proxy must:
 
 - terminate TLS (HTTPS) and forward to `127.0.0.1:8080`;
 - **keep no access log**, because request paths contain secret ids;
-- limit request bodies to about 64 KB (a secret is at most 16 KB).
+- limit request bodies to about 140 KiB (143,360 bytes). The largest body is a 128 KiB file, whose encrypted blob is 131,490 bytes; a proxy limit below that refuses the largest allowed file, and a secret text is at most 16 KB. The app enforces 131,490 bytes (413) by itself and allows an upload 60 seconds, so give the proxy a body timeout of at least 30 seconds between reads (nginx `client_body_timeout 30s`; Caddy needs none).
+- Files can be at most 128 KiB on every instance, hosted or self-hosted: the page and the CLI refuse more, and the server limit is the same, so a self-hosted server never stores a file that a client could not open. (Clients can still open the format's larger files, up to 1 MiB, in case a later version allows them.)
 
 The app never reads `Host` or `X-Forwarded-*` headers, so the proxy needs no forwarding setup.
 
@@ -148,13 +149,13 @@ Use `deploy/Caddyfile.example`. Replace the host name.
 - Caddy gets and renews the certificate itself when the domain points to the host and ports 80 and 443 are open. With a public CA certificate **(not tested)**.
 - The example has no `log` directive. Do not add one: Caddy writes access logs only when `log` is present.
 - Access logs are not the only risk. Without a `log` directive Caddy still writes handler errors with the full request URI and the client IP, for example when the app is restarting and a reveal request arrives. The example therefore starts with a global block, `log default { exclude http.log.error http.stdlib }`, that drops those errors and the TLS handshake errors (client IPs). Keep it. Without the block, a reveal sent while the app was stopped put `/api/secrets/<id>/reveal` into the journal; with it, nothing **(tested with Debian's Caddy 2.6.2, see [deploy-ansible.md](deploy-ansible.md))**.
-- Tested with Caddy's local CA (`tls internal`) in a container: page, security headers, the full create and reveal round trip, a 70 KB body refused with 413, and no request line in Caddy's log **(tested)**.
+- Tested with Caddy's local CA (`tls internal`) in a container: page, security headers, the full create and reveal round trip, a 70 KB body refused with 413 (with the old 64 KB limit; the examples now allow 140 KiB), and no request line in Caddy's log **(tested)**.
 
 ### nginx
 
 Use `deploy/nginx.conf.example` as `/etc/nginx/conf.d/onetime.conf`. Replace the host name and certificate paths.
 
-- It sets `access_log off`, `error_log ... crit` (lower levels write the request line, with the id), `client_max_body_size 64k`, and sends no forwarding headers.
+- It sets `access_log off`, `error_log ... crit` (lower levels write the request line, with the id), `client_max_body_size 140k`, `client_body_timeout 30s`, and sends no forwarding headers.
 - Also set the global `error_log` in `nginx.conf` to `crit`.
 - **Remove the default site.** Other server blocks, such as the distribution's default site or the nginx image's `conf.d/default.conf`, keep their own access log and catch requests with an unknown host name. In the project's test, `default.conf` logged one request line with a client IP until it was removed.
 - Tested with a self-signed certificate in a container: same checks as Caddy **(tested)**.
@@ -339,7 +340,7 @@ The project ran these checks on 2026-11-19 on Linux with Docker 26.1.4, Node 22.
 - **API round trip** with curl against the container: create, check, reveal once, second reveal refused. Security headers and caching headers as on the public site.
 - **Stop and lock:** `docker stop` took about half a second, exit code 0. A second container on the same volume refused to start with exit code 3.
 - **Compose:** starts with `ONETIME_ORIGIN=http://localhost:8080`, health check 200, read-only root, capabilities dropped, `no-new-privileges`, restart policy set, `robots.txt` with `Disallow: /`. Refuses without `ONETIME_ORIGIN`.
-- **Caddy** (local CA) and **nginx** (self-signed certificate) in containers in front of the app: HTTPS reaches the app, full round trip, 413 on a 70 KB body, no access-log lines and no secret ids in the proxy logs (nginx only after removing the image's default site).
+- **Caddy** (local CA) and **nginx** (self-signed certificate) in containers in front of the app: HTTPS reaches the app, full round trip, 413 on a 70 KB body (with the old 64 KB limit), no access-log lines and no secret ids in the proxy logs (nginx only after removing the image's default site).
 - **systemd unit:** `systemd-analyze verify` passes; `systemd-analyze security` rates it 1.3 OK. The unit was not started.
 - **Without Docker:** the three folders copied to a temporary location and started with `node dist-server/server.mjs`: health check 200, data folder 0700, database 0600, ExperimentalWarning on Node 22. The operator settings appear on the privacy page.
 - **CLI** downloaded from the container: checksum OK, `send` and `get` work with `--server` and `ONETIME_SERVER`, a second `get` reports the secret as already opened, and without a server option it uses the built-in origin.

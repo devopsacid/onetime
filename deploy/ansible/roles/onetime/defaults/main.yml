@@ -52,7 +52,7 @@ onetime_node_bin: /usr/bin/node
 # --- reverse proxy ---
 # Largest request body the proxy accepts, in bytes. A secret is at most 16 KB + 28 bytes today; the app refuses anything
 # larger with 413 by itself.
-onetime_max_body_bytes: 65536
+onetime_max_body_bytes: 143360
 # "caddy" (automatic HTTPS), "nginx" (bring your certificate) or "none".
 onetime_proxy: caddy
 # Public host name; must equal the host of the ONETIME_ORIGIN the image or bundle was built with.

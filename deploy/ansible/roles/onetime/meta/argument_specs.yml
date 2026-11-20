@@ -102,7 +102,7 @@ argument_specs:
         description: Reverse proxy with TLS in front of the app. Both are configured without request logs.
       onetime_max_body_bytes:
         type: int
-        default: 65536
+        default: 143360
         description: Largest request body Caddy or nginx accepts, in bytes.
       onetime_domain:
         type: str

@@ -60,7 +60,7 @@ New base images (AMI, Ubuntu image) are ignored after creation, so a new Ubuntu 
 
 The bootstrap is one script with `set -e`: if the data disk does not appear within `data_disk_wait_seconds` (default 600), nothing else is installed or started. `onetime.service` also runs `ExecStartPre=mountpoint -q /var/lib/onetime`, and `onetime-run` checks the mount again, so the app never starts on the root disk.
 
-The proxy body limit is `max_body_bytes` (default 65536) on vm-bootstrap and the three VM modules.
+The proxy body limit is `max_body_bytes` (default 143360, i.e. 140 KiB; at least 131490 is needed for the largest file, 128 KiB) on vm-bootstrap and the three VM modules.
 
 ## Backup and restore
 

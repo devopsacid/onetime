@@ -20,9 +20,11 @@ onetime.example.com {
 	# If Caddy runs in a container on a shared Docker network, use the service name instead: onetime:8080
 	reverse_proxy 127.0.0.1:8080
 
-	# A secret is at most 16 KB plus 28 bytes; refuse anything bigger before it reaches the app.
+	# The largest body is a 128 KiB file: its blob is 131,490 bytes. 140KiB (143,360) leaves headroom; never go below
+	# 131,490 bytes. Caddy reads and writes without a short default timeout, and the app gives an upload 60 seconds, so no
+	# timeout is needed here for 128 KiB. (Do not write 140KB: Caddy reads KB as 1,000 bytes, KiB as 1,024.)
 	request_body {
-		max_size 64KB
+		max_size 140KiB
 	}
 
 	encode zstd gzip

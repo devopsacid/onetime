@@ -161,7 +161,7 @@ Request paths contain secret ids. Checklist for every cluster:
 
 ## Values reference
 
-See `deploy/helm/onetime/values.yaml` (every key is commented) and `values.schema.json`. Notable keys: `ingress.maxBodyBytes` (proxy body limit, default 65536, see [deploy-architecture.md](deploy-architecture.md)), `config.maxStored` (ONETIME_MAX_STORED), `extraEnv` (map of further variables, for example `ONETIME_MAX_CONNECTIONS`; HOST, PORT and ONETIME_DB are refused), `persistence.*`, `ingress.*`, `networkPolicy.*`, `gke.*`, `extraObjects`.
+See `deploy/helm/onetime/values.yaml` (every key is commented) and `values.schema.json`. Notable keys: `ingress.maxBodyBytes` (proxy body limit, default 143360; at least 131490 for the largest file, see [deploy-architecture.md](deploy-architecture.md)), `config.maxStored` (ONETIME_MAX_STORED), `extraEnv` (map of further variables, for example `ONETIME_MAX_CONNECTIONS`; HOST, PORT and ONETIME_DB are refused), `persistence.*`, `ingress.*`, `networkPolicy.*`, `gke.*`, `extraObjects`.
 
 ## What was tested
 

@@ -84,7 +84,7 @@ Main variables (all in `roles/onetime/defaults/main.yml`, validated by `meta/arg
 | `onetime_env` | `{}` | more variables, e.g. `ONETIME_MAX_CONNECTIONS: "200"`; HOST, PORT, ONETIME_DB are refused |
 | `onetime_data_dir` | `/var/lib/onetime` | Docker mode database folder (mount a data disk here) |
 | `onetime_require_data_mount` | `false` | `true` when a separate data disk is used: the unit refuses to start unless the database folder is a mount point |
-| `onetime_max_body_bytes` | `65536` | proxy body limit (at least 1024) |
+| `onetime_max_body_bytes` | `143360` | proxy body limit in bytes; at least 131490 so the largest file (128 KiB) is accepted (the role only enforces 1024) |
 
 With a separate data disk: in Docker mode mount it at `/var/lib/onetime` before the first run (the Terraform VM modules do that). In systemd mode the unit's state lives in `/var/lib/private/onetime`; mount the disk there **(not tested)**. Set `onetime_require_data_mount: true` in both cases, so the app never starts on the root disk when the data disk is missing (`ExecStartPre=mountpoint -q ...`; **not tested** in the role, the same guard is tested in the Terraform bootstrap). Local or block storage only, never NFS/SMB.
 

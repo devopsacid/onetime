@@ -295,3 +295,25 @@ Hostile names (input → `safeFileName`): `../../etc/passwd` → `passwd`; `..\.
 9. "Report abuse" link in the app footer, pointing to the privacy page. **Default: yes.**
 10. Store the MIME type (display only). **Default: yes.**
 11. Add the Playwright e2e suite to the repo (`pnpm e2e`), outside `pnpm check` until CI. **Default: yes.**
+
+## Deviations
+
+### A0 spike result (measured 2026-11-20): hosted `MAX_FILE_BYTES` = 128 KiB
+
+- **Method.** The main session ran a Node script against a throwaway Pages project with its own D1 database on the free plan (both deleted afterwards). It made create+reveal cycles of random opaque blobs (10 and 50 sequential, 10 to 60 parallel) and a burn test: create N blobs, reveal all in parallel, and for each failed reveal check whether the row survived.
+- **Results by blob size.**
+  - 16,418 B and 64 KiB: 0 errors (up to 40 parallel).
+  - 128 KiB: 0 errors in about 330 cycles, including 60 parallel creates and 40 + 160 burn reveals.
+  - 256 KiB: some creates and 1 of 59 burn reveals failed with Cloudflare error 1102 (Worker exceeded resource limits). The failed reveal **lost the blob**: the row was deleted and the status was 404 afterwards.
+  - 512 KiB: 10 of 28 reveals lost. 1 MiB: 3 of 22 lost, and many creates failed with 1102 under parallel load.
+- **Conclusion.** The free plan's per-request CPU limit makes large blobs unsafe: a reveal killed after `DELETE ... RETURNING` loses the file. The hosted limit is `MAX_FILE_BYTES` = 128 KiB (131,072), which is the 131,460-byte bucket boundary (128 KiB + 388 of meta); the blob is 131,490 bytes. This is below the plan's 256 KiB fallback, which failed.
+- **Counters.** The `stats` counters (`stored`, `bytes`) stayed exactly equal to `COUNT(*)` and `SUM(length(blob))` through all the 1102 failures.
+- **Database size.** The database `file_size` did not grow after 20 MB were created and revealed (deleted pages are reused; Time Travel history is not counted in `file_size`, as far as this test shows).
+- **Residual risk.** At 128 KiB a reveal can still in principle be killed under heavier load than measured; the UI's "lost after burn" message covers it.
+
+### Limits after the spike: writers and routers at 128 KiB, readers at the format maximum
+
+- `MAX_FILE_BYTES` = 131,072 and `MAX_BLOB_BYTES` = `fileBlobBytes(MAX_FILE_BYTES)` = 131,490 (a test pins both). They apply to the web writer, the CLI writer (`send --file`), the router and the Node server (its `boundedBody` default), hosted and self-hosted alike.
+- New `FORMAT_MAX_FILE_BYTES` (1 MiB) and `FORMAT_MAX_BLOB_BYTES` (1,048,994): readers use these (`decodeFilePayload`, the unpad cap in `crypto.ts`, the web reveal `maxBytes`, the CLI reveal cap). The blob format and the bucket table are unchanged.
+- **Why not a self-host setting for up to 1 MiB.** The web page and the CLI are one build for every instance and refuse content above `MAX_FILE_BYTES` before encrypting, so a server allowing more would store nothing larger anyway; a writer with a higher limit (a fork, a third-party client) would be the only source of such blobs. Keeping readers lenient means a blob up to the format maximum is opened by every client, so no instance and no later version can produce a link another client cannot open. The earlier plan idea of readers rejecting content above `MAX_FILE_BYTES` is dropped for that reason; writers stay strict.
+- The A-10 proxy numbers (`client_max_body_size 1100k`, `max_size 1100KB`, body timeout 60 s) are replaced by 140k / 140KiB (143,360 bytes, minimum 131,490) and `client_body_timeout 30s`. The Helm `ingress.maxBodyBytes`, Ansible `onetime_max_body_bytes` and Terraform `max_body_bytes` defaults go from 65,536 to 143,360. ingress-nginx's default `proxy-body-size` of 1m is above the new maximum blob, so only a lowered value can hurt.

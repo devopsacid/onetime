@@ -86,11 +86,11 @@ ingress:
     enabled: false
     issuerName: ""
     issuerKind: ClusterIssuer
-  # Largest request body the proxy accepts, in bytes (a secret is at most 16 KB + 28 bytes today; the app refuses
-  # anything larger with 413 by itself). For ingress-nginx classes (className containing "nginx", or
+  # Largest request body the proxy accepts, in bytes (the largest file blob is 131,490 bytes, so 143360 = 140 KiB
+  # is the default and anything below 131,490 refuses the largest allowed file; the app refuses larger bodies with 413 itself). For ingress-nginx classes (className containing "nginx", or
   # webapprouting.kubernetes.azure.com) the chart sets nginx.ingress.kubernetes.io/proxy-body-size from it, unless
   # that annotation is given below. Other controllers: see the example files (Traefik Middleware uses it too).
-  maxBodyBytes: 65536
+  maxBodyBytes: 143360
   # Controller-specific annotations. Access logs must stay off; see the files in deploy/helm/examples/.
   annotations: {}
 

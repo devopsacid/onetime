@@ -59,14 +59,14 @@ The app never reads `Host` or `X-Forwarded-*`, so no forwarding headers or trust
 
 ### 5. TLS and request size
 
-TLS terminates in front of the app (Caddy, nginx, an ingress controller or a cloud load balancer). Browsers only allow the page's encryption in a secure context, so plain HTTP works only on `localhost`. The proxy limits request bodies; a secret is at most 16 KB plus 28 bytes today, and the default limit is 65536 bytes (64 KB). The app also enforces its own limit (413), so a proxy without a body limit (AWS ALB, Application Gateway for Containers, GKE Ingress) is still safe. A planned file-transfer feature will raise the upload size to about 1 MiB, so the proxy limit is a setting everywhere:
+TLS terminates in front of the app (Caddy, nginx, an ingress controller or a cloud load balancer). Browsers only allow the page's encryption in a secure context, so plain HTTP works only on `localhost`. The proxy limits request bodies; the largest body is a file of 128 KiB, whose encrypted blob is 131,490 bytes (a secret text is at most 16,418 bytes). The required minimum for a proxy body limit is therefore 131,490 bytes, and the default is 143360 bytes (140 KiB), so a default install accepts the largest allowed file. A smaller value makes the proxy refuse files (the page then shows an upload error). The app also enforces its own limit (413), so a proxy without a body limit (AWS ALB, Application Gateway for Containers, GKE Ingress) is still safe. Proxies also need a body timeout of at least 30 seconds between reads; the app itself gives an upload 60 seconds. The proxy limit is a setting everywhere:
 
 | Tool | Setting | Default | Used for |
 |---|---|---|---|
-| Helm | `ingress.maxBodyBytes` | 65536 | `nginx.ingress.kubernetes.io/proxy-body-size` on ingress-nginx classes (unless set as an annotation), the Traefik Middleware in `values-k3s-traefik.yaml` |
-| Ansible | `onetime_max_body_bytes` | 65536 | Caddy `request_body max_size`, nginx `client_max_body_size` |
-| Terraform (VMs) | `max_body_bytes` (vm-bootstrap and the three VM modules) | 65536 | Caddy `request_body max_size` |
-| `deploy/Caddyfile.example`, `deploy/nginx.conf.example` | edit `64KB` / `64k` by hand | 64 KB | |
+| Helm | `ingress.maxBodyBytes` | 143360 | `nginx.ingress.kubernetes.io/proxy-body-size` on ingress-nginx classes (unless set as an annotation), the Traefik Middleware in `values-k3s-traefik.yaml` |
+| Ansible | `onetime_max_body_bytes` | 143360 | Caddy `request_body max_size`, nginx `client_max_body_size` |
+| Terraform (VMs) | `max_body_bytes` (vm-bootstrap and the three VM modules) | 143360 | Caddy `request_body max_size` |
+| `deploy/Caddyfile.example`, `deploy/nginx.conf.example` | edit `140KiB` / `140k` by hand | 140 KiB | |
 
 On ALB, Application Gateway for Containers and the GKE Ingress there is nothing to set; the app's own limit applies.
 
