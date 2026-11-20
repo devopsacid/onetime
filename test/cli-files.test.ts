@@ -469,6 +469,22 @@ describe("send --file and the server's limits (GET /api/limits)", () => {
     }
   });
 
+  it("does not follow a redirect from /api/limits and does not read an oversized reply: both mean the hosted limits", async () => {
+    let calls = 0;
+    const redirect = await run1(
+      ["send", "--file", "a"],
+      () => (calls++, new Response("", { status: 302, headers: { Location: "https://elsewhere.example/api/limits" } })),
+      { files: { a: new Uint8Array(MAX_FILE_BYTES + 1) } },
+    );
+    expect(calls).toBe(1);
+    expect(redirect.code).toBe(EXIT.usage);
+    expect(redirect.io.err).toContain("limit 256.0 KB");
+    const huge = JSON.stringify({ maxFileBytes: 5_242_880, maxFileTtl: 86_400, maxTextBytes: 16_384, pad: "x".repeat(2000) });
+    const big = await run1(["send", "--file", "a"], () => new Response(huge), { files: { a: new Uint8Array(MAX_FILE_BYTES + 1) } });
+    expect(big.code).toBe(EXIT.usage);
+    expect(big.io.err).toContain("limit 256.0 KB");
+  });
+
   it("refuses at once when the server has files off (maxFileBytes 0), without reading the file or uploading", async () => {
     const { code, io, rec } = await run1(["send", "--file", "a"], limitsJson({ maxFileBytes: 0 }), { files: { a: "x" } });
     expect(code).toBe(EXIT.usage);

@@ -1,7 +1,7 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ConfigError, parseConfig } from "../../server/config";
+import { ConfigError, configWarnings, parseConfig } from "../../server/config";
 import { buildServerBundle, makeDist, runServer, tempDir } from "./helpers";
 
 const BASE = "/opt/onetime/dist-server";
@@ -57,6 +57,12 @@ describe("parseConfig", () => {
   it("turns files off with ONETIME_MAX_LARGE_BYTES=0 and also zeroes the file size, so the two settings never disagree", () => {
     expect(parseConfig({ ONETIME_MAX_LARGE_BYTES: "0" }, BASE, "/w")).toMatchObject({ maxFileBytes: 0, maxLargeBytes: 0 });
     expect(parseConfig({ ONETIME_MAX_LARGE_BYTES: "0", ONETIME_MAX_FILE_BYTES: "1048576" }, BASE, "/w")).toMatchObject({ maxFileBytes: 0, maxLargeBytes: 0 });
+  });
+
+  it("names ONETIME_MAX_STORED_BYTES when the unset large budget (which follows it) is too small for the file size", () => {
+    const env = { ONETIME_MAX_FILE_BYTES: "5242880", ONETIME_MAX_STORED_BYTES: "1000000" };
+    expect(() => parseConfig(env, BASE, "/w")).toThrow(/ONETIME_MAX_STORED_BYTES/);
+    expect(() => parseConfig({ ...env, ONETIME_MAX_LARGE_BYTES: "1000000" }, BASE, "/w")).toThrow(/ONETIME_MAX_LARGE_BYTES/);
   });
 
   it("rejects a large budget too small for one file of the configured size (every upload would answer 503)", () => {
@@ -202,5 +208,18 @@ describe("startup refusals of the built server", () => {
   it("exits 2 for a missing dist", async () => {
     const child = runServer(bundle, env({ ONETIME_DIST: join(tmp.path, "nowhere") }));
     expect(await child.exited).toBe(2);
+  });
+});
+
+describe("configWarnings", () => {
+  it("is silent for the defaults, for files up to 2 MiB with 16 uploads, and for 5 MiB with few uploads", () => {
+    expect(configWarnings(parseConfig({}, BASE, "/w"))).toEqual([]);
+    expect(configWarnings(parseConfig({ ONETIME_MAX_FILE_BYTES: "2097152" }, BASE, "/w"))).toEqual([]);
+    expect(configWarnings(parseConfig({ ONETIME_MAX_FILE_BYTES: "5242880", ONETIME_MAX_UPLOADS: "4" }, BASE, "/w"))).toEqual([]);
+  });
+  it("warns once, naming ONETIME_MAX_UPLOADS, for 5 MiB files with 16 uploads (about 250 MB)", () => {
+    const warnings = configWarnings(parseConfig({ ONETIME_MAX_FILE_BYTES: "5242880" }, BASE, "/w"));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/ONETIME_MAX_UPLOADS/);
   });
 });

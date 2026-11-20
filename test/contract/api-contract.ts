@@ -305,6 +305,15 @@ export function defineApiContract(h: ApiHarness): void {
       expect((await create(blobOf(1_048_995), { ttl: "3600", options })).status).toBe(413);
     });
 
+    it("with a small maxFileBytes (1000) still stores a 16 KB text (16,418-byte blob) and refuses 16,419 with 413", async () => {
+      const options = { maxFileBytes: 1000 };
+      expect((await create(blobOf(16_418), { options })).status).toBe(201);
+      const refused = await create(blobOf(16_419), { options });
+      expect(refused.status).toBe(413);
+      await refused.arrayBuffer();
+      expect(((await (await call("/api/limits", {}, options)).json()) as { maxFileBytes: number }).maxFileBytes).toBe(1000);
+    });
+
     it("with files off (maxFileBytes 0) takes 16,418 bytes and answers 413 for 16,419", async () => {
       const options = { maxFileBytes: 0 };
       expect((await create(blobOf(16_418), { options })).status).toBe(201);
