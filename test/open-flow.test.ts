@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { ApiError } from "../src/web/api";
+import { ApiError, BodyReadError } from "../src/web/api";
 import { createCodec } from "../src/web/crypto";
 import { createLatestGuard } from "../src/web/latest";
 import { openSecret, openSecretGuarded, type OpenDeps, type OpenPhase } from "../src/web/open-flow";
 import { passphraseProblemText, planCreate, passphraseCreateEnabled } from "../src/web/passphrase-ui";
 
 // workerd refuses high PBKDF2 iteration counts; the real count is proven in test/node/crypto-v2.test.ts.
-const codec = createCodec({ writeFormat: 2, pbkdf2Iterations: 1000 });
+const codec = createCodec({ writeFormat: 2, writeFiles: true, pbkdf2Iterations: 1000 });
 const PASS = "correct horse battery";
 
 async function setup(passphrase?: string) {
@@ -16,7 +16,7 @@ async function setup(passphrase?: string) {
   const deps: OpenDeps = {
     deriveKey: (l, p) => (calls.push("derive"), codec.deriveKey(l, p)),
     revealSecret: async () => (calls.push("reveal"), blob),
-    openBlob: (b, k, l) => (calls.push("open"), codec.openBlob(b, k, l)),
+    openBlob: (b, k, l) => (calls.push("open"), codec.openPayload(b, k, l)),
   };
   return { link, deps, calls, blob };
 }
@@ -96,12 +96,55 @@ describe("create passphrase planning", () => {
   });
 });
 
-describe("openSecret on a file link before the file UI exists", () => {
-  it("refuses with no key derivation and no request, so nothing can be burnt", async () => {
-    const { link, deps, calls } = await setup();
-    const outcome = await openSecret({ ...link, file: true }, "", deps);
-    expect(outcome).toEqual({ kind: "unsupported" });
-    expect(calls).toEqual([]);
+async function setupFile(passphrase?: string, bytes = new Uint8Array([1, 2, 3, 250])) {
+  const made = await codec.encryptFile({ name: "../a b.txt", type: "text/plain", bytes }, passphrase);
+  const link = { id: "y".repeat(22), key: made.key, format: 2 as const, passphrase: made.passphrase, file: true };
+  const calls: string[] = [];
+  const deps: OpenDeps = {
+    deriveKey: (l, p) => (calls.push("derive"), codec.deriveKey(l, p)),
+    revealSecret: async () => (calls.push("reveal"), made.blob),
+    openBlob: (b, k, l) => (calls.push("open"), codec.openPayload(b, k, l)),
+  };
+  return { link, deps, calls };
+}
+
+describe("openSecret on a file link", () => {
+  it("derives, reveals, and returns the file with a sanitised name", async () => {
+    const { link, deps, calls } = await setupFile();
+    const phases: OpenPhase[] = [];
+    const outcome = await openSecret(link, "", deps, (p) => phases.push(p));
+    expect(outcome).toEqual({ kind: "file", name: "a b.txt", type: "text/plain", bytes: new Uint8Array([1, 2, 3, 250]) });
+    expect(calls).toEqual(["derive", "reveal", "open"]);
+    expect(phases).toEqual(["preparing", "revealing", "revealed"]);
+  });
+
+  it("works with a passphrase, and a wrong one is undecryptable after the burn", async () => {
+    const { link, deps } = await setupFile(PASS);
+    expect((await openSecret(link, PASS, deps)).kind).toBe("file");
+    expect(await openSecret(link, "another passphrase", deps)).toEqual({ kind: "undecryptable", passphrase: true });
+  });
+
+  it("a damaged file link without a passphrase is lost (the file is gone)", async () => {
+    const { link, deps } = await setupFile();
+    expect(await openSecret(link, "", { ...deps, revealSecret: async () => new Uint8Array(40) })).toEqual({ kind: "lost", file: true });
+  });
+
+  it("a body that fails after the 200 is lost and still signals revealed (the row is deleted)", async () => {
+    const { link, deps } = await setupFile();
+    const phases: OpenPhase[] = [];
+    const outcome = await openSecret(link, "", { ...deps, revealSecret: async () => { throw new BodyReadError("cut"); } }, (p) => phases.push(p));
+    expect(outcome).toEqual({ kind: "lost", file: true });
+    expect(phases).toEqual(["preparing", "revealing", "revealed"]);
+  });
+
+  it("a text link whose body fails is lost too, with file: false", async () => {
+    const { link, deps } = await setup();
+    expect(await openSecret(link, "", { ...deps, revealSecret: async () => { throw new BodyReadError("cut"); } })).toEqual({ kind: "lost", file: false });
+  });
+
+  it("a text link never yields a file outcome", async () => {
+    const { link, deps } = await setup();
+    expect((await openSecret(link, "", deps)).kind).toBe("revealed");
   });
 });
 
