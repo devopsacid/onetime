@@ -148,6 +148,28 @@
             </div>
           </details>
 
+          <div id="passphrase-create" class="passphrase-create" hidden>
+            <div class="checks">
+              <label><input type="checkbox" id="pp-use" aria-controls="pp-fields" /> Protect with a passphrase</label>
+            </div>
+            <div id="pp-fields" class="passphrase-fields" hidden>
+              <div class="row">
+                <div class="field">
+                  <label for="pp-first">Passphrase</label>
+                  <input id="pp-first" type="password" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" aria-describedby="pp-note" />
+                </div>
+                <div class="field">
+                  <label for="pp-second">Repeat passphrase</label>
+                  <input id="pp-second" type="password" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" aria-describedby="pp-note" />
+                </div>
+              </div>
+              <p id="pp-note" class="notice notice-info">
+                Send the passphrase by a different channel than the link. The recipient gets one try: a wrong passphrase
+                destroys the secret.
+              </p>
+            </div>
+          </div>
+
           <div class="row row-end">
             <div class="field">
               <label for="ttl">Link expires after</label>
@@ -178,6 +200,8 @@
             <li>It can be opened <strong>once</strong>. After that the secret is deleted.</li>
             <li>If nobody opens it, it stops working after <strong id="created-ttl"></strong> and is deleted soon after.</li>
             <li>The link is the only copy of the key. It cannot be recovered if you lose it.</li>
+            <li id="created-pp-hint" hidden>This link needs the passphrase. Send it separately, not in the same message.</li>
+            <li id="created-check-hint" hidden>You can check whether it was opened: open the link yourself without pressing Reveal.</li>
           </ul>
         </div>
         <p><button type="button" id="create-another" class="button button-secondary">Share another secret</button></p>
@@ -185,12 +209,20 @@
 
       <!-- Open -->
       <section id="view-open" hidden data-nosnippet>
-        <h1 tabindex="-1">Someone shared a secret with you</h1>
+        <h1 tabindex="-1" id="open-title">Someone shared a secret with you</h1>
         <p class="lead">It can be shown only once. Make sure you are ready to copy it or save it somewhere safe.</p>
-        <div class="card">
-          <button type="button" id="reveal" class="button">Reveal secret</button>
+        <form id="open-form" class="card" novalidate>
+          <div id="open-passphrase" class="field" hidden>
+            <label for="open-pass">Passphrase</label>
+            <input id="open-pass" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-describedby="open-pass-warning open-pass-rule" />
+            <p id="open-pass-rule" class="hint">A passphrase has 8 to 256 characters.</p>
+            <p id="open-pass-warning" class="notice notice-info">
+              You get one try. If the passphrase is wrong, the secret is destroyed and the sender has to send a new link.
+            </p>
+          </div>
+          <div><button type="submit" id="reveal" class="button">Reveal secret</button></div>
           <p id="open-error" class="notice notice-error" role="alert" hidden></p>
-        </div>
+        </form>
       </section>
 
       <!-- Revealed -->

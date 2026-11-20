@@ -1,7 +1,7 @@
 import { MAX_SECRET_BYTES } from "../shared/limits";
 import { lowerTtlSelection } from "./ttl";
 import { ApiError, createSecret, revealSecret, secretExists } from "./api";
-import { SecretTooLargeError, decryptSecret, encryptSecret } from "./crypto";
+import { SecretTooLargeError, WRITE_FORMAT, deriveKey, encryptSecret, openBlob } from "./crypto";
 import {
   PASSWORD_LENGTH,
   TOKEN_BYTES,
@@ -10,7 +10,10 @@ import {
   generateUuid,
   type CharsetName,
 } from "./generate";
+import { validatePassphrase } from "./passphrase";
 import { createLatestGuard } from "./latest";
+import { openSecret } from "./open-flow";
+import { passphraseCreateEnabled, passphraseProblemText, planCreate } from "./passphrase-ui";
 import { buildLink, parseFragment, type SecretLink } from "./link";
 import { initThemeToggle } from "./theme-toggle";
 import { purgeLegacyAnalyticsState } from "./ga-cookies";
@@ -52,6 +55,21 @@ function describe(error: unknown): string {
 const secretInput = el<HTMLTextAreaElement>("secret");
 const ttlSelect = el<HTMLSelectElement>("ttl");
 const createButton = el<HTMLButtonElement>("create-submit");
+const ppEnabled = passphraseCreateEnabled(WRITE_FORMAT);
+const ppUse = el<HTMLInputElement>("pp-use");
+const ppFirst = el<HTMLInputElement>("pp-first");
+const ppSecond = el<HTMLInputElement>("pp-second");
+el("passphrase-create").hidden = !ppEnabled;
+ppUse.addEventListener("change", () => {
+  el("pp-fields").hidden = !ppUse.checked;
+  if (ppUse.checked) ppFirst.focus();
+});
+
+function clearPassphraseFields(): void {
+  ppFirst.value = "";
+  ppSecond.value = "";
+  openPass.value = "";
+}
 
 function updateSize(): void {
   const bytes = new TextEncoder().encode(secretInput.value).byteLength;
@@ -71,13 +89,28 @@ el<HTMLFormElement>("create-form").addEventListener("submit", async (event) => {
     return;
   }
 
+  const plan = planCreate({ enabled: ppEnabled, checked: ppUse.checked, first: ppFirst.value, second: ppSecond.value });
+  if ("error" in plan) {
+    setError("create-error", plan.error);
+    ppFirst.focus();
+    return;
+  }
+
   createButton.disabled = true;
+  const createLabel = createButton.textContent;
+  if (plan.passphrase !== undefined) {
+    createButton.textContent = "Preparing…";
+    announce("Preparing…");
+  }
   try {
-    const { blob, key, format } = await encryptSecret(text);
+    const { blob, key, format, passphrase } = await encryptSecret(text, plan.passphrase);
     const id = await createSecret(blob, Number(ttlSelect.value));
     secretInput.value = "";
+    clearPassphraseFields();
     updateSize();
-    el<HTMLInputElement>("link").value = buildLink(location.origin, { id, key, format, passphrase: false });
+    el<HTMLInputElement>("link").value = buildLink(location.origin, { id, key, format, passphrase });
+    el("created-pp-hint").hidden = !passphrase;
+    el("created-check-hint").hidden = !passphrase;
     el("created-ttl").textContent = ttlSelect.selectedOptions[0]?.textContent ?? "";
     show("created");
   } catch (error) {
@@ -105,11 +138,14 @@ el<HTMLFormElement>("create-form").addEventListener("submit", async (event) => {
     );
   } finally {
     createButton.disabled = false;
+    createButton.textContent = createLabel;
   }
 });
 
 el("create-another").addEventListener("click", () => {
   el<HTMLInputElement>("link").value = "";
+  ppUse.checked = false;
+  el("pp-fields").hidden = true;
   show("create");
   secretInput.focus();
 });
@@ -176,38 +212,70 @@ function showGone(title: string, text: string): void {
 const GONE_TEXT =
   "One-time links work a single time and expire if nobody opens them. Ask the sender for a new link.";
 
-revealButton.addEventListener("click", async () => {
-  if (!pending) return;
+const openPass = el<HTMLInputElement>("open-pass");
+const REVEAL_LABEL = revealButton.textContent;
+
+function syncReveal(): void {
+  revealButton.disabled = pending?.passphrase === true && validatePassphrase(openPass.value) !== null;
+}
+openPass.addEventListener("input", syncReveal);
+
+el<HTMLFormElement>("open-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!pending || revealButton.disabled) return;
   const link = pending;
-  const { id } = link;
   setError("open-error", null);
   revealButton.disabled = true;
-  try {
-    const blob = await revealSecret(id);
-    // The key has done its job: drop it from the address bar.
-    history.replaceState(null, "", location.pathname);
-    pending = null;
-    try {
-      el<HTMLTextAreaElement>("revealed").value = await decryptSecret(blob, link);
-      show("revealed");
-    } catch {
-      showGone(
-        "This secret could not be decrypted",
-        "The link was probably changed or cut off on the way. The secret has been deleted; ask the sender for a new link.",
-      );
+  openPass.readOnly = true;
+  const outcome = await openSecret(link, openPass.value, { deriveKey, revealSecret, openBlob }, (phase) => {
+    if (phase === "preparing") {
+      revealButton.textContent = "Preparing…";
+      announce("Preparing…");
+    } else if (phase === "revealed") {
+      // The key has done its job: drop it from the address bar.
+      history.replaceState(null, "", location.pathname);
+      pending = null;
     }
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 404) {
+  });
+  revealButton.textContent = REVEAL_LABEL;
+  openPass.readOnly = false;
+  switch (outcome.kind) {
+    case "revealed":
+      openPass.value = "";
+      el<HTMLTextAreaElement>("revealed").value = outcome.text;
+      show("revealed");
+      break;
+    case "gone":
+      openPass.value = "";
       showGone("This secret is no longer available", GONE_TEXT);
-    } else {
+      break;
+    case "undecryptable":
+      openPass.value = "";
+      if (outcome.passphrase) {
+        showGone("Wrong passphrase, or the link was changed", "The secret has been deleted. Ask the sender for a new link.");
+      } else {
+        showGone(
+          "This secret could not be decrypted",
+          "The link was probably changed or cut off on the way. The secret has been deleted; ask the sender for a new link.",
+        );
+      }
+      break;
+    case "invalid":
+      setError("open-error", passphraseProblemText(outcome.problem));
+      openPass.focus();
+      break;
+    case "prepare-failed":
+      setError("open-error", "Could not prepare the key. Nothing has been used up. Reload the page and try again.");
+      break;
+    case "network":
+      // The entered passphrase stays so the user can retry without retyping.
       setError(
         "open-error",
-        `${describe(error)} The secret may already have been deleted. You can try again; if it then shows as no longer available, ask the sender for a new link.`,
+        `${describe(outcome.error)} The secret may already have been deleted. You can try again; if it then shows as no longer available, ask the sender for a new link.`,
       );
-    }
-  } finally {
-    revealButton.disabled = false;
+      break;
   }
+  syncReveal();
 });
 
 // ---------- Copy ----------
@@ -236,6 +304,7 @@ async function route(): Promise<void> {
   const ticket = routeGuard.next();
   el<HTMLTextAreaElement>("revealed").value = "";
   pending = null;
+  clearPassphraseFields();
   const parsed = parseFragment(location.hash);
 
   if (parsed === null) {
@@ -246,15 +315,6 @@ async function route(): Promise<void> {
     showGone(
       "This link is incomplete",
       "Part of the link is missing or changed. Copy the whole link again, including everything after the # sign.",
-    );
-    return;
-  }
-
-  if (parsed.passphrase) {
-    // The passphrase field comes with the writers deploy. Until then never press Reveal for the user: it would burn the secret.
-    showGone(
-      "This page cannot open this link yet",
-      "The link needs a passphrase, which this page does not support yet. Nothing has been used up. Try again later.",
     );
     return;
   }
@@ -271,8 +331,13 @@ async function route(): Promise<void> {
   }
   if (!routeGuard.isCurrent(ticket)) return;
   pending = parsed;
+  openPass.value = "";
+  el("open-passphrase").hidden = !parsed.passphrase;
+  el("open-title").textContent = parsed.passphrase ? "This secret is protected by a passphrase" : "Someone shared a secret with you";
   setError("open-error", null);
+  syncReveal();
   show("open");
+  if (parsed.passphrase) openPass.focus();
 }
 
 syncGenerator();
@@ -282,6 +347,7 @@ window.addEventListener("pagehide", () => {
   el<HTMLTextAreaElement>("revealed").value = "";
   el<HTMLInputElement>("link").value = "";
   secretInput.value = "";
+  clearPassphraseFields();
 });
 window.addEventListener("pageshow", (event) => {
   if (event.persisted) {

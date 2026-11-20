@@ -251,6 +251,7 @@ legend {
 
 textarea,
 input[type="text"],
+input[type="password"],
 input[type="number"],
 select {
   width: 100%;
@@ -1154,4 +1155,22 @@ html {
 
 .consent-actions .button {
   flex: 1 1 8rem;
+}
+
+/* ---------- Passphrase ---------- */
+
+.passphrase-create,
+.passphrase-fields {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.passphrase-create .checks label,
+.passphrase-create .field {
+  min-width: 0;
+}
+
+.passphrase-fields .notice-info,
+#open-passphrase .notice-info {
+  margin-bottom: 0;
 }
