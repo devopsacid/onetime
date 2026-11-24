@@ -353,6 +353,42 @@ if (profile !== "selfhost") {
   }
 }
 
+// Usage counters (docs/plans/usage-counters.md): the page-load beacon `view=app` exists only in the app build, at most once,
+// in the entry chunk of index.html; the Function serves /api/* and nothing else. TODO(usage-counters): once the web
+// beacon has landed, require exactly one (MIN_VIEW_BEACONS = 1).
+{
+  const MIN_VIEW_BEACONS = 0;
+  const beacon = /view=app/g;
+  const hits = textFiles(root).flatMap((file) => {
+    const n = (readFileSync(file, "utf8").match(beacon) ?? []).length;
+    return n > 0 ? [[file, n]] : [];
+  });
+  if (profile !== "app") {
+    for (const [file] of hits) problems.push(`${relative(process.cwd(), file)}: view=app (the usage beacon) in a ${profile} build`);
+  } else {
+    const total = hits.reduce((sum, [, n]) => sum + n, 0);
+    const index = exists("index.html") ? readFileSync(join(root, "index.html"), "utf8") : "";
+    const entry = /<script[^>]*\btype="module"[^>]*\bsrc="([^"]+)"/.exec(index)?.[1];
+    const entryPath = entry === undefined ? null : resolve(root, `.${entry.startsWith("/") ? "" : "/"}${entry}`);
+    if (total > 1 || total < MIN_VIEW_BEACONS) problems.push(`app build: view=app must appear exactly once (found ${total})`);
+    for (const [file] of hits) {
+      if (entryPath === null || resolve(file) !== entryPath) problems.push(`${relative(process.cwd(), file)}: view=app outside the entry chunk of index.html`);
+    }
+    if (exists("_routes.json")) {
+      let routes = null;
+      try {
+        routes = JSON.parse(readFileSync(join(root, "_routes.json"), "utf8"));
+      } catch {
+        // reported below
+      }
+      const include = routes?.include;
+      if (!Array.isArray(include) || include.length !== 1 || include[0] !== "/api/*" || (routes.exclude ?? []).length !== 0) {
+        problems.push('_routes.json: must include only "/api/*" (counters must never route pages through the Function)');
+      }
+    } else problems.push("app build: _routes.json is missing");
+  }
+}
+
 // No Google string anywhere in the app (rule 2); the info site is checked through 404.html above.
 if (profile === "app") {
   for (const file of textFiles(root)) {

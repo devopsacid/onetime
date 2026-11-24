@@ -601,6 +601,22 @@ describe("files through the Node server", () => {
     }
   }, 60_000);
 
+  it("answers /api/limits?view=app and ?kind= on create and reveal like without them (the self-host server counts nothing)", async () => {
+    const plain = await (await fetch(`${base}/api/limits`)).text();
+    const counted = await fetch(`${base}/api/limits?view=app`, { headers: { "Sec-Fetch-Site": "same-origin" } });
+    expect(counted.status).toBe(200);
+    expect(await counted.text()).toBe(plain);
+    const created = await fetch(`${base}/api/secrets?ttl=3600&kind=file-pass`, {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: blobOf(64),
+    });
+    expect(created.status).toBe(201);
+    const { id } = (await created.json()) as { id: string };
+    expect((await fetch(`${base}/api/secrets/${id}/reveal?kind=file-pass`, { method: "POST" })).status).toBe(200);
+    expect((await fetch(`${base}/api/secrets/${id}/reveal?kind=file-pass`, { method: "POST" })).status).toBe(404);
+  });
+
   it("answers /api/limits with maxFileBytes 0 when files are off", async () => {
     const s = await own({ maxFileBytes: 0 });
     try {
