@@ -1,5 +1,6 @@
 import { handle } from "../../src/worker/index";
 import { d1Store } from "../../src/worker/store-d1";
+import { analyticsEngineUsage } from "../../src/worker/usage-ae";
 
 export const onRequest: PagesFunction<Cloudflare.Env> = (context) =>
-  handle(context.request, d1Store(context.env.DB), context);
+  handle(context.request, d1Store(context.env.DB), context, { usage: analyticsEngineUsage(context.env.USAGE) });

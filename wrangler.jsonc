@@ -10,7 +10,10 @@
       "database_id": "20cbacad-c40a-4e7b-9a0e-3203078ecb3b",
       "migrations_dir": "migrations"
     }
-  ]
+  ],
+  // Usage counters (docs/plans/usage-counters.md): the dataset is created on the first write. Only an event and a
+  // label from closed sets are written, never an id, key, blob or request detail.
+  "analytics_engine_datasets": [{ "binding": "USAGE", "dataset": "onetime_usage" }]
   // No "observability" key: Pages configs reject it. Request logs record secret ids,
   // so keep Functions logs / Logpush off in the dashboard instead.
 }

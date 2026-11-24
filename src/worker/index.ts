@@ -15,6 +15,7 @@ import {
   MIN_TTL_SECONDS,
 } from "../shared/limits";
 import { CounterMissingError, type SecretStore, type WaitUntil } from "./store";
+import { noUsage, parseKind, safeCount, type Usage } from "./usage";
 
 /**
  * Test hooks (fixed clock in ms since epoch, smaller caps) that the Node server also sets from its configuration.
@@ -31,6 +32,8 @@ export interface Options {
   maxFileBytes?: number;
   maxFileTtl?: number;
   maxBlobBytes?: number;
+  /** Aggregate usage counters (docs/plans/usage-counters.md). Default: counts nothing. */
+  usage?: Usage;
 }
 
 /** Whether a router with these options accepts files: both the file size and the large-blob budget must be above 0. */
@@ -116,7 +119,7 @@ function describeSeconds(seconds: number): string {
   return `${seconds} seconds`;
 }
 
-async function createSecret(request: Request, store: SecretStore, url: URL, now: number, caps: Caps): Promise<Response> {
+async function createSecret(request: Request, store: SecretStore, url: URL, now: number, caps: Caps, usage: Usage): Promise<Response> {
   if (request.headers.get("Content-Type") !== "application/octet-stream") {
     return error(415, "Body must be application/octet-stream");
   }
@@ -165,6 +168,9 @@ async function createSecret(request: Request, store: SecretStore, url: URL, now:
     );
   }
   if (!stored) return error(503, "The service is full right now, try again later", { "Retry-After": "300" });
+  // Counted only after the row is stored; the kind comes from the client and is never stored or returned.
+  const kind = parseKind(url.searchParams.get("kind"));
+  safeCount(usage, "create", kind);
   return json(201, { id });
 }
 
@@ -177,9 +183,14 @@ export async function handle(
 ): Promise<Response> {
   const now = options.now ?? Date.now();
   const url = new URL(request.url);
+  const usage = options.usage ?? noUsage;
 
   if (url.pathname === "/api/limits") {
     if (request.method !== "GET") return error(405, "Method not allowed", { Allow: "GET" });
+    // A page load: only a same-origin fetch with exactly view=app counts. The answer is the same either way.
+    if (url.searchParams.get("view") === "app" && request.headers.get("Sec-Fetch-Site") === "same-origin") {
+      safeCount(usage, "view", "app");
+    }
     return json(200, {
       maxFileBytes: filesOn(options) ? (options.maxFileBytes ?? MAX_FILE_BYTES) : 0,
       maxFileTtl: options.maxFileTtl ?? LARGE_MAX_TTL_SECONDS,
@@ -195,7 +206,7 @@ export async function handle(
       maxLargeBytes: options.maxLargeBytes ?? MAX_LARGE_STORED_BYTES,
       maxFileTtl: options.maxFileTtl ?? LARGE_MAX_TTL_SECONDS,
       maxBlob: blobLimit(options),
-    });
+    }, usage);
   }
 
   const match = /^\/api\/secrets\/([^/]+)(\/reveal)?$/.exec(url.pathname);
@@ -209,7 +220,12 @@ export async function handle(
     if (request.method !== "POST") return error(405, "Method not allowed", { Allow: "POST" });
     const blob = await store.take(id, now);
     ctx.waitUntil(store.purgeExpired(now));
-    if (blob === null) return error(404, "This secret was already opened or has expired");
+    const kind = parseKind(url.searchParams.get("kind"));
+    if (blob === null) {
+      safeCount(usage, "gone", kind);
+      return error(404, "This secret was already opened or has expired");
+    }
+    safeCount(usage, "reveal", kind);
     return new Response(blob, {
       headers: { ...API_HEADERS, "Content-Type": "application/octet-stream" },
     });
