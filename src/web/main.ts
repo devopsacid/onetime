@@ -1,6 +1,8 @@
 import { FORMAT_MAX_BLOB_BYTES, HOSTED_LIMITS, MAX_SECRET_BYTES, type ServerLimits } from "../shared/limits";
 import { lowerTtlSelection } from "./ttl";
-import { ApiError, createSecret, fetchLimits, revealSecret, secretExists } from "./api";
+import { whenActivated } from "./activation";
+import { ApiError, LIMITS_VIEW_URL, createSecret, fetchLimits, revealSecret, secretExists } from "./api";
+import { kindFor } from "../shared/usage";
 import { SecretTooLargeError, WRITE_FILES, WRITE_FORMAT, deriveKey, encryptFile, encryptSecret, openPayload } from "./crypto";
 import { createDownload, type Download } from "./download";
 import { checkFileSize, describeFile, fileCreateError, fileTtlValues, formatLifetime, pickFileTtl, progressPercent, uploadLabel } from "./file-flow";
@@ -20,6 +22,8 @@ import { passphraseCreateEnabled, passphraseProblemText, planCreate } from "./pa
 import { buildLink, parseFragment, type SecretLink } from "./link";
 import { initThemeToggle } from "./theme-toggle";
 import { purgeLegacyAnalyticsState } from "./ga-cookies";
+
+declare const __SITE__: "app" | "info" | "selfhost";
 
 initThemeToggle();
 purgeLegacyAnalyticsState();
@@ -123,11 +127,14 @@ function applyLimits(): void {
 }
 
 applyLimits();
-void fetchLimits().then((reply) => {
-  if (!reply) return;
-  limits = reply;
-  applyLimits();
-});
+// In the app build the limits request doubles as the page-load count; a prerendered page waits until it is shown.
+void (__SITE__ === "app" ? whenActivated(document) : Promise.resolve())
+  .then(() => fetchLimits(__SITE__ === "app" ? { url: LIMITS_VIEW_URL } : {}))
+  .then((reply) => {
+    if (!reply) return;
+    limits = reply;
+    applyLimits();
+  });
 
 function resetFileInput(): void {
   fileInput.value = "";
@@ -256,7 +263,7 @@ el<HTMLFormElement>("create-form").addEventListener("submit", async (event) => {
     } else {
       made = await encryptSecret(text, plan.passphrase);
     }
-    const id = await createSecret(made.blob, Number(ttlSelect.value), controller.signal);
+    const id = await createSecret(made.blob, Number(ttlSelect.value), kindFor({ file: fileMade, passphrase: made.passphrase }), controller.signal);
     secretInput.value = "";
     clearPassphraseFields();
     updateSize();
@@ -412,6 +419,7 @@ el<HTMLFormElement>("open-form").addEventListener("submit", async (event) => {
     deriveKey,
     revealSecret: (id) =>
       revealSecret(id, {
+        kind: kindFor(link),
         maxBytes: FORMAT_MAX_BLOB_BYTES,
         onProgress: (loaded, total) => {
           if (!routeGuard.isCurrent(ticket)) return;

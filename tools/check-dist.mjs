@@ -354,10 +354,9 @@ if (profile !== "selfhost") {
 }
 
 // Usage counters (docs/plans/usage-counters.md): the page-load beacon `view=app` exists only in the app build, at most once,
-// in the entry chunk of index.html; the Function serves /api/* and nothing else. TODO(usage-counters): once the web
-// beacon has landed, require exactly one (MIN_VIEW_BEACONS = 1).
+// in the entry chunk of index.html; the Function serves /api/* and nothing else.
 {
-  const MIN_VIEW_BEACONS = 0;
+  const MIN_VIEW_BEACONS = 1;
   const beacon = /view=app/g;
   const hits = textFiles(root).flatMap((file) => {
     const n = (readFileSync(file, "utf8").match(beacon) ?? []).length;

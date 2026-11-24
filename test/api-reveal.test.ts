@@ -78,7 +78,7 @@ describe("createSecret signal", () => {
     let got: AbortSignal | null | undefined;
     vi.stubGlobal("fetch", async (_u: string, init: RequestInit) => ((got = init.signal), new Response(JSON.stringify({ id: "x" }), { status: 201 })));
     const controller = new AbortController();
-    expect(await createSecret(new Uint8Array(40), 3600, controller.signal)).toBe("x");
+    expect(await createSecret(new Uint8Array(40), 3600, "text", controller.signal)).toBe("x");
     expect(got).toBe(controller.signal);
   });
 });

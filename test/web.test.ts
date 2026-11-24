@@ -255,7 +255,7 @@ describe("ApiError.maxTtl", () => {
   async function failWith(body: unknown, status = 409): Promise<ApiError> {
     vi.stubGlobal("fetch", async () => new Response(typeof body === "string" ? body : JSON.stringify(body), { status }));
     try {
-      await createSecret(new Uint8Array(40), 604800);
+      await createSecret(new Uint8Array(40), 604800, "text");
     } catch (e) {
       return e as ApiError;
     }

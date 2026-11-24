@@ -1,3 +1,4 @@
+import type { ClientKind } from "../shared/usage";
 import { MAX_TTL_SECONDS, MIN_TTL_SECONDS, parseLimits, type ServerLimits } from "../shared/limits";
 
 export class ApiError extends Error {
@@ -26,8 +27,9 @@ async function fail(response: Response): Promise<never> {
   throw new ApiError(response.status, message, maxTtl);
 }
 
-export async function createSecret(blob: Uint8Array<ArrayBuffer>, ttlSeconds: number, signal?: AbortSignal): Promise<string> {
-  const response = await fetch(`/api/secrets?ttl=${ttlSeconds}`, {
+/** `kind` only feeds the aggregate usage counters (docs/plans/usage-counters.md); it comes from the link format, never from content. */
+export async function createSecret(blob: Uint8Array<ArrayBuffer>, ttlSeconds: number, kind: ClientKind, signal?: AbortSignal): Promise<string> {
+  const response = await fetch(`/api/secrets?ttl=${ttlSeconds}&kind=${kind}`, {
     method: "POST",
     headers: { "Content-Type": "application/octet-stream" },
     body: blob,
@@ -48,6 +50,8 @@ export async function secretExists(id: string): Promise<boolean> {
 export class BodyReadError extends Error {}
 
 export interface RevealOptions {
+  /** Link kind for the usage counters; left out, the server counts `unknown`. */
+  kind?: ClientKind;
   signal?: AbortSignal;
   /** Counted while reading; Content-Length is only used for progress and an early refusal, never trusted. */
   maxBytes?: number;
@@ -56,8 +60,8 @@ export interface RevealOptions {
 
 /** Fetches the encrypted blob; the server deletes it in the same step. */
 export async function revealSecret(id: string, options: RevealOptions = {}): Promise<Uint8Array<ArrayBuffer>> {
-  const { signal, maxBytes = Infinity, onProgress } = options;
-  const response = await fetch(`/api/secrets/${id}/reveal`, { method: "POST", ...(signal ? { signal } : {}) });
+  const { signal, maxBytes = Infinity, onProgress, kind } = options;
+  const response = await fetch(`/api/secrets/${id}/reveal${kind ? `?kind=${kind}` : ""}`, { method: "POST", ...(signal ? { signal } : {}) });
   if (!response.ok) return fail(response);
   const header = Number(response.headers.get("content-length"));
   const total = Number.isSafeInteger(header) && header > 0 ? header : null;
@@ -95,6 +99,13 @@ export async function revealSecret(id: string, options: RevealOptions = {}): Pro
   return out;
 }
 
+/**
+ * The page-load beacon of the app build: the same request as /api/limits, counted once by the server (a fixed string, never
+ * built from location or the fragment). Only main.ts uses it, and only when `__SITE__ === "app"`, so the other builds
+ * drop it and check-dist can prove that.
+ */
+export const LIMITS_VIEW_URL = "/api/limits?view=app";
+
 /** The reply of GET /api/limits is a few dozen bytes; anything above this is not one. */
 const LIMITS_MAX_BYTES = 1024;
 
@@ -102,9 +113,10 @@ const LIMITS_MAX_BYTES = 1024;
  * Asks the server for its file and text limits. Returns null for anything that is not a valid answer (an older server
  * without the endpoint, an error, HTML, a reply above 1 KiB, a network failure), so the caller falls back to HOSTED_LIMITS.
  */
-export async function fetchLimits(signal?: AbortSignal): Promise<ServerLimits | null> {
+export async function fetchLimits(options: { url?: string; signal?: AbortSignal } = {}): Promise<ServerLimits | null> {
+  const { url = "/api/limits", signal } = options;
   try {
-    const response = await fetch("/api/limits", signal ? { signal } : {});
+    const response = await fetch(url, signal ? { signal } : {});
     if (!response.ok || !response.body) return null;
     const reader = response.body.getReader();
     const chunks: Uint8Array[] = [];

@@ -94,7 +94,7 @@ describe("fetchLimits", () => {
       if (init?.signal?.aborted) throw new DOMException("aborted", "AbortError");
       return Response.json(ok);
     });
-    expect(await fetchLimits(controller.signal)).toBeNull();
+    expect(await fetchLimits({ signal: controller.signal })).toBeNull();
   });
 });
 
