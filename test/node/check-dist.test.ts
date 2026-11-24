@@ -27,7 +27,7 @@ function fixture(root: string, profile: Profile): string {
   const headers = readFileSync(PUBLIC_HEADERS, "utf8");
   if (profile !== "info") {
     writeFileSync(join(dir, "manifest.webmanifest"), "{}\n");
-    writeFileSync(join(dir, "_routes.json"), '{"version":1}\n');
+    writeFileSync(join(dir, "_routes.json"), profile === "app" ? '{"version":1,"include":["/api/*"],"exclude":[]}\n' : '{"version":1}\n');
   }
   if (profile === "selfhost") {
     writeFileSync(join(dir, "_headers"), headersForSelfhost(headers));
@@ -269,6 +269,37 @@ describe("check-dist rules per profile", () => {
     const dir = fixture(tmp.path, "info");
     profiles.set(dir, "app");
     expect(check(dir).code).toBe(1);
+  });
+
+  describe("usage counters (docs/plans/usage-counters.md)", () => {
+    const BEACON = 'fetch("/api/limits?view=app")';
+    it.each(["info", "selfhost"] as const)("%s: view=app anywhere in the build fails", (profile) => {
+      const dir = fixture(tmp.path, profile);
+      put(dir, "assets/a.js", `${BEACON}\n`);
+      failsWith(dir, /view=app/);
+    });
+    it("app: the beacon once, in the entry chunk, passes", () => {
+      const dir = fixture(tmp.path, "app");
+      put(dir, "assets/a.js", `${BEACON}\n`);
+      expect(check(dir).code).toBe(0);
+    });
+    it("app: the beacon twice, or outside the entry chunk, fails", () => {
+      const twice = fixture(tmp.path, "app");
+      put(twice, "assets/a.js", `${BEACON};${BEACON}\n`);
+      failsWith(twice, /view=app/);
+      rmSync(twice, { recursive: true });
+      const elsewhere = fixture(tmp.path, "app");
+      put(elsewhere, "assets/other.js", `${BEACON}\n`);
+      failsWith(elsewhere, /view=app/);
+    });
+    it("app: _routes.json must include only /api/*", () => {
+      for (const routes of ['{"version":1,"include":["/*"],"exclude":[]}', '{"version":1,"include":["/api/*","/"],"exclude":[]}', '{"version":1}']) {
+        const dir = fixture(tmp.path, "app");
+        put(dir, "_routes.json", routes);
+        failsWith(dir, /_routes\.json/);
+        rmSync(dir, { recursive: true });
+      }
+    });
   });
 
   describe("1: _headers", () => {
