@@ -11,7 +11,7 @@ Share a password, token, other secret or small file with a link that works once.
 
 The page can also generate passwords, random tokens (hex or base64url) and UUIDs, all in the browser.
 
-What the server holds: the encrypted blob and its expiry time, until first read, or until the first API request after expiry. The blob shows its format, whether a passphrase is needed, whether it is a file, and its size class; never a file's name, type or contents. No plaintext, keys, passphrases, IP addresses, accounts, cookies or request logs. The page where secrets are created and opened loads nothing from other sites and has no analytics or cookies. The information pages (how it works, privacy) live on a separate site, `https://onetimepass-info.pages.dev`, which is its own entry on the Public Suffix List and so a different origin and site from the app. Only that site uses Google Analytics 4, and only after an explicit Accept in a consent banner (see its privacy page). The app origin (`https://onetimepass.pages.dev`) serves no Google code on any path: one strict CSP in `public/_headers` covers every path, and the old `/how-it-works` and `/privacy` URLs there redirect (301) to the info site. Each site keeps only its own theme choice in local storage; the consent record exists on the info site only.
+What the server holds: the encrypted blob and its expiry time, until first read, or until the first API request after expiry. The blob shows its format, whether a passphrase is needed, whether it is a file, and its size class; never a file's name, type or contents. No plaintext, keys, passphrases, IP addresses, accounts, cookies or request logs. The page where secrets are created and opened loads nothing from other sites and sets no cookies; the app counts only daily totals (page loads; secrets created, revealed or gone by kind) in Cloudflare Workers Analytics Engine, with no identifiers, kept for 3 months ([docs/plans/usage-counters.md](docs/plans/usage-counters.md)). Self-hosted servers count nothing. The information pages (how it works, privacy) live on a separate site, `https://onetimepass-info.pages.dev`, which is its own entry on the Public Suffix List and so a different origin and site from the app. Only that site uses Google Analytics 4, and only after an explicit Accept in a consent banner (see its privacy page). The app origin (`https://onetimepass.pages.dev`) serves no Google code on any path: one strict CSP in `public/_headers` covers every path, and the old `/how-it-works` and `/privacy` URLs there redirect (301) to the info site. Each site keeps only its own theme choice in local storage; the consent record exists on the info site only.
 
 The reveal is one atomic SQL statement (`DELETE ... RETURNING`), so of many simultaneous attempts exactly one gets the blob.
 
@@ -64,7 +64,7 @@ tar czf - notes | ./onetime send --file - --name notes.tar.gz   # a file from a 
 
 `onetime get "<link>"` also works and prints exactly the secret (a newline is added only on a terminal). Opening a link with `get` uses it up, like the Reveal button. A link that needs a passphrase asks for it at a hidden prompt, or reads the first line of `--passphrase-file PATH`. A file link needs `-o PATH` (a folder, or a file name that does not exist yet; nothing is ever overwritten) or redirected output; on a terminal without `-o` nothing is opened. `onetime --help` lists everything; exit codes: 0 ok, 1 gone (already opened or expired), 2 usage error (also a missing passphrase, an existing target, or a file link on a terminal without `-o`; nothing is opened), 3 damaged link (nothing is opened), 4 decryption failed (also a wrong passphrase; the link is used up), 5 network or server error, or the file could not be written after it was opened, 70 internal error.
 
-Links made since 2026-11-20 need version 0.3.0 or newer; older versions report them as damaged without using them up. Files above 1 MiB (self-hosted servers only) need 0.4.0. `send --file` asks the server for its limits (`GET /api/limits`) and refuses an over-limit file before uploading; an older server without that call is treated like the hosted service. `onetime --version` shows the version. The server defaults to `https://onetimepass.pages.dev`; change it with `--server <url>` or `ONETIME_SERVER` (https only, except `http://localhost` and `http://127.0.0.1`).
+Links made since 2026-11-20 need version 0.3.0 or newer; older versions report them as damaged without using them up. Files above 1 MiB (self-hosted servers only) need 0.4.0. Since 0.5.0, `send` and `get` tell the server the kind of link (text or file, passphrase or not) with `?kind=`; the hosted service adds it to its daily totals and never stores it with the secret, and a self-hosted server ignores it. `send --file` asks the server for its limits (`GET /api/limits`) and refuses an over-limit file before uploading; an older server without that call is treated like the hosted service. `onetime --version` shows the version. The server defaults to `https://onetimepass.pages.dev`; change it with `--server <url>` or `ONETIME_SERVER` (https only, except `http://localhost` and `http://127.0.0.1`).
 
 Security notes:
 
@@ -83,7 +83,7 @@ Security notes:
 | Path | What |
 |---|---|
 | `index.html`, `src/web/` | The page: encryption, generator, UI (vanilla TypeScript, built by Vite) |
-| `privacy.html` | Privacy page (built into `dist-info/`, the info site): controller, what is stored, Google Analytics on the info site only after consent, cookies |
+| `privacy.html` | Privacy page (built into `dist-info/`, the info site): controller, what is stored, the app's daily totals, Google Analytics on the info site only after consent, cookies |
 | `command-line.html` | Install and usage of the command-line client (app site; Vite entry, script `src/web/page.ts`, no analytics) |
 | `how-it-works.html` | The detailed explanation of how secrets are stored (built into `dist-info/`, the info site; Vite entry, script `src/web/info.ts`; `src/web/page.ts` serves 404.html and command-line.html) |
 | `public/theme-init.js` | Tiny synchronous script in `<head>` that applies a stored light/dark choice before first paint (no inline script, so the CSP holds) |
@@ -91,6 +91,8 @@ Security notes:
 | `src/worker/index.ts` | The API router, storing blobs in D1 |
 | `migrations/` | D1 schema (`secrets` table) |
 | `src/shared/limits.ts` | Size and expiry limits used by both sides |
+| `src/worker/usage.ts`, `src/worker/usage-ae.ts`, `src/shared/usage.ts` | Daily usage totals: the router's `Usage` sink (no-op by default and when self-hosted), the Workers Analytics Engine adapter (binding `USAGE`, dataset `onetime_usage`), and the link kinds shared by the page and the CLI |
+| `tools/stats.mjs`, `tools/stats-core.mjs` | Prints the daily totals for the owner (not shipped; see Commands) |
 | `public/_headers`, `public/_routes.json` | CSP and other security headers for the static files (the info build derives its own `_headers` from this file); the Function runs only for `/api/*` |
 | `tools/burn-id.mjs` | Deletes a reported link by its id without opening it (abuse reports; works for any instance) |
 | `tools/site-profile*.mjs`, `tools/deploy-info.mjs` | The three builds (app `dist/`, info `dist-info/`, self-host `dist-selfhost/`) and the info site deploy script |
@@ -100,7 +102,7 @@ Security notes:
 | `docs/self-hosting.md` | Self-hosting guide for operators |
 | `test/` | Vitest tests: the Cloudflare side runs inside the Workers runtime, `test/node/` runs in Node |
 
-API: `GET /api/limits` → `{ "maxFileBytes": 262144, "maxFileTtl": 3600, "maxTextBytes": 16384 }` (the file size in bytes, 0 when files are off, the longest life of a file in seconds, and the text size; hosted values here, a self-hosted server answers its settings; `no-store`); `POST /api/secrets?ttl=<seconds>` (body: blob, at most 262,562 bytes on the hosted service; blobs over 16,418 bytes may last at most `maxFileTtl` seconds (1 hour hosted), otherwise `409` with `maxTtl: 3600`) → `{ id }`; `GET /api/secrets/<id>` → exists or 404; `POST /api/secrets/<id>/reveal` → blob, then deleted.
+API: `GET /api/limits` → `{ "maxFileBytes": 262144, "maxFileTtl": 3600, "maxTextBytes": 16384 }` (the file size in bytes, 0 when files are off, the longest life of a file in seconds, and the text size; hosted values here, a self-hosted server answers its settings; `no-store`); `POST /api/secrets?ttl=<seconds>` (body: blob, at most 262,562 bytes on the hosted service; blobs over 16,418 bytes may last at most `maxFileTtl` seconds (1 hour hosted), otherwise `409` with `maxTtl: 3600`) → `{ id }`; `GET /api/secrets/<id>` → exists or 404; `POST /api/secrets/<id>/reveal` → blob, then deleted. Optional, for the usage totals only: `kind=text|text-pass|file|file-pass` on create and reveal (anything else, or none, counts as `unknown`; it never causes an error or changes the answer), and `view=app` on `GET /api/limits`, which counts one page load when the browser sends `Sec-Fetch-Site: same-origin`. The hosted service counts `create` only on 201, `reveal` when the secret was handed over and `gone` when a reveal found nothing.
 
 Limits: 16 KB per text secret, 256 KB per file on the hosted service (a self-hosted server sets `ONETIME_MAX_FILE_BYTES`, up to 5 MiB; see `docs/self-hosting.md`). Files last at most 1 hour by default (self-hosting: `ONETIME_MAX_FILE_TTL`); the server cannot tell a small file from a text, so it enforces this only by size: it refuses any blob over 16,418 bytes with an expiry longer than 1 hour (`409`, `maxTtl: 3600`). Texts keep 1 hour, 1 day or 7 days. There is no per-IP rate limit (IPs are never stored). Instead, creating returns 503 while 20,000 secrets are stored, counting every secret not yet revealed (expired ones not yet purged count, but every create purges them first). While more than 80 % of that is in use (16,000), creating a link that lasts longer than 1 day is refused with `409` and `{"error": ..., "maxTtl": 86400}`; the web page and the CLI tell the sender and ask for a shorter expiry. The same rule applies against the operator's `ONETIME_MAX_STORED` when self-hosting. Stored bytes are capped too: all blobs together at most 400 MB, and blobs over 16,418 bytes (files over about 16 KB) are accepted only while the total stays at or below 200 MB, so texts keep their room. An attacker can fill that file budget, which blocks larger files for everyone for up to an hour; only a rate limit would fix that.
 
@@ -111,6 +113,12 @@ pnpm install
 pnpm db:migrate:local   # once: create the local D1 database (.wrangler/state)
 pnpm dev                # build, then run Pages locally at http://localhost:8788 (links to the info pages go to the production info site)
 pnpm check              # typecheck, tests, build (app, CLI, info), then tools/check-dist.mjs on dist/ and dist-info/ and the self-host build
+```
+
+Daily usage totals of the hosted app (owner only): put the Cloudflare account id in `ONETIME_STATS_ACCOUNT_ID` and a read-only API token with "Account Analytics: Read" in `ONETIME_STATS_TOKEN` (for example from a password manager, not typed into the shell history; a token given as an argument is refused), then:
+
+```sh
+node tools/stats.mjs --days 30   # --days 1..92 (default 7), --format table|tsv; one query per run
 ```
 
 Deploying to the Cloudflare Pages project `onetimepass` (needs a Cloudflare login or API token):

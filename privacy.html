@@ -117,8 +117,9 @@
         <h2 id="sites-title">Two sites</h2>
         <p>
           onetime runs as two separate websites. <strong>onetimepass.pages.dev</strong> is where secrets are created and
-          opened; it also serves the command-line page, the command-line downloads and the API. It runs no analytics, sets
-          no cookies and loads nothing from other sites, on any page. <strong>onetimepass-info.pages.dev</strong> is this
+          opened; it also serves the command-line page, the command-line downloads and the API. It sets no cookies, loads
+          nothing from other sites and runs no analytics service; it only counts daily totals (see
+          <a href="#counts">Daily totals</a>). <strong>onetimepass-info.pages.dev</strong> is this
           information site (how it works and this page); it uses Google Analytics only after you accept. Each site saves
           your theme choice separately. Google Analytics cookies that an earlier version of the secret site set on
           onetimepass.pages.dev are deleted there on your next visit.
@@ -131,7 +132,7 @@
         <p>
           <!-- site:onetimepass -->
           The code of both sites stores no accounts, cookies or IP addresses. The secret site (onetimepass.pages.dev)
-          sets no cookies, runs no analytics and loads nothing from other sites. Cloudflare, which hosts both sites,
+          sets no cookies, loads nothing from other sites and keeps only the daily totals described below. Cloudflare, which hosts both sites,
           handles connections (IP address, request details) as any host does. What is stored for a secret is described in
           <!-- /site:onetimepass -->
           <!-- site:selfhost
@@ -154,6 +155,26 @@
           site:selfhost -->
         </p>
       </section>
+
+      <!-- site:onetimepass -->
+      <section id="counts" aria-labelledby="counts-title">
+        <h2 id="counts-title">Daily totals</h2>
+        <p>
+          The secret site counts, per day, how often its page is loaded and how many links of each kind (text or file,
+          with or without passphrase) are created, opened, or found already gone. These are totals only: no IP address,
+          cookie, link id or any other identifier is recorded, and nothing is sent to another site. The totals are stored
+          with Cloudflare, the host, for 3 months.
+        </p>
+        <ul class="ticks">
+          <li><strong>What is counted:</strong> loads of the page where secrets are created and opened (the command-line page is not counted), links created, links opened with Reveal, and Reveal presses on links that were already opened or had expired. Each entry holds only what happened, the kind of link and when.</li>
+          <li><strong>The kind of link:</strong> the page and the command-line tool (version 0.5.0 and newer) tell the server the kind of link when it is created and when Reveal is pressed. The encrypted data on the server already shows the same, so the server learns nothing new. The kind is never stored with the secret. Older command-line versions do not send it and are counted as “unknown”.</li>
+          <li><strong>Where:</strong> Cloudflare Workers Analytics Engine, part of the hosting. No Google code and no other third party is involved, and no cookie is set.</li>
+          <li><strong>Retention:</strong> 3 months, the storage period of Workers Analytics Engine.</li>
+          <li><strong>Purpose:</strong> only to see how much the site is used. Anyone can make the numbers wrong by sending requests, so nothing is decided from them about a person or a link.</li>
+          <li><strong>Legal basis:</strong> legitimate interest (Article 6(1)(f) GDPR) in knowing how much the site is used, so that it can be run and sized. No consent is asked, because no cookie is set, nothing is stored on your device for it and no identifier is recorded.</li>
+        </ul>
+      </section>
+      <!-- /site:onetimepass -->
 
       <section id="abuse" aria-labelledby="abuse-title">
         <h2 id="abuse-title">Reporting abuse</h2>
@@ -305,7 +326,7 @@
 
     <footer class="site-footer site-footer-plain">
       <!-- site:onetimepass -->
-      <p>No accounts. Secrets are encrypted on your device. onetimepass.pages.dev, where secrets are created and opened, has no analytics or cookies. This information site uses Google Analytics only if you accept. Your theme choice and this choice are saved in your browser.</p>
+      <p>No accounts. Secrets are encrypted on your device. onetimepass.pages.dev, where secrets are created and opened, sets no cookies and keeps only daily totals without identifiers. This information site uses Google Analytics only if you accept. Your theme choice and this choice are saved in your browser.</p>
       <p><a href="/">Share a secret</a> · <a href="/how-it-works">How it works</a> · <a href="/command-line">Command-line tool</a> · <a href="/privacy" aria-current="page">Privacy</a> · <a href="/terms">Terms</a> · <a href="/privacy#abuse">Report abuse</a> · <a href="/privacy#cookies" data-cookie-settings>Cookie settings</a></p>
       <!-- /site:onetimepass -->
       <!-- site:selfhost

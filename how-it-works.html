@@ -115,7 +115,7 @@
                 "name": "Does the site use cookies or analytics?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "The site where secrets are created and opened (onetimepass.pages.dev) loads nothing from other sites and has no analytics or cookies on any page. This information site (how it works and privacy) uses Google Analytics to count visits only if you accept. Each site remembers your theme choice, and this site your cookie choice, only in your own browser’s storage."
+                  "text": "The site where secrets are created and opened (onetimepass.pages.dev) loads nothing from other sites and sets no cookies on any page. It counts only daily totals of page loads and links by kind, with no identifiers. This information site (how it works and privacy) uses Google Analytics to count visits only if you accept. Each site remembers your theme choice, and this site your cookie choice, only in your own browser’s storage."
                 }
               }
             ]
@@ -462,6 +462,12 @@
               links without a format part (made by earlier versions of the page, or by older command-line
               copies from before this update) are not padded, so their stored size shows the exact length.
             </p>
+            <!-- site:onetimepass -->
+            <h3>Stored by the secret site, not per secret</h3>
+            <ul class="ticks">
+              <li>Daily totals: page loads, and links created, opened or already gone, by kind. No id, key, IP or other detail.</li>
+            </ul>
+            <!-- /site:onetimepass -->
           </div>
           <div class="compare-card compare-never">
             <h3>Never sent to the server</h3>
@@ -482,7 +488,7 @@
               <!-- site:onetimepass -->
               <li>Cookies (the secret site sets none; this information site sets Google Analytics cookies only if you accept)</li>
               <li>Your browser and device details (user agent)</li>
-              <li>Analytics (none on the secret site)</li>
+              <li>Tracking or analytics scripts (none on the secret site; it keeps only daily totals, see <a href="/privacy#counts">privacy</a>)</li>
               <!-- /site:onetimepass -->
               <!-- site:selfhost
               <li>Cookies (no page of this site sets any)</li>
@@ -732,7 +738,7 @@
             <summary>Does the site use cookies or analytics?</summary>
             <p>
               <!-- site:onetimepass -->
-              The site where secrets are created and opened (onetimepass.pages.dev) loads nothing from other sites and has no analytics or cookies on any page. This information site (how it works and privacy) uses Google Analytics to count visits only if you accept. Each site remembers your theme choice, and this site your cookie choice, only in your own browser’s storage.
+              The site where secrets are created and opened (onetimepass.pages.dev) loads nothing from other sites and sets no cookies on any page. It counts only daily totals of page loads and links by kind, with no identifiers. This information site (how it works and privacy) uses Google Analytics to count visits only if you accept. Each site remembers your theme choice, and this site your cookie choice, only in your own browser’s storage.
               <!-- /site:onetimepass -->
               <!-- site:selfhost
               No. No page of this site sets cookies, runs analytics or loads anything from other sites. Your theme choice is remembered only in your own browser’s storage.
@@ -747,7 +753,7 @@
 
     <footer class="site-footer site-footer-plain">
       <!-- site:onetimepass -->
-      <p>No accounts. Secrets are encrypted on your device. onetimepass.pages.dev, where secrets are created and opened, has no analytics or cookies. This information site uses Google Analytics only if you accept. Your theme choice and this choice are saved in your browser.</p>
+      <p>No accounts. Secrets are encrypted on your device. onetimepass.pages.dev, where secrets are created and opened, sets no cookies and keeps only daily totals without identifiers. This information site uses Google Analytics only if you accept. Your theme choice and this choice are saved in your browser.</p>
       <p><a href="/">Share a secret</a> · <a href="/command-line">Command-line tool</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="/privacy#abuse">Report abuse</a> · <a href="/privacy#cookies" data-cookie-settings>Cookie settings</a></p>
       <!-- /site:onetimepass -->
       <!-- site:selfhost

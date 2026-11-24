@@ -151,13 +151,13 @@
         <p>Run <code>onetime --help</code> or <code>onetime gen --help</code> for all options.</p>
         <!-- site:onetimepass -->
         <p>
-          The current version is 0.4.0. Links made since 20 November 2026 need at least 0.3.0; older versions report
+          The current version is 0.5.0. Links made since 20 November 2026 need at least 0.3.0; older versions report
           them as damaged without using them up. <code>onetime --version</code> shows your version.
         </p>
         <!-- /site:onetimepass -->
         <!-- site:selfhost
         <p>
-          The current version of the command-line tool is 0.4.0. Links made with this version of the site need at least
+          The current version of the command-line tool is 0.5.0. Links made with this version of the site need at least
           0.3.0, and files over 1 MB need 0.4.0; older versions report such links as damaged without using them up.
           <code>onetime --version</code> shows your version.
         </p>
@@ -233,6 +233,17 @@ tar czf - notes | ./onetime send --file - --name notes.tar.gz</code></pre>
             or open the link in a browser instead.
           </li>
           <li>No telemetry, no config files, no update checks.</li>
+          <li>
+            Since 0.5.0, <code>send</code> and <code>get</code> tell the server the kind of link (text or file, passphrase
+            or not).
+            <!-- site:onetimepass -->
+            The hosted service adds it to daily totals (see <a href="/privacy#counts">privacy</a>); it is never stored
+            with the secret.
+            <!-- /site:onetimepass -->
+            <!-- site:selfhost
+            The server of this instance ignores it.
+            site:selfhost -->
+          </li>
         </ul>
         <p>
           <a href="/how-it-works">How your secret is stored</a> explains the encryption and what the server keeps. It is
@@ -245,7 +256,7 @@ tar czf - notes | ./onetime send --file - --name notes.tar.gz</code></pre>
 
     <footer class="site-footer site-footer-plain">
       <!-- site:onetimepass -->
-      <p>No accounts. Secrets are encrypted on your device. No page of this site uses analytics or cookies. Your theme choice is saved in your browser.</p>
+      <p>No accounts. Secrets are encrypted on your device. No page of this site sets cookies or loads anything from other sites; it keeps only daily totals without identifiers. Your theme choice is saved in your browser.</p>
       <p><a href="/">Share a secret</a> · <a href="/how-it-works">How it works</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="/privacy#abuse">Report abuse</a></p>
       <!-- /site:onetimepass -->
       <!-- site:selfhost
