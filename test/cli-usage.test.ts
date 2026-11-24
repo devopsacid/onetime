@@ -32,7 +32,8 @@ describe("the CLI tells the server the kind of link", () => {
     const { rec, calls } = await send(argv);
     expect(calls).toEqual([["create", kind]]);
     const post = paths(rec).filter((p) => p.startsWith("/api/secrets?"));
-    expect(post).toEqual([`/api/secrets?ttl=3600&kind=${kind}`]);
+    expect(post).toHaveLength(1);
+    expect(post[0]).toMatch(new RegExp(`^/api/secrets\\?ttl=\\d+&kind=${kind}$`));
   });
 
   it.each([

@@ -9,6 +9,7 @@ import {
   TOKEN_BYTES,
   type CharsetName,
 } from "../src/web/generate";
+import { kindFor } from "../src/shared/usage";
 import { buildLink, parseFragment, type SecretLink } from "../src/web/link";
 import {
   DEFAULT_TTL_SECONDS,
@@ -671,8 +672,10 @@ async function readNewPassphrase(io: Io, command: PassphraseOption): Promise<str
 }
 
 /** Posts a blob and returns the validated id. */
-async function uploadBlob(io: Io, blob: Uint8Array<ArrayBuffer>, ttl: number, server: string, isFile: boolean): Promise<string> {
-  const response = await request(io, `${server}/api/secrets?ttl=${ttl}`, {
+async function uploadBlob(io: Io, blob: Uint8Array<ArrayBuffer>, ttl: number, server: string, isFile: boolean, passphrase: boolean): Promise<string> {
+  // The kind is for the server's daily totals; it is what the blob's flags byte already shows, and is never stored.
+  const kind = kindFor({ file: isFile, passphrase });
+  const response = await request(io, `${server}/api/secrets?ttl=${ttl}&kind=${kind}`, {
     method: "POST",
     headers: { "Content-Type": "application/octet-stream" },
     body: blob,
@@ -706,7 +709,7 @@ async function createLink(io: Io, text: string, ttl: number, server: string, pas
     }
     throw error;
   }
-  const id = await uploadBlob(io, encrypted.blob, ttl, server, false);
+  const id = await uploadBlob(io, encrypted.blob, ttl, server, false, encrypted.passphrase);
   return buildLink(server, { id, key: encrypted.key, format: encrypted.format, passphrase: encrypted.passphrase, file: false });
 }
 
@@ -736,7 +739,7 @@ async function createFileLink(io: Io, file: { name: string; bytes: Uint8Array },
     }
     throw error;
   }
-  const id = await uploadBlob(io, encrypted.blob, ttl, server, true);
+  const id = await uploadBlob(io, encrypted.blob, ttl, server, true, encrypted.passphrase);
   return buildLink(server, { id, key: encrypted.key, format: 2, passphrase: encrypted.passphrase, file: true });
 }
 
@@ -986,7 +989,7 @@ async function execute(command: Command, io: Io): Promise<number> {
           "Note: the link is now in your shell history. Next time use `onetime get -` or `onetime get` and paste it.\n",
         );
       }
-      const response = await request(io, `${parsed.origin}/api/secrets/${parsed.id}/reveal`, { method: "POST" });
+      const response = await request(io, `${parsed.origin}/api/secrets/${parsed.id}/reveal?kind=${kindFor(parsed)}`, { method: "POST" });
       if (response.status === 404) throw new ExitError(EXIT.gone, GONE_MESSAGE);
       if (!response.ok) throw await serverError(response);
       const blob = await readBounded(response, FORMAT_MAX_BLOB_BYTES);
