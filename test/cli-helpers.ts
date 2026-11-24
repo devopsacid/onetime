@@ -3,6 +3,7 @@ import { env } from "cloudflare:workers";
 import { handle } from "../src/worker/index";
 import { d1Store } from "../src/worker/store-d1";
 import type { Io } from "../cli/core";
+import type { Usage } from "../src/worker/usage";
 
 export const SERVER = "https://onetime.test";
 
@@ -12,13 +13,13 @@ export interface Recorded {
 }
 
 /** A fetch wired straight to the real router and the test D1. */
-export function routerFetch(rec?: Recorded): typeof fetch {
+export function routerFetch(rec?: Recorded, usage?: Usage): typeof fetch {
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = new Request(input, init);
     rec?.urls.push(request.url);
     rec?.methods.push(request.method);
     const ctx = createExecutionContext();
-    const response = await handle(request, d1Store(env.DB), ctx);
+    const response = await handle(request, d1Store(env.DB), ctx, usage === undefined ? {} : { usage });
     await waitOnExecutionContext(ctx);
     return response;
   }) as typeof fetch;
