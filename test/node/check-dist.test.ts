@@ -22,7 +22,8 @@ function fixture(root: string, profile: Profile): string {
   const names = { selfhost: ["index", "404", "how-it-works", "command-line", "privacy", "terms"], app: ["index", "404", "command-line"], info: ["404", "how-it-works", "privacy", "terms"] }[profile];
   for (const name of names) writeFileSync(join(dir, `${name}.html`), page(ownOrigin(profile)));
   writeFileSync(join(dir, "theme-init.js"), "document.documentElement.dataset.theme='light'\n");
-  writeFileSync(join(dir, "assets", "a.js"), "console.log('app')\n");
+  // The app build carries the page-load beacon once, in the entry chunk (usage counters); the other profiles never do.
+  writeFileSync(join(dir, "assets", "a.js"), profile === "app" ? "fetch(\"/api/limits?view=app\")\n" : "console.log('app')\n");
   writeFileSync(join(dir, "assets", "a.css"), "body{}\n");
   const headers = readFileSync(PUBLIC_HEADERS, "utf8");
   if (profile !== "info") {
@@ -282,6 +283,11 @@ describe("check-dist rules per profile", () => {
       const dir = fixture(tmp.path, "app");
       put(dir, "assets/a.js", `${BEACON}\n`);
       expect(check(dir).code).toBe(0);
+    });
+    it("app: no beacon at all fails", () => {
+      const dir = fixture(tmp.path, "app");
+      put(dir, "assets/a.js", "console.log('app')\n");
+      failsWith(dir, /view=app must appear exactly once \(found 0\)/);
     });
     it("app: the beacon twice, or outside the entry chunk, fails", () => {
       const twice = fixture(tmp.path, "app");
