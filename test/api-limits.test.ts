@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HOSTED_LIMITS, parseLimits } from "../src/shared/limits";
 import { fetchLimits } from "../src/web/api";
+import { handle } from "../src/worker/index";
+import type { SecretStore } from "../src/worker/store";
+import type { Usage } from "../src/worker/usage";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -92,5 +95,50 @@ describe("fetchLimits", () => {
       return Response.json(ok);
     });
     expect(await fetchLimits(controller.signal)).toBeNull();
+  });
+});
+
+describe("GET /api/limits?view=app counts a page load", () => {
+  const record = () => {
+    const calls: [string, string][] = [];
+    const usage: Usage = { count: (event, label) => void calls.push([event, label]) };
+    return { calls, options: { usage } };
+  };
+  const ctx = { waitUntil: () => {} };
+  const store = {} as SecretStore;
+  const get = (query: string, headers: Record<string, string>, options: object, method = "GET") =>
+    handle(new Request(`https://onetime.test/api/limits${query}`, { method, headers }), store, ctx, options);
+
+  it("records view/app only for same-origin fetches with view=app", async () => {
+    const r = record();
+    const plain = await (await get("", {}, {})).text();
+    const response = await get("?view=app", { "Sec-Fetch-Site": "same-origin" }, r.options);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(plain);
+    expect(r.calls).toEqual([["view", "app"]]);
+  });
+
+  it.each([
+    ["no header", "?view=app", {}],
+    ["cross-site", "?view=app", { "Sec-Fetch-Site": "cross-site" }],
+    ["same-site", "?view=app", { "Sec-Fetch-Site": "same-site" }],
+    ["none", "?view=app", { "Sec-Fetch-Site": "none" }],
+    ["view=cli", "?view=cli", { "Sec-Fetch-Site": "same-origin" }],
+    ["an empty view", "?view=", { "Sec-Fetch-Site": "same-origin" }],
+    ["no view", "", { "Sec-Fetch-Site": "same-origin" }],
+    ["a wrong-case view", "?view=APP", { "Sec-Fetch-Site": "same-origin" }],
+  ])("records nothing with %s and answers the same body", async (_n, query, headers) => {
+    const r = record();
+    const plain = await (await get("", {}, {})).text();
+    const response = await get(query, headers, r.options);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(plain);
+    expect(r.calls).toEqual([]);
+  });
+
+  it("records nothing for POST (405)", async () => {
+    const r = record();
+    expect((await get("?view=app", { "Sec-Fetch-Site": "same-origin" }, r.options, "POST")).status).toBe(405);
+    expect(r.calls).toEqual([]);
   });
 });

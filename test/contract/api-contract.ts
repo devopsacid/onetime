@@ -12,6 +12,7 @@ import {
   longTtlCap,
 } from "../../src/shared/limits";
 import type { Options } from "../../src/worker/index";
+import type { Usage } from "../../src/worker/usage";
 
 type BodyInit = NonNullable<RequestInit["body"]>;
 
@@ -340,6 +341,145 @@ export function defineApiContract(h: ApiHarness): void {
       expect((await call("/api/secrets")).status).toBe(405);
       const id = await createOk();
       expect((await call(`/api/secrets/${id}`, { method: "DELETE" })).status).toBe(405);
+    });
+  });
+
+  describe("usage counters", () => {
+    const recorder = () => {
+      const calls: [string, string][] = [];
+      const usage: Usage = { count: (event, label) => void calls.push([event, label]) };
+      return { calls, options: { usage } as Options };
+    };
+    const kinds = ["text", "text-pass", "file", "file-pass"];
+    const createKind = (kind: string, options?: Options, blob = blobOf(64), ttl = "3600") =>
+      call(`/api/secrets?ttl=${ttl}&kind=${kind}`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: blob }, options);
+
+    it.each(kinds)("counts a created %s once", async (kind) => {
+      const r = recorder();
+      expect((await createKind(kind, r.options)).status).toBe(201);
+      expect(r.calls).toEqual([["create", kind]]);
+    });
+
+    it.each([
+      ["no kind", ""],
+      ["an empty kind", "&kind="],
+      ["a wrong case", "&kind=TEXT"],
+      ["an invalid first value", "&kind=bogus&kind=text"],
+      ["a 300 character value", `&kind=${"a".repeat(300)}`],
+      ["a NUL byte", "&kind=%00"],
+    ])("counts %s as unknown and answers as without kind", async (_name, query) => {
+      const r = recorder();
+      const plain = await call("/api/secrets?ttl=3600", { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: blobOf(64) });
+      const response = await call(`/api/secrets?ttl=3600${query}`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: blobOf(64) }, r.options);
+      expect(response.status).toBe(201);
+      expect(r.calls).toEqual([["create", "unknown"]]);
+      expect([...response.headers].sort()).toEqual([...plain.headers].sort());
+      expect(Object.keys((await response.json()) as object)).toEqual(Object.keys((await plain.json()) as object));
+    });
+
+    it("counts nothing for refused creates (400, 409, 413, 415, 503)", async () => {
+      const r = recorder();
+      const o = r.options;
+      expect((await createKind("text", o, blobOf(64), "5")).status).toBe(400);
+      expect((await createKind("text", o, new Uint8Array(0))).status).toBe(400);
+      expect((await createKind("text", o, blobOf(MAX_TEXT_BLOB_BYTES + 1), String(LARGE_MAX_TTL_SECONDS + 1))).status).toBe(409);
+      expect((await createKind("text", o, blobOf(MAX_BLOB_BYTES + 1))).status).toBe(413);
+      expect((await call("/api/secrets?ttl=3600&kind=text", { method: "POST", headers: { "Content-Type": "text/plain" }, body: "x" }, o)).status).toBe(415);
+      expect((await createKind("text", { ...o, maxStored: 0 })).status).toBe(503);
+      expect(r.calls).toEqual([]);
+    });
+
+    it("counts nothing for a near-full 409", async () => {
+      const r = recorder();
+      await createOk(blobOf(64));
+      await createOk(blobOf(64));
+      const response = await createKind("text", { ...r.options, maxStored: 2 }, blobOf(64), String(NEAR_FULL_MAX_TTL_SECONDS + 1));
+      expect(response.status).toBe(409);
+      expect(r.calls).toEqual([]);
+    });
+
+    it("counts a reveal, then a gone, with the kind or unknown", async () => {
+      const r = recorder();
+      const blob = blobOf(100);
+      const id = await createOk(blob);
+      const first = await call(`/api/secrets/${id}/reveal?kind=file-pass`, { method: "POST" }, r.options);
+      expect(first.status).toBe(200);
+      expect(new Uint8Array(await first.arrayBuffer())).toEqual(blob);
+      const second = await call(`/api/secrets/${id}/reveal?kind=file-pass`, { method: "POST" }, r.options);
+      expect(second.status).toBe(404);
+      expect(r.calls).toEqual([["reveal", "file-pass"], ["gone", "file-pass"]]);
+
+      const r2 = recorder();
+      const id2 = await createOk();
+      await call(`/api/secrets/${id2}/reveal`, { method: "POST" }, r2.options);
+      await call(`/api/secrets/${id2}/reveal?kind=nope`, { method: "POST" }, r2.options);
+      expect(r2.calls).toEqual([["reveal", "unknown"], ["gone", "unknown"]]);
+    });
+
+    it("counts an expired secret as gone", async () => {
+      const T0 = 1_800_000_000_000;
+      const r = recorder();
+      const id = await createOk(blobOf(64), "60", { now: T0 });
+      await call(`/api/secrets/${id}/reveal?kind=text`, { method: "POST" }, { ...r.options, now: T0 + 61_000 });
+      expect(r.calls).toEqual([["gone", "text"]]);
+    });
+
+    it("counts nothing for status, GET on reveal, other methods and malformed ids", async () => {
+      const r = recorder();
+      const id = await createOk();
+      expect((await call(`/api/secrets/${id}`, {}, r.options)).status).toBe(200);
+      expect((await call(`/api/secrets/${"z".repeat(22)}`, {}, r.options)).status).toBe(404);
+      expect((await call(`/api/secrets/${id}/reveal?kind=text`, {}, r.options)).status).toBe(405);
+      expect((await call(`/api/secrets/${id}`, { method: "POST" }, r.options)).status).toBe(405);
+      expect((await call("/api/secrets/short/reveal?kind=text", { method: "POST" }, r.options)).status).toBe(404);
+      expect((await call("/api/secrets/a$b/reveal", { method: "POST" }, r.options)).status).toBe(404);
+      expect(r.calls).toEqual([]);
+      expect((await call(`/api/secrets/${id}`, {}, r.options)).status).toBe(200);
+    });
+
+    it("20 concurrent reveals give exactly one reveal and 19 gone", async () => {
+      const r = recorder();
+      const id = await createOk();
+      const responses = await Promise.all(Array.from({ length: 20 }, () => call(`/api/secrets/${id}/reveal?kind=text`, { method: "POST" }, r.options)));
+      expect(responses.filter((x) => x.status === 200)).toHaveLength(1);
+      expect(r.calls.filter(([e]) => e === "reveal")).toEqual([["reveal", "text"]]);
+      expect(r.calls.filter(([e]) => e === "gone")).toHaveLength(19);
+    });
+
+    it("a sink that throws changes no response", async () => {
+      const throwing: Options = { usage: { count: () => { throw new Error("sink down"); } } };
+      const blob = blobOf(90);
+      const response = await createKind("text", throwing, blob);
+      expect(response.status).toBe(201);
+      const { id } = (await response.json()) as { id: string };
+      const first = await call(`/api/secrets/${id}/reveal?kind=text`, { method: "POST" }, throwing);
+      expect(first.status).toBe(200);
+      expect(new Uint8Array(await first.arrayBuffer())).toEqual(blob);
+      const second = await call(`/api/secrets/${id}/reveal?kind=text`, { method: "POST" }, throwing);
+      expect(second.status).toBe(404);
+      expect(await second.json()).toEqual({ error: "This secret was already opened or has expired" });
+      const limits = await call("/api/limits?view=app", { headers: { "Sec-Fetch-Site": "same-origin" } }, throwing);
+      expect(limits.status).toBe(200);
+      expect(await limits.json()).toEqual(await (await call("/api/limits")).json());
+    });
+
+    it("the counted values hold no id, key or blob bytes and stay in the closed set", async () => {
+      const r = recorder();
+      const blob = blobOf(120);
+      const key = "k".repeat(43);
+      const response = await createKind("text-pass", r.options, blob);
+      const { id } = (await response.json()) as { id: string };
+      await call(`/api/secrets/${id}/reveal?kind=text-pass`, { method: "POST" }, r.options);
+      await call(`/api/secrets/${id}/reveal?kind=text-pass`, { method: "POST" }, r.options);
+      const text = JSON.stringify(r.calls);
+      expect(text).not.toContain(id);
+      expect(text).not.toContain(key);
+      expect(text).not.toContain(btoa(String.fromCharCode(...blob.subarray(0, 12))));
+      const allowed = new Set(["text", "text-pass", "file", "file-pass", "unknown"]);
+      for (const [event, label] of r.calls) {
+        expect(["create", "reveal", "gone"]).toContain(event);
+        expect(allowed.has(label)).toBe(true);
+      }
     });
   });
 
